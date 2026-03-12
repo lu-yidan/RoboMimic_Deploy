@@ -60,6 +60,9 @@ class FixedPose(FSMState):
         if(self.state_cmd.skill_cmd == FSMCommand.LOCO):
             self.state_cmd.skill_cmd = FSMCommand.INVALID
             return FSMStateName.LOCOMODE
+        elif(self.state_cmd.skill_cmd == FSMCommand.STAND_UP):   # L1+X → HOST 爬起控制器
+            self.state_cmd.skill_cmd = FSMCommand.INVALID
+            return FSMStateName.STANDMODE
         elif(self.state_cmd.skill_cmd == FSMCommand.PASSIVE):
             self.state_cmd.skill_cmd = FSMCommand.INVALID
             return FSMStateName.PASSIVE

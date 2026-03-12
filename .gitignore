@@ -1,85 +1,35 @@
-# ==============================
-# Python 相关
-# ==============================
-# Byte-compiled / optimized / DLL files
+# Python
 __pycache__/
 *.py[cod]
-*$py.class
-
-# Distribution / packaging
+*.pyo
+*.pyd
+.Python
 *.egg-info/
-*.egg
 dist/
 build/
-*.so
-*.dylib
+.eggs/
 
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
+# Virtual environments
+.venv/
+venv/
+env/
 
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.nox/
-.coverage
-*.cover
-*.py,cover
-.hypothesis/
-.pytest_cache/
+# Outputs
+outputs/
 
-# Jupyter Notebook
+# Third-party SDKs (install separately)
+unitree_sdk2_python/
+
+# Scripts (local utility scripts)
+# scripts/
+
+# Jupyter
 .ipynb_checkpoints/
 
-# ==============================
-# 开发环境 / IDE
-# ==============================
-# VS Code
+# IDE
 .vscode/
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
-
-# PyCharm
 .idea/
-*.iml
-*.TXT
 
-# macOS
+# OS
 .DS_Store
-
-# ==============================
-# 项目特定忽略
-# ==============================
-# 忽略所有临时 USD 文件
-*.tmp.usd
-
-*.h5
-*.ckpt
-
-# 忽略 MuJoCo 配置文件（按需取消注释）
-# *.yaml
-# *.xml
-
-# 但保留特定配置文件（白名单）
-!**/config/*.yaml
-!**/config/*.xml
-
-# ==============================
-# 系统文件
-# ==============================
-# Windows
 Thumbs.db
-ehthumbs.db
-Desktop.ini
-
-# Linux
-*~
-
-# ==============================
-# 日志和数据库
-# ==============================
-*.log
-*.sqlite
-*.db

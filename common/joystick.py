@@ -1,11 +1,13 @@
 from common.path_config import PROJECT_ROOT
 
+import os
 import pygame
 from pygame.locals import *
 from enum import IntEnum, unique
 
 @unique
 class JoystickButton(IntEnum):
+    # Override any button with env var JOYSTICK_<NAME>, e.g. JOYSTICK_START=7
     # Standard PlayStation/Xbox Layout
     A = 0      # PS: Cross(×), Xbox: A
     B = 1      # PS: Circle(○), Xbox: B
@@ -22,6 +24,16 @@ class JoystickButton(IntEnum):
     DOWN = 12  # D-pad Down
     LEFT = 13  # D-pad Left
     RIGHT = 14 # D-pad Right
+
+
+def _default_remap():
+    """Logical button -> physical index. Override with env vars, e.g. JOYSTICK_START=7."""
+    remap = {}
+    for btn in JoystickButton:
+        val = os.environ.get(f"JOYSTICK_{btn.name}")
+        if val is not None:
+            remap[btn] = int(val)
+    return remap
 
 class JoyStick:
     def __init__(self):
@@ -45,8 +57,13 @@ class JoyStick:
         
         self.hat_count = self.joystick.get_numhats()
         self.hat_states = [(0, 0)] * self.hat_count
-        
-        
+
+        self.remap = _default_remap()
+
+    def _physical_id(self, button_id):
+        """Map logical button to physical index (for alternate controller layouts)."""
+        return self.remap.get(button_id, button_id)
+
     def update(self):
         """update joystick state"""
         pygame.event.pump()  
@@ -67,14 +84,16 @@ class JoyStick:
 
     def is_button_pressed(self, button_id):
         """detect button pressed"""
-        if 0 <= button_id < self.button_count:
-            return self.button_states[button_id]
+        phys = self._physical_id(button_id)
+        if 0 <= phys < self.button_count:
+            return self.button_states[phys]
         return False
 
     def is_button_released(self, button_id):
         """detect button released"""
-        if 0 <= button_id < self.button_count:
-            return self.button_released[button_id]
+        phys = self._physical_id(button_id)
+        if 0 <= phys < self.button_count:
+            return self.button_released[phys]
         return False
 
     def get_axis_value(self, axis_id):

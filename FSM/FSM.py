@@ -5,11 +5,15 @@ from policy.fixedpose.FixedPose import FixedPose
 from policy.loco_mode.LocoMode import LocoMode
 from policy.kungfu.KungFu import KungFu
 from policy.dance.Dance import Dance
+from policy.asap.asap import ASAP
+from policy.host.host import HOST
+from policy.beyondmimic.BeyondMimic import BeyondMimic
+from policy.beyondmimic_mj.BeyondMimicMJ import BeyondMimicMJ
+from policy.score.Score import Score
 from policy.skill_cooldown.SkillCooldown import SkillCooldown
 from policy.skill_cast.SkillCast import SkillCast
 from policy.kick.Kick import Kick
 from policy.kungfu2.KungFu2 import KungFu2
-from policy.beyond_mimic.BeyondMimic import BeyondMimic
 from FSM.FSMState import *
 import time
 from common.ctrlcomp import *
@@ -26,11 +30,11 @@ class FSM:
         self.policy_output = policy_output
         self.cur_policy : FSMState
         self.next_policy : FSMState
-        
+        self.sim_counter = 0
         self.FSMmode = FSMMode.NORMAL
         
-        self.passive_mode = PassiveMode(state_cmd, policy_output)
-        self.fixed_pose_1 = FixedPose(state_cmd, policy_output)
+        self.passive_mode = PassiveMode(state_cmd, policy_output)       # 阻尼保护模式
+        self.fixed_pose_1 = FixedPose(state_cmd, policy_output)         
         self.loco_policy = LocoMode(state_cmd, policy_output)
         self.kungfu_policy = KungFu(state_cmd, policy_output)
         self.dance_policy = Dance(state_cmd, policy_output)
@@ -38,11 +42,15 @@ class FSM:
         self.skill_cast_policy = SkillCast(state_cmd, policy_output)
         self.kick_policy = Kick(state_cmd, policy_output)
         self.kungfu2_policy = KungFu2(state_cmd, policy_output)
-        self.beyond_mimic_policy = BeyondMimic(state_cmd, policy_output)
-        
+        self.asap_policy = ASAP(state_cmd, policy_output)
+        self.host_policy = HOST(state_cmd, policy_output)
+        self.beyondmimic_policy = BeyondMimic(state_cmd, policy_output)
+        self.beyondmimic_mj_policy = BeyondMimicMJ(state_cmd, policy_output)
+        self.score_policy = Score(state_cmd, policy_output)
+
         print("initalized all policies!!!")
         
-        self.cur_policy = self.passive_mode
+        self.cur_policy = self.passive_mode             # 当前policy
         print("current policy is ", self.cur_policy.name_str)
         
         
@@ -62,6 +70,7 @@ class FSM:
         
         elif(self.FSMmode == FSMMode.CHANGE):
             self.cur_policy.enter()
+            self.sim_counter = 0
             self.FSMmode = FSMMode.NORMAL
             self.cur_policy.run()
             
@@ -97,8 +106,16 @@ class FSM:
             self.cur_policy = self.kick_policy
         elif((policy_name == FSMStateName.SKILL_KungFu2)):
             self.cur_policy = self.kungfu2_policy
-        elif((policy_name == FSMStateName.SKILL_BEYOND_MIMIC)):
-            self.cur_policy = self.beyond_mimic_policy
+        elif((policy_name == FSMStateName.SKILL_ASAP)):
+            self.cur_policy = self.asap_policy
+        elif((policy_name == FSMStateName.STANDMODE)):
+            self.cur_policy = self.host_policy
+        elif((policy_name == FSMStateName.SKILL_BEYONDMIMIC)):
+            self.cur_policy = self.beyondmimic_policy
+        elif((policy_name == FSMStateName.SKILL_BEYONDMIMIC_MJ)):
+            self.cur_policy = self.beyondmimic_mj_policy
+        elif((policy_name == FSMStateName.SKILL_SCORE)):
+            self.cur_policy = self.score_policy
         else:
             pass
             

@@ -62,8 +62,7 @@ git clone https://github.com/ccrpRepo/RoboMimic_Deploy.git
 Navigate to the directory and install:
 ```bash
 cd RoboMimic_Deploy
-pip install numpy==1.20.0
-pip install onnx onnxruntime
+pip install -r requirements.txt
 ```
 
 #### 2.2.3 Install unitree_sdk2_python
@@ -82,17 +81,22 @@ python deploy_mujoco/deploy_mujoco.py
 ```
 
 ## 2. Policy Descriptions
-| Mode Name        | Description                                                                 |
-|------------------|-----------------------------------------------------------------------------|
-| **PassiveMode**  | Damping protection mode                                                     |
-| **FixedPose**    | Position control reset to default joint values                              |
-| **LocoMode**     | Stable walking control mode                                                 |
-| **Dance**        | Charleston dance routine                                                    |
-| **KungFu**       | Martial arts movement                                                       |
-| **KungFu2**      | Failed martial arts training                                     |
-| **Kick**         | Bad mimic policy                                     |
-| **SkillCast**    | Lower body + waist stabilization with upper limbs positioned to specific joint angles (typically executed before Mimic strategy) |
-| **SkillCooldown**| Lower body + waist continuous balancing with upper limbs reset to default angles (typically executed after Mimic strategy) |
+| Mode Name           | Trigger Keys     | Description                                                                              |
+|---------------------|------------------|------------------------------------------------------------------------------------------|
+| **PassiveMode**     | L1 release+R1    | Damping protection mode                                                                  |
+| **FixedPose**       | Start            | Position control reset to default joint values                                           |
+| **LocoMode**        | R1+A             | Stable walking control mode                                                              |
+| **HOST**            | L1+X             | Fall recovery (get-up) controller                                                        |
+| **Dance**           | R1+X             | Charleston dance routine                                                                 |
+| **KungFu**          | R1+Y             | Martial arts movement                                                                    |
+| **KungFu2**         | L1+Y             | Another martial arts movement                                                            |
+| **Kick**            | R1+B             | Kicking movement                                                                         |
+| **ASAP**            | L1+A             | ASAP locomotion policy                                                                   |
+| **BeyondMimic**     | L1+B             | BeyondMimic imitation policy (supports multi-clip NPZ switching)                         |
+| **BeyondMimicMJ**   | R1+D-pad UP      | BeyondMimicMJ imitation policy (MuJoCo-trained, with reference motion tracking)         |
+| **Score**           | R1+D-pad DOWN    | Ball-kicking/scoring policy (547-dim obs, 5-frame history, requires onboard LiDAR)      |
+| **SkillCast**       | —                | Lower body + waist stabilization; upper limbs moved to specific angles (before Mimic)   |
+| **SkillCooldown**   | —                | Lower body + waist balancing; upper limbs reset to default angles (after Mimic)         |
 
 
 ---
@@ -102,28 +106,34 @@ python deploy_mujoco/deploy_mujoco.py
 ```bash
 python deploy_mujoco/deploy_mujoco.py
 ```
-3. Press the ​​Start​​ button to enter position control mode.
-4. Hold ​​R1 + A​​ to enter ​​LocoMode​​, then press BACKSPACE in the simulation to make the robot stand. Afterward, use the joystick to control walking.
-5. Hold ​​R1 + X​​ to enter ​​Dance​​ mode—the robot will perform the Charleston. In this mode:
-    - Press ​​Select​​ at any time to switch to damping protection mode.
-    - Hold ​​R1 + A​​ to return to walking mode (not recommended).
-    - Press ​​Start​​ to return to position control mode.
+3. Press the **Start** button to enter position control mode.
+4. Hold **R1 + A** to enter **LocoMode**, then press BACKSPACE in the simulation to make the robot stand. Afterward, use the joystick to control walking.
+5. Hold **R1 + X** to enter **Dance** mode—the robot will perform the Charleston. In this mode:
+    - Press **Select** at any time to switch to damping protection mode.
+    - Hold **R1 + A** to return to walking mode (not recommended).
+    - Press **Start** to return to position control mode.
+6. The terminal will display a progress bar for the dance. After completion, press **R1 + A** to return to normal walking mode.
+7. In LocoMode, pressing **R1 + Y** triggers the KungFu martial arts movement — **use only in simulation**.
+8. In LocoMode, pressing **L1 + Y** triggers the KungFu2 martial arts movement — **use only in simulation**.
+9. In LocoMode, pressing **R1 + B** triggers the Kick movement — **use only in simulation**.
+10. In LocoMode, pressing **L1 + A** enters the ASAP locomotion policy — **use only in simulation**.
+11. In LocoMode, pressing **L1 + B** enters the BeyondMimic imitation policy (supports multi-clip NPZ switching) — **use only in simulation**.
+12. In LocoMode, pressing **R1 + D-pad UP** enters the BeyondMimicMJ policy (MuJoCo-trained, with reference motion tracking) — **use only in simulation**.
+13. In LocoMode, pressing **R1 + D-pad DOWN** enters the Score ball-kicking policy. The simulation scene must be loaded with the ball XML file — **use only in simulation**.
+14. In FixedPose or LocoMode, pressing **L1 + X** enters the HOST fall-recovery (get-up) controller — **use only in simulation**.
 
-6. The terminal will display a progress bar for the dance. After completion, press ​​R1 + A​​ to return to normal walking mode.
-7. In ​​LocoMode​​, pressing ​​R1 + Y​​ triggers a Martial arts movement —​ ​use only in simulation​​.
-8. In ​​LocoMode​​, pressing ​​L1 + Y​​ triggers a Martial arts movement(Failed) —​ ​use only in simulation​​.
-9. In ​​LocoMode​​, pressing ​​R1 + B​ triggers a Kick movement(Failed) —​ ​use only in simulation​​.
 ---
 ## 4. Real Robot Operation Instructions
 
-1. Power on the robot and suspend it (e.g., with a harness). and then hold L2+R2
+1. Power on the robot and suspend it (e.g., with a harness), then hold **L2+R2** to enter debug mode.
 
 2. Run the deploy_real program:
 ```bash
 python deploy_real/deploy_real.py
 ```
-3. Press the ​​Start​​ button to enter position control mode.
-4. Subsequent operations are the same as in simulation.
+3. Press the **Start** button to enter position control mode.
+4. Subsequent operations are largely the same as in simulation.
+5. **Score policy (R1+D-pad DOWN) — additional real-robot steps**: The Score policy depends on onboard LiDAR for real-time ball detection. The perception service must be started before running `deploy_real.py`, publishing ball state via DDS topic `rt/ball_state`. Do **not** activate the Score policy on the real robot without the perception service running.
 
 ---
 ## Important Notes

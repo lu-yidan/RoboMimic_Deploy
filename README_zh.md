@@ -67,8 +67,7 @@ git clone https://github.com/ccrpRepo/RoboMimic_Deploy.git
 
 ```bash
 cd RoboMimic_Deploy
-pip install numpy==1.20.0
-pip install onnx onnxruntime
+pip install -r requirements.txt
 ```
 #### 2.2.3 安装unitree_sdk2_python
 
@@ -86,17 +85,23 @@ python deploy_mujoco/deploy_mujoco.py
 ```
 ---
 ## 2. Policy 说明
-| 模式名称          | 描述                                                                 |
-|------------------|----------------------------------------------------------------------|
-| **PassiveMode**  | 阻尼保护模式                                                         |
-| **FixedPose**    | 位控恢复至默认关节值                                                 |
-| **LocoMode**     | 用于稳定行走的控制模式                                               |
-| **Dance**        | 查尔斯顿舞蹈                                                         |
-| **KungFu**       | 武术动作                                                             |
-| **KungFu2**      | 训练失败的武术动作                                                   |
-| **Kick**         | 拿来凑数的动作                                                       |
-| **SkillCast**    | 下肢+腰部稳定站立，上肢位控至特定关节角，一般在执行Mimic策略前执行   |
-| **SkillCooldown**| 下肢+腰部持续平衡，上肢恢复至默认关节角，一般在执行Mimic策略后执行    |
+
+| 模式名称            | 触发按键        | 描述                                                                 |
+|--------------------|----------------|----------------------------------------------------------------------|
+| **PassiveMode**    | L1 release+R1  | 阻尼保护模式                                                         |
+| **FixedPose**      | Start          | 位控恢复至默认关节值                                                 |
+| **LocoMode**       | R1+A           | 用于稳定行走的控制模式                                               |
+| **HOST**           | L1+X           | 摔倒爬起控制器                                                       |
+| **Dance**          | R1+X           | 查尔斯顿舞蹈                                                         |
+| **KungFu**         | R1+Y           | 武术动作                                                             |
+| **KungFu2**        | L1+Y           | 另一套武术动作                                                       |
+| **Kick**           | R1+B           | 踢腿动作                                                             |
+| **ASAP**           | L1+A           | ASAP 运动策略                                                        |
+| **BeyondMimic**    | L1+B           | BeyondMimic 模仿动作（支持多套动作 NPZ 切换）                        |
+| **BeyondMimicMJ**  | R1+D-pad UP    | BeyondMimicMJ 模仿动作（MuJoCo 训练版，含参考动作跟踪）             |
+| **Score**          | R1+D-pad DOWN  | 踢球得分策略（547维obs，5帧历史，需配合机载雷达感知）               |
+| **SkillCast**      | —              | 下肢+腰部稳定站立，上肢位控至特定关节角，一般在执行Mimic策略前执行   |
+| **SkillCooldown**  | —              | 下肢+腰部持续平衡，上肢恢复至默认关节角，一般在执行Mimic策略后执行   |
 
 ---
 ## 3. 仿真操作说明
@@ -117,9 +122,20 @@ python deploy_mujoco/deploy_mujoco.py
 
 7. 在LocoMode模式下，按R1+Y让机器人表演武术动作，**只推荐在仿真中使用**
 
-8. 在LocoMode模式下，按L1+Y让机器人表演训练失败的武术动作，**只推荐在仿真中使用**
+8. 在LocoMode模式下，按L1+Y让机器人表演另一套武术动作，**只推荐在仿真中使用**
 
 9. 在LocoMode模式下，按R1+B让机器人表演踢腿动作，**只推荐在仿真中使用**
+
+10. 在LocoMode模式下，按L1+A进入ASAP运动策略，**只推荐在仿真中使用**
+
+11. 在LocoMode模式下，按L1+B进入BeyondMimic模仿动作策略（支持多套NPZ动作切换），**只推荐在仿真中使用**
+
+12. 在LocoMode模式下，按R1+D-pad UP进入BeyondMimicMJ策略（MuJoCo训练版，含参考动作跟踪），**只推荐在仿真中使用**
+
+13. 在LocoMode模式下，按R1+D-pad DOWN进入Score踢球策略，仿真场景需加载含球的 XML 文件，**只推荐在仿真中使用**
+
+14. 在FixedPose或LocoMode模式下，按L1+X进入HOST爬起控制器，可在机器人摔倒后使用，**只推荐在仿真中使用**
+
 ---
 ## 4. 真机操作说明
 1. 开机后将机器人吊起来，按L2+R2进入调试模式
@@ -130,7 +146,9 @@ python deploy_real/deploy_real.py
 ```
 3. Start键进入位控模式
 
-4. 后续操作与仿真中一致
+4. 后续操作与仿真中基本一致
+
+5. **Score踢球策略（R1+D-pad DOWN）真机部署额外步骤**：Score策略依赖机载雷达对球的实时感知，需在运行deploy_real之前启动感知服务，并通过DDS topic `rt/ball_state` 发布球的位置信息。在不具备感知服务的情况下，请勿在真机上启动Score策略。
 
 ---
 ## 注意事项

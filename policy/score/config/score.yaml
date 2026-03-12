@@ -1,0 +1,51 @@
+onnx_path:   "score.onnx"
+motion_path: "score_motion.npz"
+
+control_dt:      0.02     # 50 Hz control (sim: 2ms * 10 decimation)
+warmup_steps:    10       # interpolation steps from current pose to motion t=0
+clip_actions:    10.0     # PPO actions rarely exceed ±3; prevents runaway divergence
+
+# false = simulation (ball_pos from MuJoCo world frame)
+# true  = real robot (ball_pos from DDS, already in pelvis body frame)
+use_body_frame_ball: false
+
+# Optional: clip motion to a specific time window (seconds).
+# If omitted, the full motion sequence is used.
+# motion_start_s:  0.0
+# motion_end_s:   10.0
+
+# Target position in world frame [x, y, z] (e.g. goal center ~5m ahead)
+target_pos: [5.0, 0.0, 0.0]
+
+# All arrays below are in MuJoCo DFS joint order (== hardware order).
+# Fill in from ONNX metadata after training.
+
+default_joint_pos: [-0.312,  0.000,  0.000,  0.669, -0.363,  0.000,
+                    -0.312,  0.000,  0.000,  0.669, -0.363,  0.000,
+                     0.000,  0.000,  0.000,
+                     0.200,  0.200,  0.000,  0.600,  0.000,  0.000,  0.000,
+                     0.200, -0.200,  0.000,  0.600,  0.000,  0.000,  0.000]
+
+action_scale: [0.548, 0.351, 0.548, 0.351, 0.439, 0.439,
+               0.548, 0.351, 0.548, 0.351, 0.439, 0.439,
+               0.548, 0.439, 0.439,
+               0.439, 0.439, 0.439, 0.439, 0.439, 0.075, 0.075,
+               0.439, 0.439, 0.439, 0.439, 0.439, 0.075, 0.075]
+
+tau_limit: [88,  139,  88,  139,  50,  50,
+            88,  139,  88,  139,  50,  50,
+            88,   50,  50,
+            25,   25,  25,   25,  25,   5,   5,
+            25,   25,  25,   25,  25,   5,   5]
+
+kps: [ 40.179,  99.098,  40.179,  99.098,  28.501,  28.501,
+       40.179,  99.098,  40.179,  99.098,  28.501,  28.501,
+       40.179,  28.501,  28.501,
+       14.251,  14.251,  14.251,  14.251,  14.251,  16.778,  16.778,
+       14.251,  14.251,  14.251,  14.251,  14.251,  16.778,  16.778]
+
+kds: [  2.558,   6.309,   2.558,   6.309,   1.814,   1.814,
+        2.558,   6.309,   2.558,   6.309,   1.814,   1.814,
+        2.558,   1.814,   1.814,
+        0.907,   0.907,   0.907,   0.907,   0.907,   1.068,   1.068,
+        0.907,   0.907,   0.907,   0.907,   0.907,   1.068,   1.068]

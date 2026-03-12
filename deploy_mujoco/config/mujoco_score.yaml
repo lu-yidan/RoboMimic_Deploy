@@ -1,0 +1,10 @@
+xml_path: "g1_description/scene_with_ball.xml"
+simulation_dt: 0.002
+control_decimation: 10
+ball_sensor_hz: 10   # simulated ball sensor update rate (10 Hz = every 5 control steps)
+tau_limit: [88, 139, 88, 139, 50, 50,
+            88, 139, 88, 139, 50, 50,
+            88, 50, 50,
+            25, 25, 25, 25, 25, 5, 5,
+            25, 25, 25, 25, 25, 5, 5
+           ]

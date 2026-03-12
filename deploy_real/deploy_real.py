@@ -22,8 +22,9 @@ from unitree_sdk2py.idl.unitree_go.msg.dds_ import LowState_ as LowStateGo
 from unitree_sdk2py.utils.crc import CRC
 
 from common.command_helper import create_damping_cmd, create_zero_cmd, init_cmd_hg, init_cmd_go, MotorMode
-from common.rotation_helper import get_gravity_orientation_real, transform_imu_data
+from common.rotation_helper import get_gravity_orientation_real, transform_imu_data, transform_pelvis_to_torso_complete
 from common.remote_controller import RemoteController, KeyMap
+from common.ball_state_dds import BallStateSubscriber
 from config import Config
 
 
@@ -59,10 +60,14 @@ class Controller:
         self.ang_vel = np.zeros(3, dtype=np.float32)
         self.gravity_orientation = np.array([0,0,-1], dtype=np.float32)
         
-        self.state_cmd = StateAndCmd(self.num_joints)
-        self.policy_output = PolicyOutput(self.num_joints)
+        self.state_cmd = StateAndCmd(self.num_joints)                   # 定义了机器人的state
+        self.policy_output = PolicyOutput(self.num_joints)              # 定义了action, kp, kd
         self.FSM_controller = FSM(self.state_cmd, self.policy_output)
-        
+
+        # Ball state subscriber (DDS, from on-robot ball_detector_service)
+        self.ball_sub = BallStateSubscriber(domain_id=0)
+        self.ball_sub.start()
+
         self.running = True
         self.counter_over_time = 0
         
@@ -100,47 +105,74 @@ class Controller:
             
             loop_start_time = time.time()
             
-            if self.remote_controller.is_button_pressed(KeyMap.F1):
+            ## 1. 检测遥控器按键
+            if self.remote_controller.is_button_pressed(KeyMap.F1):             # F1阻尼保护模式
                 self.state_cmd.skill_cmd = FSMCommand.PASSIVE
             if self.remote_controller.is_button_pressed(KeyMap.start):
                 self.state_cmd.skill_cmd = FSMCommand.POS_RESET
+
+            if self.remote_controller.is_button_pressed(KeyMap.X) and self.remote_controller.is_button_pressed(KeyMap.L1):      # 摔倒爬起, L1+X
+                self.state_cmd.skill_cmd = FSMCommand.STAND_UP
+
             if self.remote_controller.is_button_pressed(KeyMap.A) and self.remote_controller.is_button_pressed(KeyMap.R1):
                 self.state_cmd.skill_cmd = FSMCommand.LOCO
             if self.remote_controller.is_button_pressed(KeyMap.X) and self.remote_controller.is_button_pressed(KeyMap.R1):
                 self.state_cmd.skill_cmd = FSMCommand.SKILL_1
             if self.remote_controller.is_button_pressed(KeyMap.Y) and self.remote_controller.is_button_pressed(KeyMap.R1):
                 self.state_cmd.skill_cmd = FSMCommand.SKILL_2
+            if self.remote_controller.is_button_pressed(KeyMap.A) and self.remote_controller.is_button_pressed(KeyMap.L1):
+                self.state_cmd.skill_cmd = FSMCommand.SKILL_5
+            if self.remote_controller.is_button_pressed(KeyMap.B) and self.remote_controller.is_button_pressed(KeyMap.L1):
+                self.state_cmd.skill_cmd = FSMCommand.SKILL_6
+            if self.remote_controller.is_button_pressed(KeyMap.up) and self.remote_controller.is_button_pressed(KeyMap.R1):   # BeyondMimicMJ, R1+Up
+                self.state_cmd.skill_cmd = FSMCommand.SKILL_7
+            if self.remote_controller.is_button_pressed(KeyMap.down) and self.remote_controller.is_button_pressed(KeyMap.R1):  # Score, R1+Down
+                self.state_cmd.skill_cmd = FSMCommand.SKILL_8
             # if self.remote_controller.is_button_pressed(KeyMap.B) and self.remote_controller.is_button_pressed(KeyMap.R1):
             #     self.state_cmd.skill_cmd = FSMCommand.SKILL_3
             # if self.remote_controller.is_button_pressed(KeyMap.Y) and self.remote_controller.is_button_pressed(KeyMap.L1):
             #     self.state_cmd.skill_cmd = FSMCommand.SKILL_4
             
-            self.state_cmd.vel_cmd[0] =  self.remote_controller.ly
+            self.state_cmd.vel_cmd[0] =  self.remote_controller.ly              # 速度指令
             self.state_cmd.vel_cmd[1] =  self.remote_controller.lx * -1
             self.state_cmd.vel_cmd[2] =  self.remote_controller.rx * -1
-
+            
+            ## 2. 获取底层状态
             for i in range(self.num_joints):
-                self.qj[i] = self.low_state.motor_state[i].q
-                self.dqj[i] = self.low_state.motor_state[i].dq
+                self.qj[i] = self.low_state.motor_state[i].q            # 关节位置
+                self.dqj[i] = self.low_state.motor_state[i].dq          # 关节速度
 
             # imu_state quaternion: w, x, y, z
             quat = self.low_state.imu_state.quaternion
             ang_vel = np.array([self.low_state.imu_state.gyroscope], dtype=np.float32)
             
             gravity_orientation = get_gravity_orientation_real(quat)
-            
+
+            # torso_quat_w：G1 的 IMU 在 pelvis，需经 waist 三关节变换到 torso_link
+            # qj 为 MuJoCo 顺序：waist_yaw=12, waist_roll=13, waist_pitch=14
+            torso_quat = transform_pelvis_to_torso_complete(
+                self.qj[12], self.qj[13], self.qj[14], quat
+            )
+
             self.state_cmd.q = self.qj.copy()
             self.state_cmd.dq = self.dqj.copy()
             self.state_cmd.gravity_ori = gravity_orientation.copy()
             self.state_cmd.ang_vel = ang_vel.copy()
-            self.state_cmd.base_quat = quat
+            self.state_cmd.torso_quat_w  = torso_quat
+            self.state_cmd.pelvis_quat_w = np.array(quat, dtype=np.float32)  # raw IMU [w,x,y,z]
+            self.state_cmd.root_ang_vel_b = ang_vel.flatten().astype(np.float32)
+
+            # Ball state from DDS (pelvis body frame, ~10 Hz)
+            ball = self.ball_sub.latest()
+            self.state_cmd.ball_pos_b = np.array([ball.x, ball.y, ball.z], dtype=np.float32)
+            self.state_cmd.ball_valid  = bool(ball.valid)
             
             self.FSM_controller.run()
             policy_output_action = self.policy_output.actions.copy()
             kps = self.policy_output.kps.copy()
             kds = self.policy_output.kds.copy()
             
-            # Build low cmd
+            # 设定电机指令
             for i in range(self.num_joints):
                 self.low_cmd.motor_cmd[i].q = policy_output_action[i]
                 self.low_cmd.motor_cmd[i].qd = 0
@@ -150,7 +182,7 @@ class Controller:
                 
             # send the command
             # create_damping_cmd(controller.low_cmd) # only for debug
-            self.send_cmd(self.low_cmd)
+            self.send_cmd(self.low_cmd)         # 发送指令
             
             loop_end_time = time.time()
             delta_time = loop_end_time - loop_start_time
@@ -179,7 +211,7 @@ if __name__ == "__main__":
         try:
             controller.run()
             # Press the select key to exit
-            if controller.remote_controller.is_button_pressed(KeyMap.select):
+            if controller.remote_controller.is_button_pressed(KeyMap.select):           # 按下select键退出
                 break
         except KeyboardInterrupt:
             break

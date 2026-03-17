@@ -136,6 +136,7 @@ class BeyondMimicMJ(FSMState):
         joint_pos_full = motion["joint_pos"]   # [T, 29]  MuJoCo order
         joint_vel_full = motion["joint_vel"]   # [T, 29]  MuJoCo order
         body_quat_full = motion["body_quat_w"] # [T, 30, 4]  [w,x,y,z]
+        body_pos_full  = motion["body_pos_w"] if "body_pos_w" in motion else None  # [T, 30, 3]
         T_full = joint_pos_full.shape[0]
 
         # Optional time window: motion_start_s / motion_end_s in seconds
@@ -148,6 +149,7 @@ class BeyondMimicMJ(FSMState):
         self.motion_joint_pos = joint_pos_full[i0:i1]
         self.motion_joint_vel = joint_vel_full[i0:i1]
         self.motion_body_quat = body_quat_full[i0:i1]
+        self.motion_body_pos  = body_pos_full[i0:i1] if body_pos_full is not None else None
         self.motion_total_steps = self.motion_joint_pos.shape[0]
         print(f"BeyondMimicMJ motion window: {i0 * self.control_dt:.2f}s ~ "
               f"{i1 * self.control_dt:.2f}s  ({self.motion_total_steps} frames)")
@@ -294,15 +296,55 @@ class BeyondMimicMJ(FSMState):
 
         self.time_step += 1
         capped = min(policy_step, self.motion_total_steps - 1)
+        self.policy_output.ghost_qpos = self._compute_ghost_qpos(capped)
         print(progress_bar(capped * self.control_dt,
                            self.motion_total_steps * self.control_dt),
               end="", flush=True)
 
     # ------------------------------------------------------------------
 
+    def _compute_ghost_qpos(self, t: int):
+        """Compute ghost robot qpos for reference motion visualization.
+
+        Transforms the reference motion into the robot's local frame following
+        the same approach as mjlab's MotionCommand._update_command():
+
+          ghost_root_pos  = [robot_anchor.xy, ref_anchor.z]
+                          + R_init @ (ref_root_pos - ref_anchor_pos)
+          ghost_root_quat = init_world_quat ⊗ ref_root_quat
+          ghost_joints    = ref_joint_pos  (MuJoCo order)
+
+        Returns None if body_pos_w is not available in the NPZ.
+        """
+        if self.motion_body_pos is None:
+            return None
+
+        ref_anchor_pos = self.motion_body_pos[t, NPZ_ANCHOR_IDX].astype(np.float64)
+        ref_root_pos   = self.motion_body_pos[t, 0].astype(np.float64)
+        ref_root_quat  = self.motion_body_quat[t, 0].astype(np.float64)
+
+        # Yaw-align the anchor and root positions (same R_init as used for anchor_ori_6d).
+        aligned_anchor_pos = self._init_to_world @ ref_anchor_pos
+
+        # XY from robot anchor, Z from yaw-aligned reference anchor (mirrors mjlab).
+        torso_pos = self.state_cmd.torso_pos_w.astype(np.float64)
+        delta_pos = np.array([torso_pos[0], torso_pos[1], aligned_anchor_pos[2]])
+
+        ghost_root_pos  = delta_pos + self._init_to_world @ (ref_root_pos - ref_anchor_pos)
+        ghost_root_quat = _quat_mul(_matrix_to_quat(self._init_to_world), ref_root_quat)
+
+        qpos = np.empty(7 + 29, dtype=np.float32)
+        qpos[0:3] = ghost_root_pos
+        qpos[3:7] = ghost_root_quat          # [w, x, y, z] — MuJoCo free-joint order
+        qpos[7:]  = self.motion_joint_pos[t] # MuJoCo order directly
+        return qpos
+
+    # ------------------------------------------------------------------
+
     def exit(self):
         self.time_step   = 0
         self.last_action = np.zeros(29, dtype=np.float32)
+        self.policy_output.ghost_qpos = None
         print()
 
     def checkChange(self):

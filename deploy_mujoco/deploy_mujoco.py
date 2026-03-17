@@ -4,6 +4,7 @@ sys.path.append(str(Path(__file__).parent.parent.absolute()))
 
 from common.path_config import PROJECT_ROOT
 
+import copy
 import time
 import mujoco.viewer
 import mujoco
@@ -45,6 +46,17 @@ def main(cfg: DictConfig):
     m.opt.timestep = simulation_dt
     torso_body_id = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_BODY, "torso_link")
     ball_body_id  = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_BODY, "ball")  # -1 if no ball in scene
+
+    # ---- Ghost model for reference motion visualization ----
+    # Semi-transparent green tint; Press G in simulation to toggle.
+    ghost_m = copy.deepcopy(m)
+    ghost_m.geom_rgba[:, :3] = [0.2, 0.9, 0.4]   # green
+    ghost_m.geom_rgba[:, 3]  = 0.35               # semi-transparent
+    ghost_d = mujoco.MjData(ghost_m)
+    # Use a list so the key_callback closure can mutate it.
+    ghost_flags = [bool(cfg.get("ghost_flags[0]", True))]
+
+
     mj_per_step_duration = simulation_dt * control_decimation
     num_joints = m.nu
     print(f"num_joints: {num_joints}")
@@ -60,7 +72,7 @@ def main(cfg: DictConfig):
     state_cmd = StateAndCmd(num_joints)
     policy_output = PolicyOutput(num_joints)
     FSM_controller = FSM(state_cmd, policy_output)
-    
+
     joystick = JoyStick()
     prev_hat = (0, 0)
     Running = True
@@ -74,6 +86,9 @@ def main(cfg: DictConfig):
                 joystick.update()
                 hat = joystick.get_hat_direction()
                 hat_just_pressed = lambda hx, hy: (hat == (hx, hy) and prev_hat != (hx, hy))
+                if joystick.is_button_released(JoystickButton.L3):                                                    # Ghost toggle, L3
+                    ghost_flags[0] = not ghost_flags[0]
+                    print(f"[Ghost] {'ON' if ghost_flags[0] else 'OFF'}")
                 if joystick.is_button_released(JoystickButton.L1) and joystick.is_button_pressed(JoystickButton.R1):  # 阻尼保护, L1 release + R1
                     state_cmd.skill_cmd = FSMCommand.PASSIVE
                 if joystick.is_button_released(JoystickButton.START):                                                  # 回 FixedPose, START
@@ -149,6 +164,23 @@ def main(cfg: DictConfig):
                     policy_output_action = policy_output.actions.copy()
                     kps = policy_output.kps.copy()
                     kds = policy_output.kds.copy()
+
+                # ---- Ghost visualization ----
+                if ghost_flags[0] and policy_output.ghost_qpos is not None:
+                    ghost_d.qpos[:7 + num_joints] = policy_output.ghost_qpos
+                    mujoco.mj_forward(ghost_m, ghost_d)
+                    with viewer.lock():
+                        viewer.user_scn.ngeom = 0
+                        mujoco.mjv_addGeoms(
+                            ghost_m, ghost_d,
+                            mujoco.MjvOption(), mujoco.MjvPerturb(),
+                            mujoco.mjtCatBit.mjCAT_DYNAMIC.value,
+                            viewer.user_scn,
+                        )
+                else:
+                    with viewer.lock():
+                        viewer.user_scn.ngeom = 0
+
                 viewer.sync()
                 time_until_next_step = m.opt.timestep - (time.time() - step_start)
                 if time_until_next_step > 0:

@@ -42,4 +42,8 @@ class PolicyOutput:
         self.actions = np.zeros(num_joints, dtype=np.float32)
         self.kps = np.zeros(num_joints, dtype=np.float32)
         self.kds = np.zeros(num_joints, dtype=np.float32)
+        # ghost visualization: reference motion pose in world frame, for deploy_mujoco.py
+        # Shape: (7 + num_joints,) = [root_pos(3), root_quat_wxyz(4), joint_pos(num_joints)]
+        # None when the active policy does not support ghost visualization.
+        self.ghost_qpos = None  # np.ndarray (7+n_joints,) or None
         

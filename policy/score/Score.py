@@ -403,15 +403,49 @@ class Score(FSMState):
 
         self.time_step += 1
         capped = min(policy_step, self.motion_total_steps - 1)
+        self.policy_output.ghost_qpos = self._compute_ghost_qpos(capped)
         print(progress_bar(capped * self.control_dt,
                            self.motion_total_steps * self.control_dt),
               end="", flush=True)
 
     # ------------------------------------------------------------------
 
+    def _compute_ghost_qpos(self, t: int) -> np.ndarray:
+        """Compute ghost robot qpos for reference motion visualization.
+
+        Follows mjlab's MotionCommand._update_command() transformation:
+          ghost_root_pos  = [robot_anchor.xy, ref_anchor.z]
+                          + R_init @ (ref_root_pos - ref_anchor_pos)
+          ghost_root_quat = init_world_quat ⊗ ref_root_quat
+          ghost_joints    = ref_joint_pos  (MuJoCo order, converted from Isaac Lab)
+        """
+        ref_anchor_pos = self.motion_body_pos[t, NPZ_ANCHOR_IDX].astype(np.float64)
+        ref_root_pos   = self.motion_body_pos[t, 0].astype(np.float64)
+        ref_root_quat  = self.motion_body_quat[t, 0].astype(np.float64)
+
+        aligned_anchor_pos = self._init_to_world @ ref_anchor_pos
+
+        torso_pos = self.state_cmd.torso_pos_w.astype(np.float64)
+        delta_pos = np.array([torso_pos[0], torso_pos[1], aligned_anchor_pos[2]])
+
+        ghost_root_pos  = delta_pos + self._init_to_world @ (ref_root_pos - ref_anchor_pos)
+        ghost_root_quat = _quat_mul(_matrix_to_quat(self._init_to_world), ref_root_quat)
+
+        # NPZ joint_pos is Isaac Lab order; convert to MuJoCo order for qpos.
+        ghost_joints_mj = self.motion_joint_pos[t][MUJOCO_TO_ISAAC]
+
+        qpos = np.empty(7 + 29, dtype=np.float32)
+        qpos[0:3] = ghost_root_pos
+        qpos[3:7] = ghost_root_quat   # [w, x, y, z] — MuJoCo free-joint order
+        qpos[7:]  = ghost_joints_mj
+        return qpos
+
+    # ------------------------------------------------------------------
+
     def exit(self):
         self.time_step      = 0
         self.last_action_il = np.zeros(29, dtype=np.float32)
+        self.policy_output.ghost_qpos = None
         print()
 
     def checkChange(self):

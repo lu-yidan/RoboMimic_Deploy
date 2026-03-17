@@ -17,13 +17,13 @@ class JoystickButton(IntEnum):
     R1 = 5     # Right Bumper (R1 on PS)
     SELECT = 6   # Select/Share button
     START = 7  # Start/Options button
-    L3 = 8     # Left Stick Press
-    R3 = 9     # Right Stick Press
-    HOME = 10  # PS: PS FSMCommand, Xbox: Xbox FSMCommand
-    UP = 11    # D-pad Up (if mapped as separate button)
-    DOWN = 12  # D-pad Down
-    LEFT = 13  # D-pad Left
-    RIGHT = 14 # D-pad Right
+    L3 = 9     # Left Stick Press
+    R3 = 10    # Right Stick Press
+    HOME = 11  # PS: PS FSMCommand, Xbox: Xbox FSMCommand
+    # UP = 11    # D-pad Up (if mapped as separate button)
+    # DOWN = 12  # D-pad Down
+    # LEFT = 13  # D-pad Left
+    # RIGHT = 14 # D-pad Right
 
 
 def _default_remap():

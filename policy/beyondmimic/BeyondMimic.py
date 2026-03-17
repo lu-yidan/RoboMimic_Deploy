@@ -199,10 +199,11 @@ class BeyondMimic(FSMState):
         # permanently out of distribution.
         motion_t0_quat = self.motion_body_quat[0, NPZ_ANCHOR_IDX].astype(np.float64)
         robot_quat     = self.state_cmd.torso_quat_w.astype(np.float64)
-        yaw_motion_mat = _quat_to_matrix(_yaw_quat(motion_t0_quat))
-        yaw_robot_mat  = _quat_to_matrix(_yaw_quat(robot_quat))
-        # init_to_world = Rz(robot_yaw) @ Rz(motion_yaw)^T = Rz(robot_yaw - motion_yaw)
-        self._init_to_world = yaw_robot_mat @ yaw_motion_mat.T
+        # Extract yaw from the RELATIVE quaternion to avoid ZYX singularity when
+        # the robot is lying down.  q_rel = q_robot ⊗ q_motion0⁻¹ is a near-pure
+        # Z-rotation even when both poses share a large tilt (e.g. pitch = ±90°).
+        q_rel = _quat_mul(robot_quat, _quat_conj(motion_t0_quat))
+        self._init_to_world = _quat_to_matrix(_yaw_quat(q_rel))
 
         # ---- Warm-up: interpolate current pose -> motion t=0 pose ----
         # motion_joint_pos is in Isaac Lab order; convert to MuJoCo order

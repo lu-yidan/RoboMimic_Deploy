@@ -232,9 +232,8 @@ class Score(FSMState):
         # ---- Yaw alignment ----
         motion_t0_quat = self.motion_body_quat[0, NPZ_ANCHOR_IDX].astype(np.float64)
         robot_quat     = self.state_cmd.torso_quat_w.astype(np.float64)
-        yaw_motion_mat = _quat_to_matrix(_yaw_quat(motion_t0_quat))
-        yaw_robot_mat  = _quat_to_matrix(_yaw_quat(robot_quat))
-        self._init_to_world = yaw_robot_mat @ yaw_motion_mat.T
+        q_rel = _quat_mul(robot_quat, _quat_conj(motion_t0_quat))
+        self._init_to_world = _quat_to_matrix(_yaw_quat(q_rel))
 
         # ---- Anchor reference origin (for relative displacement, avoids needing absolute torso_pos_w) ----
         ref_anchor_0 = self.motion_body_pos[0, NPZ_ANCHOR_IDX].astype(np.float64)

@@ -1,0 +1,103 @@
+"""
+camera_to_base.py
+
+Transform a 3D point from head_camera_link (RealSense D435, body frame:
+X-forward, Y-left, Z-up) to the pelvis (base) frame.
+
+Kinematic chain (from URDF g1_sysid_23dof.urdf):
+    pelvis
+      └─ waist_yaw_joint   (Rz, origin=[0, 0, 0])
+          └─ waist_roll_joint  (Rx, origin=[-0.0039635, 0, 0.044])
+              └─ waist_pitch_joint (Ry, origin=[0, 0, 0])
+                  └─ head_joint   (Ry, origin=[0.0039635, 0, 0.3159])
+                      └─ head_camera_joint (fixed,
+                             xyz=[0.0448353662, 0.01, 0.1219029938]
+                             rpy=[0.0119142, 0.8377475, 0.0053045])
+
+Note: rs2_deproject_pixel_to_point returns the optical frame (Z-forward,
+X-right, Y-down). Call optical_to_body() before passing to
+transform_point_camera_to_base().
+"""
+
+import numpy as np
+
+
+def _Rx(th):
+    c, s = np.cos(th), np.sin(th)
+    return np.array([[1, 0,  0],
+                     [0, c, -s],
+                     [0, s,  c]])
+
+
+def _Ry(th):
+    c, s = np.cos(th), np.sin(th)
+    return np.array([[ c, 0, s],
+                     [ 0, 1, 0],
+                     [-s, 0, c]])
+
+
+def _Rz(th):
+    c, s = np.cos(th), np.sin(th)
+    return np.array([[c, -s, 0],
+                     [s,  c, 0],
+                     [0,  0, 1]])
+
+
+def _rpy_to_R(roll, pitch, yaw):
+    """URDF convention: R = Rz(yaw) @ Ry(pitch) @ Rx(roll)"""
+    return _Rz(yaw) @ _Ry(pitch) @ _Rx(roll)
+
+
+def _T(R, t):
+    T = np.eye(4)
+    T[:3, :3] = R
+    T[:3, 3]  = t
+    return T
+
+
+# head_camera_joint fixed transform (from URDF)
+_T_HEAD_CAMERA = _T(
+    _rpy_to_R(roll=0.0119142, pitch=0.8377475, yaw=0.0053045),
+    [0.0448353662, 0.01, 0.1219029938],
+)
+
+
+def transform_point_camera_to_base(p_cam, q_wy, q_wr, q_wp, q_head):
+    """
+    Transform a point in head_camera_link (body frame) to the pelvis (base) frame.
+
+    Args:
+        p_cam  : array-like (3,), point in camera body frame (X-forward, metres)
+        q_wy   : waist_yaw_joint angle (rad)
+        q_wr   : waist_roll_joint angle (rad)
+        q_wp   : waist_pitch_joint angle (rad)
+        q_head : head_joint angle (rad)
+
+    Returns:
+        np.ndarray (3,), point in pelvis frame (metres)
+    """
+    T = (
+        _T(_Rz(q_wy), [0.0, 0.0, 0.0])
+        @ _T(_Rx(q_wr), [-0.0039635, 0.0, 0.044])
+        @ _T(_Ry(q_wp), [0.0, 0.0, 0.0])
+        @ _T(_Ry(q_head), [0.0039635, 0.0, 0.3159])
+        @ _T_HEAD_CAMERA
+    )
+    return (T @ np.array([*p_cam, 1.0]))[:3]
+
+
+def optical_to_body(p_optical):
+    """
+    RealSense optical frame → body frame (REP-103).
+
+    Optical: Z-forward, X-right, Y-down
+    Body:    X-forward, Y-left,  Z-up
+
+    Args:
+        p_optical : array-like (3,)
+
+    Returns:
+        np.ndarray (3,)
+    """
+    x, y, z = p_optical
+    return np.array([z, -x, -y])

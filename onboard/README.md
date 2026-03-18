@@ -14,7 +14,9 @@ onboard/
     ├── lidar/
     │   ├── ball_detector.py     ← 主服务：MID360 点云 → 球心检测 → DDS 发布
     │   └── mid360_to_base.py   ← 坐标变换：MID360 系 → pelvis (base) 系
-    └── camera/                  ← 预留：相机方案（待实现）
+    └── camera/
+        ├── ball_detector.py     ← 主服务：RealSense D435 + YOLO → 球心检测 → DDS 发布
+        └── camera_to_base.py   ← 坐标变换：相机系 → pelvis (base) 系
 ```
 
 ---
@@ -113,9 +115,9 @@ source ~/yixuan/yichao-deploy/ws_livox/install/setup.sh
 
 ## 快速启动
 
-### 1. 依赖
+### 方案 A — Lidar（Livox MID360）
 
-机载电脑需要安装（参照上方「新机器环境配置」）：
+#### 1. 依赖
 
 ```bash
 # ROS2 Foxy（已预装）
@@ -123,13 +125,13 @@ source ~/yixuan/yichao-deploy/ws_livox/install/setup.sh
 # cyclonedds Python 绑定（见上方步骤，不能直接 pip install cyclonedds）
 ```
 
-### 2. 启动 MID360 驱动
+#### 2. 启动 MID360 驱动
 
 ```bash
 ros2 launch livox_ros_driver2 msg_MID360_launch.py
 ```
 
-### 3. 启动球检测服务
+#### 3. 启动球检测服务
 
 在 `RoboMimicDeploy_G1` 根目录下运行：
 
@@ -138,6 +140,45 @@ python onboard/perception/lidar/ball_detector.py
 ```
 
 服务启动后终端会持续打印检测到的球心坐标及每帧耗时。
+
+---
+
+### 方案 B — Camera（RealSense D435 + YOLOv8）
+
+#### 1. 依赖
+
+```bash
+# ROS2 Foxy（已预装）
+# cyclonedds Python 绑定（见上方步骤）
+
+# pyrealsense2（conda-forge，不能用 pip）
+conda install -c conda-forge pyrealsense2 -y
+
+# ultralytics（YOLOv8/v11）
+pip install ultralytics
+```
+
+#### 2. 启动相机球检测服务
+
+D435 通过 USB 连接机载电脑，在 `RoboMimicDeploy_G1` 根目录下运行：
+
+```bash
+python onboard/perception/camera/ball_detector.py
+# 可选：指定更大模型（精度↑速度↓）
+python onboard/perception/camera/ball_detector.py --model yolov8s.pt --imgsz 320
+```
+
+终端持续打印：
+
+```
+[BALL ] pelvis=(+0.823, -0.012, -0.673)  d=0.85m  YOLO=28.4fps
+[COAST] pelvis=(+0.821, -0.011, -0.672)  d=0.85m  YOLO=28.4fps
+[     ] no ball  YOLO=28.4fps
+```
+
+> **BALL**：当帧 YOLO 检测到球；**COAST**：YOLO 漏检，保持最后位置最多 10 帧；空：无球。
+
+两方案均发布到同一 DDS Topic `rt/ball_state`，`deploy_real.py` 无需修改，启动哪个方案即用哪个。
 
 ---
 
@@ -190,12 +231,50 @@ deploy_real.py → state_cmd.ball_pos_b → Score._build_obs()
 
 ---
 
+## 感知流程（camera 方案）
+
+```
+RealSense D435（color + depth，60 Hz）
+        │
+        │ rs.align() — depth 对齐到 color 视角
+        ▼
+对齐帧（color + aligned_depth，像素一一对应）
+        │
+        │ [YOLO 线程] model.track() → sports ball BBox
+        ▼
+BBox 中心 (cx, cy) + depth patch 中位数 → depth_m
+        │
+        │ rs2_deproject_pixel_to_point() — 像素 + 深度 → 光学系 3D 点
+        ▼
+p_optical（Z前，X右，Y下）
+        │
+        │ optical_to_body() — 光学系 → body 系（X前，Y左，Z上）
+        ▼
+p_cam（camera body 系）
+        │
+        │ EMA 时间滤波（α=0.6，跳变门限 0.6m）
+        ▼
+p_cam（平滑后）
+        │
+        │ transform_point_camera_to_base()
+        │ （链式正运动学：pelvis → waist_yaw → waist_roll → waist_pitch → head → camera）
+        │ 使用实时关节角 q_wy / q_wr / q_wp，q_head 固定 0.593412 rad
+        ▼
+球心（pelvis body 系）
+        │
+        │ DDS publish "rt/ball_state"
+        ▼
+deploy_real.py → state_cmd.ball_pos_b → Score._build_obs()
+```
+
+---
+
 ## 添加新的感知方案
 
-以相机方案为例，只需：
+如需新增其他感知方式，只需：
 
-1. 在 `onboard/perception/camera/` 下新建 `ball_detector.py`
-2. 用任意方式（颜色检测、深度相机、神经网络等）获取球在 pelvis 系的坐标
+1. 在 `onboard/perception/<方案>/` 下新建 `ball_detector.py`
+2. 用任意方式获取球在 pelvis 系的坐标
 3. 调用相同接口发布：
 
 ```python

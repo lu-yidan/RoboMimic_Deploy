@@ -80,28 +80,37 @@ pip install -e .
 ## 运行代码
 
 ## 1. 运行Mujoco仿真代码
+
+标准场景：
 ```bash
 python deploy_mujoco/deploy_mujoco.py
 ```
+
+Score 场景（含球，运行 Score 策略时使用）：
+```bash
+python deploy_mujoco/deploy_mujoco.py --config-name mujoco_score
+```
+
 ---
 ## 2. Policy 说明
 
-| 模式名称            | 触发按键        | 描述                                                                 |
-|--------------------|----------------|----------------------------------------------------------------------|
-| **PassiveMode**    | L1 release+R1  | 阻尼保护模式                                                         |
-| **FixedPose**      | Start          | 位控恢复至默认关节值                                                 |
-| **LocoMode**       | R1+A           | 用于稳定行走的控制模式                                               |
-| **HOST**           | L1+X           | 摔倒爬起控制器                                                       |
-| **Dance**          | R1+X           | 查尔斯顿舞蹈                                                         |
-| **KungFu**         | R1+Y           | 武术动作                                                             |
-| **KungFu2**        | L1+Y           | 另一套武术动作                                                       |
-| **Kick**           | R1+B           | 踢腿动作                                                             |
-| **ASAP**           | L1+A           | ASAP 运动策略                                                        |
-| **BeyondMimic**    | L1+B           | BeyondMimic 模仿动作（支持多套动作 NPZ 切换）                        |
-| **BeyondMimicMJ**  | R1+D-pad UP    | BeyondMimicMJ 模仿动作（MuJoCo 训练版，含参考动作跟踪）             |
-| **Score**          | R1+D-pad DOWN  | 踢球得分策略（547维obs，5帧历史，需配合机载雷达感知）               |
-| **SkillCast**      | —              | 下肢+腰部稳定站立，上肢位控至特定关节角，一般在执行Mimic策略前执行   |
-| **SkillCooldown**  | —              | 下肢+腰部持续平衡，上肢恢复至默认关节角，一般在执行Mimic策略后执行   |
+| 模式名称            | 触发按键          | 描述                                                                 |
+|--------------------|------------------|----------------------------------------------------------------------|
+| **PassiveMode**    | L1 release+R1    | 阻尼保护模式                                                         |
+| **FixedPose**      | Start            | 位控恢复至默认关节值                                                 |
+| **LocoMode**       | R1+A             | 用于稳定行走的控制模式                                               |
+| **HOST**           | L1+X             | 摔倒爬起控制器                                                       |
+| **Dance**          | R1+X             | 查尔斯顿舞蹈                                                         |
+| **KungFu**         | R1+Y             | 武术动作                                                             |
+| **KungFu2**        | L1+Y             | 另一套武术动作                                                       |
+| **Kick**           | R1+B             | 踢腿动作                                                             |
+| **ASAP**           | L1+A             | ASAP 运动策略                                                        |
+| **BeyondMimic**    | L1+B             | BeyondMimic 模仿动作（支持多套动作 NPZ 切换）                        |
+| **BeyondMimicMJ**  | L1+D-pad DOWN    | 摔倒爬起模仿策略（MuJoCo 训练版，含参考动作跟踪）                   |
+| **StandUpMJ**      | L1+D-pad UP      | 站起模仿策略（MuJoCo 训练版，含参考动作跟踪）                       |
+| **Score**          | R1+D-pad RIGHT   | 踢球得分策略（547维obs，5帧历史，需配合机载雷达感知）               |
+| **SkillCast**      | —                | 下肢+腰部稳定站立，上肢位控至特定关节角，一般在执行Mimic策略前执行   |
+| **SkillCooldown**  | —                | 下肢+腰部持续平衡，上肢恢复至默认关节角，一般在执行Mimic策略后执行   |
 
 ---
 ## 3. 仿真操作说明
@@ -130,11 +139,13 @@ python deploy_mujoco/deploy_mujoco.py
 
 11. 在LocoMode模式下，按L1+B进入BeyondMimic模仿动作策略（支持多套NPZ动作切换），**只推荐在仿真中使用**
 
-12. 在LocoMode模式下，按R1+D-pad UP进入BeyondMimicMJ策略（MuJoCo训练版，含参考动作跟踪），**只推荐在仿真中使用**
+12. 在LocoMode或FixedPose模式下，按**L1+D-pad DOWN**进入BeyondMimicMJ摔倒爬起策略（MuJoCo训练版），**只推荐在仿真中使用**
 
-13. 在LocoMode模式下，按R1+D-pad DOWN进入Score踢球策略，仿真场景需加载含球的 XML 文件，**只推荐在仿真中使用**
+13. 在LocoMode或FixedPose模式下，按**L1+D-pad UP**进入StandUpMJ站起策略（MuJoCo训练版），**只推荐在仿真中使用**。BeyondMimicMJ与StandUpMJ之间可直接相互切换
 
-14. 在FixedPose或LocoMode模式下，按L1+X进入HOST爬起控制器，可在机器人摔倒后使用，**只推荐在仿真中使用**
+14. 在LocoMode模式下，按**R1+D-pad RIGHT**进入Score踢球策略，需使用 `--config-name mujoco_score` 加载含球的仿真场景，**只推荐在仿真中使用**
+
+15. 在FixedPose或LocoMode模式下，按L1+X进入HOST爬起控制器，可在机器人摔倒后使用，**只推荐在仿真中使用**
 
 ---
 ## 4. 真机操作说明

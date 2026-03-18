@@ -76,27 +76,35 @@ pip install -e .
 ## Running the Code
 
 ## 1. Run Mujoco Simulation
+
+Standard scene:
 ```bash
 python deploy_mujoco/deploy_mujoco.py
 ```
 
+Score scene (includes ball, required for Score policy):
+```bash
+python deploy_mujoco/deploy_mujoco.py --config-name mujoco_score
+```
+
 ## 2. Policy Descriptions
-| Mode Name           | Trigger Keys     | Description                                                                              |
-|---------------------|------------------|------------------------------------------------------------------------------------------|
-| **PassiveMode**     | L1 release+R1    | Damping protection mode                                                                  |
-| **FixedPose**       | Start            | Position control reset to default joint values                                           |
-| **LocoMode**        | R1+A             | Stable walking control mode                                                              |
-| **HOST**            | L1+X             | Fall recovery (get-up) controller                                                        |
-| **Dance**           | R1+X             | Charleston dance routine                                                                 |
-| **KungFu**          | R1+Y             | Martial arts movement                                                                    |
-| **KungFu2**         | L1+Y             | Another martial arts movement                                                            |
-| **Kick**            | R1+B             | Kicking movement                                                                         |
-| **ASAP**            | L1+A             | ASAP locomotion policy                                                                   |
-| **BeyondMimic**     | L1+B             | BeyondMimic imitation policy (supports multi-clip NPZ switching)                         |
-| **BeyondMimicMJ**   | R1+D-pad UP      | BeyondMimicMJ imitation policy (MuJoCo-trained, with reference motion tracking)         |
-| **Score**           | R1+D-pad DOWN    | Ball-kicking/scoring policy (547-dim obs, 5-frame history, requires onboard LiDAR)      |
-| **SkillCast**       | —                | Lower body + waist stabilization; upper limbs moved to specific angles (before Mimic)   |
-| **SkillCooldown**   | —                | Lower body + waist balancing; upper limbs reset to default angles (after Mimic)         |
+| Mode Name           | Trigger Keys      | Description                                                                              |
+|---------------------|-------------------|------------------------------------------------------------------------------------------|
+| **PassiveMode**     | L1 release+R1     | Damping protection mode                                                                  |
+| **FixedPose**       | Start             | Position control reset to default joint values                                           |
+| **LocoMode**        | R1+A              | Stable walking control mode                                                              |
+| **HOST**            | L1+X              | Fall recovery (get-up) controller                                                        |
+| **Dance**           | R1+X              | Charleston dance routine                                                                 |
+| **KungFu**          | R1+Y              | Martial arts movement                                                                    |
+| **KungFu2**         | L1+Y              | Another martial arts movement                                                            |
+| **Kick**            | R1+B              | Kicking movement                                                                         |
+| **ASAP**            | L1+A              | ASAP locomotion policy                                                                   |
+| **BeyondMimic**     | L1+B              | BeyondMimic imitation policy (supports multi-clip NPZ switching)                         |
+| **BeyondMimicMJ**   | L1+D-pad DOWN     | Fall-and-get-up imitation policy (MuJoCo-trained, with reference motion tracking)       |
+| **StandUpMJ**       | L1+D-pad UP       | Stand-up imitation policy (MuJoCo-trained, with reference motion tracking)              |
+| **Score**           | R1+D-pad RIGHT    | Ball-kicking/scoring policy (547-dim obs, 5-frame history, requires onboard LiDAR)      |
+| **SkillCast**       | —                 | Lower body + waist stabilization; upper limbs moved to specific angles (before Mimic)   |
+| **SkillCooldown**   | —                 | Lower body + waist balancing; upper limbs reset to default angles (after Mimic)         |
 
 
 ---
@@ -118,9 +126,10 @@ python deploy_mujoco/deploy_mujoco.py
 9. In LocoMode, pressing **R1 + B** triggers the Kick movement — **use only in simulation**.
 10. In LocoMode, pressing **L1 + A** enters the ASAP locomotion policy — **use only in simulation**.
 11. In LocoMode, pressing **L1 + B** enters the BeyondMimic imitation policy (supports multi-clip NPZ switching) — **use only in simulation**.
-12. In LocoMode, pressing **R1 + D-pad UP** enters the BeyondMimicMJ policy (MuJoCo-trained, with reference motion tracking) — **use only in simulation**.
-13. In LocoMode, pressing **R1 + D-pad DOWN** enters the Score ball-kicking policy. The simulation scene must be loaded with the ball XML file — **use only in simulation**.
-14. In FixedPose or LocoMode, pressing **L1 + X** enters the HOST fall-recovery (get-up) controller — **use only in simulation**.
+12. In LocoMode or FixedPose, pressing **L1 + D-pad DOWN** enters the BeyondMimicMJ fall-and-get-up policy (MuJoCo-trained) — **use only in simulation**.
+13. In LocoMode or FixedPose, pressing **L1 + D-pad UP** enters the StandUpMJ stand-up policy (MuJoCo-trained) — **use only in simulation**. BeyondMimicMJ and StandUpMJ can switch directly between each other.
+14. In LocoMode, pressing **R1 + D-pad RIGHT** enters the Score ball-kicking policy. Use `--config-name mujoco_score` to load the scene with the ball — **use only in simulation**.
+15. In FixedPose or LocoMode, pressing **L1 + X** enters the HOST fall-recovery (get-up) controller — **use only in simulation**.
 
 ---
 ## 4. Real Robot Operation Instructions
@@ -133,7 +142,7 @@ python deploy_real/deploy_real.py
 ```
 3. Press the **Start** button to enter position control mode.
 4. Subsequent operations are largely the same as in simulation.
-5. **Score policy (R1+D-pad DOWN) — additional real-robot steps**: The Score policy depends on onboard LiDAR for real-time ball detection. The perception service must be started before running `deploy_real.py`, publishing ball state via DDS topic `rt/ball_state`. Do **not** activate the Score policy on the real robot without the perception service running.
+5. **Score policy (R1+D-pad RIGHT) — additional real-robot steps**: The Score policy depends on onboard LiDAR for real-time ball detection. The perception service must be started before running `deploy_real.py`, publishing ball state via DDS topic `rt/ball_state`. Do **not** activate the Score policy on the real robot without the perception service running.
 
 ---
 ## Important Notes

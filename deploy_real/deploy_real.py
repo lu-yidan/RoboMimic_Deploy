@@ -5,6 +5,7 @@ sys.path.append(str(Path(__file__).parent.parent.absolute()))
 from common.path_config import PROJECT_ROOT
 from common.ctrlcomp import *
 from FSM.FSM import *
+from common.utils import FSMStateName
 from typing import Union
 import numpy as np
 import time
@@ -22,6 +23,7 @@ from unitree_sdk2py.idl.unitree_go.msg.dds_ import LowState_ as LowStateGo
 from unitree_sdk2py.utils.crc import CRC
 
 from common.command_helper import create_damping_cmd, create_zero_cmd, init_cmd_hg, init_cmd_go, MotorMode
+from common.logger import Logger
 from common.rotation_helper import get_gravity_orientation_real, transform_imu_data, transform_pelvis_to_torso_complete
 from common.remote_controller import RemoteController, KeyMap
 from common.ball_state_dds import BallStateSubscriber
@@ -70,6 +72,14 @@ class Controller:
 
         self.running = True
         self.counter_over_time = 0
+
+        self._log_step  = 0
+        self._log_start = time.time()
+        self._logger = (
+            Logger(config.log_dir, config.log_tag,
+                   extra_meta={"robot_type": "real", "control_dt": config.control_dt})
+            if config.log_enabled else None
+        )
         
         
     def LowStateHgHandler(self, msg: LowStateHG):
@@ -175,6 +185,12 @@ class Controller:
             policy_output_action = self.policy_output.actions.copy()
             kps = self.policy_output.kps.copy()
             kds = self.policy_output.kds.copy()
+
+            if (self._logger is not None and
+                    self.FSM_controller.cur_policy.name == FSMStateName.SKILL_SCORE):
+                t = time.time() - self._log_start
+                self._logger.log(self._log_step, t, self.state_cmd, self.policy_output)
+                self._log_step += 1
             
             # 设定电机指令
             for i in range(self.num_joints):
@@ -220,6 +236,8 @@ if __name__ == "__main__":
         except KeyboardInterrupt:
             break
     
+    if controller._logger is not None:
+        controller._logger.close()
     create_damping_cmd(controller.low_cmd)
     controller.send_cmd(controller.low_cmd)
     print("Exit")

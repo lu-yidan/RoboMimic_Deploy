@@ -7,3 +7,8 @@ lowstate_topic: "rt/lowstate"
 control_dt: 0.02
 
 error_over_time: 5
+
+logging:
+  enabled: true      # set true to record a score log
+  log_dir: "logs"
+  tag:     "score"

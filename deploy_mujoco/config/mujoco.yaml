@@ -11,3 +11,8 @@ tau_limit: [88, 139, 88, 139, 50, 50,
             25, 25, 25, 25, 25, 5, 5,
             25, 25, 25, 25, 25, 5, 5
            ]
+
+logging:
+  enabled: false      # set true to record a score log
+  log_dir: "logs"
+  tag:     "score"

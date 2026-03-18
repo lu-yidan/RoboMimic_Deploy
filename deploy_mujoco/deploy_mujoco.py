@@ -13,7 +13,8 @@ import yaml
 import os
 from common.ctrlcomp import *
 from FSM.FSM import *
-from common.utils import get_gravity_orientation
+from common.utils import get_gravity_orientation, FSMStateName
+from common.logger import Logger
 from common.joystick import JoyStick, JoystickButton
 from omegaconf import DictConfig
 import hydra    
@@ -73,6 +74,17 @@ def main(cfg: DictConfig):
     state_cmd = StateAndCmd(num_joints)
     policy_output = PolicyOutput(num_joints)
     FSM_controller = FSM(state_cmd, policy_output)
+
+    log_cfg = cfg.get("logging", {})
+    logger = None
+    if log_cfg.get("enabled", False):
+        logger = Logger(
+            log_cfg.get("log_dir", "logs"),
+            log_cfg.get("tag", "score"),
+            extra_meta={"robot_type": "mujoco", "xml_path": cfg.xml_path,
+                        "control_dt": mj_per_step_duration},
+        )
+    log_step = 0
 
     joystick = JoyStick()
     prev_hat = (0, 0)
@@ -173,6 +185,12 @@ def main(cfg: DictConfig):
                     kps = policy_output.kps.copy()
                     kds = policy_output.kds.copy()
 
+                    if (logger is not None and
+                            FSM_controller.cur_policy.name == FSMStateName.SKILL_SCORE):
+                        t = log_step * mj_per_step_duration
+                        logger.log(log_step, t, state_cmd, policy_output)
+                        log_step += 1
+
                 # ---- Ghost visualization ----
                 if ghost_flags[0] and policy_output.ghost_qpos is not None:
                     ghost_d.qpos[:7 + num_joints] = policy_output.ghost_qpos
@@ -196,8 +214,12 @@ def main(cfg: DictConfig):
             except ValueError as e:
                 print(str(e))
 
+    if logger is not None:
+        logger.close()
+
 if __name__ == "__main__":
     main()
+
             
 
         

@@ -16,4 +16,8 @@ class Config:
             self.lowstate_topic = config["lowstate_topic"]
             self.control_dt = config["control_dt"]
             self.error_over_time = config["error_over_time"]
+            log_cfg = config.get("logging", {})
+            self.log_enabled = log_cfg.get("enabled", False)
+            self.log_dir     = log_cfg.get("log_dir", "logs")
+            self.log_tag     = log_cfg.get("tag", "score")
             

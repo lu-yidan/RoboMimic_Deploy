@@ -89,8 +89,9 @@ class BallStateSubscriber:
         self._reader = DataReader(self._sub, self._topic, qos=_SENSOR_QOS)
         self._callback = callback
 
-        self._lock   = threading.Lock()
-        self._last   = BallState()   # zeros, valid=0
+        self._lock        = threading.Lock()
+        self._last        = BallState()   # zeros, valid=0
+        self._received_at = 0             # local time (µs) when last sample arrived
         self._thread : threading.Thread | None = None
         self._running = False
 
@@ -113,6 +114,7 @@ class BallStateSubscriber:
                     newest = valid_samples[-1]
                     with self._lock:
                         self._last = newest
+                        self._received_at = int(time.time() * 1e6)
                     if self._callback:
                         self._callback(newest)
             except Exception:
@@ -120,13 +122,18 @@ class BallStateSubscriber:
             time.sleep(0.005)   # 200 Hz poll — fast enough for 10 Hz sensor
 
     def latest(self) -> BallState:
-        """Return the most recent BallState.  Sets valid=0 if data is stale."""
+        """Return the most recent BallState.  Sets valid=0 if data is stale.
+
+        Staleness is judged by local reception time to avoid clock-sync issues
+        between the robot and the subscriber machine.
+        """
         with self._lock:
             s = self._last
+            received_at = self._received_at
         # Guard against any non-BallState object that slipped through.
         if not isinstance(s, BallState):
             return BallState()
         now_us = int(time.time() * 1e6)
-        if (now_us - s.timestamp_us) > BALL_STALE_MS * 1000:
+        if (now_us - received_at) > BALL_STALE_MS * 1000:
             return BallState(timestamp_us=s.timestamp_us, valid=0)
         return s

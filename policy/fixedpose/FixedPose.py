@@ -26,35 +26,39 @@ class FixedPose(FSMState):
             self.default_angles = np.array(config["default_angles"], dtype=np.float32)
             self.joint2motor_idx = np.array(config["joint2motor_idx"], dtype=np.int32)
             self.control_dt = config["control_dt"]
-    
+
+        # Pre-build reordered output arrays (depend only on config, built once).
+        n = len(self.joint2motor_idx)
+        self._kps_out     = np.zeros(n, dtype=np.float32)
+        self._kds_out     = np.zeros(n, dtype=np.float32)
+        self._default_out = np.zeros(n, dtype=np.float32)
+        self._kps_out[self.joint2motor_idx]     = self.kps
+        self._kds_out[self.joint2motor_idx]     = self.kds
+        self._default_out[self.joint2motor_idx] = self.default_angles
+
     def enter(self):
         print("Moving to default pos(configuration A).")
         self.total_time = 2.0
         self.num_step = int(self.total_time / self.control_dt)
-        self.dof_size = len(self.joint2motor_idx)
-        self.init_dof_pos = np.zeros(self.dof_size, dtype=np.float32)
         self.alpha = 0.
         self.cur_step = 0
-        for i in range(self.dof_size):
-            self.init_dof_pos[i] = self.state_cmd.q[self.joint2motor_idx[i]]
-        
-        
+        # Capture current joint positions in joint order (depends on live state).
+        self.init_dof_pos = self.state_cmd.q[self.joint2motor_idx].copy()
+
     def run(self):
         self.cur_step += 1
         self.alpha = min(self.cur_step / self.num_step, 1.0)
-        for j in range(self.dof_size):
-            motor_idx = self.joint2motor_idx[j]
-            target_pos = self.default_angles[j]
-            self.policy_output.actions[motor_idx] = self.init_dof_pos[j] * (1 - self.alpha) + target_pos * self.alpha
-            self.policy_output.kps[motor_idx] = self.kps[j]
-            self.policy_output.kds[motor_idx] = self.kds[j]
-    
+        lerped = self.init_dof_pos * (1 - self.alpha) + self.default_angles * self.alpha
+        actions_out = np.zeros(len(self.joint2motor_idx), dtype=np.float32)
+        actions_out[self.joint2motor_idx] = lerped
+        self.policy_output.actions = actions_out
+        self.policy_output.kps = self._kps_out
+        self.policy_output.kds = self._kds_out
+
     def exit(self):
-        for j in range(self.dof_size):
-            motor_idx = self.joint2motor_idx[j]
-            self.policy_output.actions[motor_idx] = self.default_angles[j]
-            self.policy_output.kps[motor_idx] = self.kps[j]
-            self.policy_output.kds[motor_idx] = self.kds[j]
+        self.policy_output.actions = self._default_out
+        self.policy_output.kps = self._kps_out
+        self.policy_output.kds = self._kds_out
     
     def checkChange(self):
         if(self.state_cmd.skill_cmd == FSMCommand.LOCO):

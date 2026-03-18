@@ -37,13 +37,52 @@ class StateAndCmd:
         # self.skill_set = FSMCommand.SKILL_1
 
 class PolicyOutput:
+    """Shared output buffer written by the active FSM policy each control step.
+
+    The three array fields (actions, kps, kds) use property setters that always
+    copy the incoming value into an internally-owned buffer.  This prevents
+    policies from accidentally aliasing their own arrays with the shared output
+    object — a subtle bug where an in-place write by one policy would silently
+    corrupt another policy's internal state.
+
+    Usage from a policy is unchanged:
+        self.policy_output.actions = target_q   # safe: copies into buffer
+        self.policy_output.kps[i]  = value      # safe: writes into buffer
+    """
+
     def __init__(self, num_joints):
-        # actions
-        self.actions = np.zeros(num_joints, dtype=np.float32)
-        self.kps = np.zeros(num_joints, dtype=np.float32)
-        self.kds = np.zeros(num_joints, dtype=np.float32)
-        # ghost visualization: reference motion pose in world frame, for deploy_mujoco.py
-        # Shape: (7 + num_joints,) = [root_pos(3), root_quat_wxyz(4), joint_pos(num_joints)]
-        # None when the active policy does not support ghost visualization.
+        self._actions = np.zeros(num_joints, dtype=np.float32)
+        self._kps     = np.zeros(num_joints, dtype=np.float32)
+        self._kds     = np.zeros(num_joints, dtype=np.float32)
         self.ghost_qpos = None  # np.ndarray (7+n_joints,) or None
+
+    # ------------------------------------------------------------------
+    # Property accessors: getters return the internal buffer directly so
+    # that in-place writes (kps[i] = x) still land on the owned buffer;
+    # setters always copy so callers can never share memory with us.
+    # ------------------------------------------------------------------
+
+    @property
+    def actions(self):
+        return self._actions
+
+    @actions.setter
+    def actions(self, value):
+        self._actions[:] = value
+
+    @property
+    def kps(self):
+        return self._kps
+
+    @kps.setter
+    def kps(self, value):
+        self._kps[:] = value
+
+    @property
+    def kds(self):
+        return self._kds
+
+    @kds.setter
+    def kds(self, value):
+        self._kds[:] = value
         

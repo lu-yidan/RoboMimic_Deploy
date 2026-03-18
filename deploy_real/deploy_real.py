@@ -73,8 +73,9 @@ class Controller:
         self.running = True
         self.counter_over_time = 0
 
-        self._log_step  = 0
-        self._log_start = time.time()
+        self._log_step   = 0
+        self._log_start  = time.time()
+        self._log_states = {FSMStateName[s] for s in config.log_states} if config.log_enabled else set()
         self._logger = (
             Logger(config.log_dir, config.log_tag,
                    extra_meta={"robot_type": "real", "control_dt": config.control_dt})
@@ -187,7 +188,7 @@ class Controller:
             kds = self.policy_output.kds.copy()
 
             if (self._logger is not None and
-                    self.FSM_controller.cur_policy.name == FSMStateName.SKILL_SCORE):
+                    self.FSM_controller.cur_policy.name in self._log_states):
                 t = time.time() - self._log_start
                 self._logger.log(self._log_step, t, self.state_cmd, self.policy_output)
                 self._log_step += 1

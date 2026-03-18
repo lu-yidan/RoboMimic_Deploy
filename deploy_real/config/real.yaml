@@ -12,3 +12,4 @@ logging:
   enabled: true      # set true to record a score log
   log_dir: "logs"
   tag:     "score"
+  states:  ["SKILL_SCORE", "LOCOMODE"]  # FSM states to record

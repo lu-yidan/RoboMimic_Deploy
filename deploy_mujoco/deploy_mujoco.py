@@ -77,6 +77,7 @@ def main(cfg: DictConfig):
 
     log_cfg = cfg.get("logging", {})
     logger = None
+    log_states = set()
     if log_cfg.get("enabled", False):
         logger = Logger(
             log_cfg.get("log_dir", "logs"),
@@ -84,6 +85,7 @@ def main(cfg: DictConfig):
             extra_meta={"robot_type": "mujoco", "xml_path": cfg.xml_path,
                         "control_dt": mj_per_step_duration},
         )
+        log_states = {FSMStateName[s] for s in log_cfg.get("states", ["SKILL_SCORE"])}
     log_step = 0
 
     joystick = JoyStick()
@@ -186,7 +188,7 @@ def main(cfg: DictConfig):
                     kds = policy_output.kds.copy()
 
                     if (logger is not None and
-                            FSM_controller.cur_policy.name == FSMStateName.SKILL_SCORE):
+                            FSM_controller.cur_policy.name in log_states):
                         t = log_step * mj_per_step_duration
                         logger.log(log_step, t, state_cmd, policy_output)
                         log_step += 1

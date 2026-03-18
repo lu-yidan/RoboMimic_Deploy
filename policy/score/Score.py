@@ -182,6 +182,9 @@ class Score(FSMState):
         self.action_scale_mj = np.array(cfg["action_scale"],      dtype=np.float32)  # MuJoCo order
         self.clip_actions      = float(cfg.get("clip_actions", 3.0))
         self.WARMUP_STEPS     = int(cfg.get("warmup_steps", 10))
+        self.freeze_motion_at_first_frame = bool(cfg.get("freeze_motion_at_first_frame", False))
+        self.zero_anchor_pos        = bool(cfg.get("zero_anchor_pos",        False))
+        self.ball_facing_anchor_ori = bool(cfg.get("ball_facing_anchor_ori", False))
         self.target_pos_w     = np.array(cfg["target_pos"],        dtype=np.float32)  # world frame
         # True on real robot: ball_pos is already in pelvis body frame (from DDS sensor).
         # False in simulation: ball_pos is in world frame and needs coordinate transform.
@@ -213,8 +216,9 @@ class Score(FSMState):
         for _ in range(5):
             self.ort_session.run(["actions"], {"obs": _dummy_obs})
 
+        freeze_note = " [freeze_motion_at_first_frame=ON]" if self.freeze_motion_at_first_frame else ""
         print("Score policy initialized "
-              f"(547-dim, {self.motion_total_steps} motion frames).")
+              f"(547-dim, {self.motion_total_steps} motion frames){freeze_note}.")
 
     # ------------------------------------------------------------------
 
@@ -273,7 +277,10 @@ class Score(FSMState):
         base_ang_vel(15) | joint_pos(145) | joint_vel(145) |
         actions(145) | soccer_pos_b(15) | target_pos_b(15)
         """
-        t = min(self.time_step - self.WARMUP_STEPS, self.motion_total_steps - 1)
+        if self.freeze_motion_at_first_frame:
+            t = 0
+        else:
+            t = min(self.time_step - self.WARMUP_STEPS, self.motion_total_steps - 1)
 
         # anchor obs uses torso_link as reference body (matches training: anchor_body_name = "torso_link")
         torso_quat_w = self.state_cmd.torso_quat_w.astype(np.float64)
@@ -289,7 +296,9 @@ class Score(FSMState):
         init_world_quat      = _matrix_to_quat(self._init_to_world)
         ref_anchor_pos_w     = self.motion_body_pos[t, NPZ_ANCHOR_IDX].astype(np.float64)
         aligned_anchor_pos_w = self._init_to_world @ ref_anchor_pos_w
-        if self.use_body_frame_ball:
+        if self.zero_anchor_pos:
+            anchor_pos_b = np.zeros(3, dtype=np.float32)
+        elif self.use_body_frame_ball:
             # Real robot: torso_pos_w is always zero (no odometry).
             # Use relative displacement from entry to avoid feeding raw absolute coords to the policy.
             # Equivalent to training formula when robot and reference start at the same position.
@@ -301,11 +310,44 @@ class Score(FSMState):
             anchor_pos_b = (R_torso_w.T @ (aligned_anchor_pos_w - torso_pos_w)).astype(np.float32)
 
         # ---- motion_anchor_ori_b (relative to torso orientation, in torso body frame) ----
-        ref_anchor_quat_w = self.motion_body_quat[t, NPZ_ANCHOR_IDX].astype(np.float64)
-        aligned_quat      = _quat_mul(init_world_quat, ref_anchor_quat_w)
-        rel_quat = _quat_mul(_quat_conj(torso_quat_w), aligned_quat)
-        rel_quat = rel_quat / np.linalg.norm(rel_quat)
-        anchor_ori_6d = _rot6d_from_quat(rel_quat)   # (6,)
+        if self.ball_facing_anchor_ori:
+            # World-frame ball position (sim: direct; real robot: transform pelvis-frame → world).
+            if self.use_body_frame_ball:
+                _R_pelvis = _quat_to_matrix(self.state_cmd.pelvis_quat_w.astype(np.float64))
+                ball_pos_w_f64 = (self.state_cmd.pelvis_pos_w.astype(np.float64)
+                                  + _R_pelvis @ self.state_cmd.ball_pos_b.astype(np.float64))
+            else:
+                ball_pos_w_f64 = self.state_cmd.ball_pos_w.astype(np.float64)
+
+            # Direction from torso to ball; Z uses ref-anchor height (matches training reference).
+            to_ball_w = ball_pos_w_f64 - torso_pos_w
+            to_ball_w[2] = aligned_anchor_pos_w[2] - torso_pos_w[2]
+            norm = np.linalg.norm(to_ball_w)
+            if norm < 1e-6:
+                to_ball_dir = np.array([1.0, 0.0, 0.0])
+            else:
+                to_ball_dir = to_ball_w / norm
+
+            # Rodrigues half-angle: quaternion [w,x,y,z] rotating +X onto to_ball_dir.
+            # Degenerate case (ball directly behind, d ≈ -1): rotate 180° around Z.
+            x_axis = np.array([1.0, 0.0, 0.0])
+            d = float(np.dot(x_axis, to_ball_dir))
+            if d < -1.0 + 1e-6:
+                ball_facing_quat_w = np.array([0.0, 0.0, 0.0, 1.0])  # 180° around Z
+            else:
+                c = np.cross(x_axis, to_ball_dir)
+                q_unnorm = np.array([1.0 + d, c[0], c[1], c[2]])
+                ball_facing_quat_w = q_unnorm / np.linalg.norm(q_unnorm)
+
+            rel_quat = _quat_mul(_quat_conj(torso_quat_w), ball_facing_quat_w)
+            rel_quat = rel_quat / np.linalg.norm(rel_quat)
+            anchor_ori_6d = _rot6d_from_quat(rel_quat)   # (6,)
+        else:
+            ref_anchor_quat_w = self.motion_body_quat[t, NPZ_ANCHOR_IDX].astype(np.float64)
+            aligned_quat      = _quat_mul(init_world_quat, ref_anchor_quat_w)
+            rel_quat = _quat_mul(_quat_conj(torso_quat_w), aligned_quat)
+            rel_quat = rel_quat / np.linalg.norm(rel_quat)
+            anchor_ori_6d = _rot6d_from_quat(rel_quat)   # (6,)
 
         # ---- Current joint state (Isaac Lab order) ----
         qj_il  = self.state_cmd.q[ISAAC_TO_MUJOCO]
@@ -401,7 +443,7 @@ class Score(FSMState):
         self.policy_output.kds     = self.kds
 
         self.time_step += 1
-        capped = min(policy_step, self.motion_total_steps - 1)
+        capped = 0 if self.freeze_motion_at_first_frame else min(policy_step, self.motion_total_steps - 1)
         self.policy_output.ghost_qpos = self._compute_ghost_qpos(capped)
         print(progress_bar(capped * self.control_dt,
                            self.motion_total_steps * self.control_dt),

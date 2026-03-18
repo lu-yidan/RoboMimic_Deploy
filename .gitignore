@@ -17,6 +17,9 @@ env/
 # Outputs
 outputs/
 
+# Logs
+logs/
+
 # Third-party SDKs (install separately)
 unitree_sdk2_python/
 

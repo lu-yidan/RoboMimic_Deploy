@@ -90,32 +90,39 @@ def main(cfg: DictConfig):
                 if joystick.is_button_released(JoystickButton.L3):                                                    # Ghost toggle, L3
                     ghost_flags[0] = not ghost_flags[0]
                     print(f"[Ghost] {'ON' if ghost_flags[0] else 'OFF'}")
+
+                # PASSIVE: safety command — always overrides any pending command
                 if joystick.is_button_released(JoystickButton.L1) and joystick.is_button_pressed(JoystickButton.R1):  # 阻尼保护, L1 release + R1
                     state_cmd.skill_cmd = FSMCommand.PASSIVE
-                if joystick.is_button_released(JoystickButton.START):                                                  # 回 FixedPose, START
+
+                # All other skill commands: latched — only accepted when FSM has cleared the previous one.
+                # This prevents a fast START → L1+Up sequence from overwriting POS_RESET before the FSM
+                # processes it, which would leave the current controller without a clean exit().
+                # elif state_cmd.skill_cmd == FSMCommand.INVALID:
+                if joystick.is_button_released(JoystickButton.START):                                              # 回 FixedPose, START
                     state_cmd.skill_cmd = FSMCommand.POS_RESET
-
-                if joystick.is_button_released(JoystickButton.X) and joystick.is_button_pressed(JoystickButton.L1):   # 摔倒爬起, L1+X
+                elif joystick.is_button_released(JoystickButton.X) and joystick.is_button_pressed(JoystickButton.L1):   # 摔倒爬起, L1+X
                     state_cmd.skill_cmd = FSMCommand.STAND_UP
-
-                if joystick.is_button_released(JoystickButton.A) and joystick.is_button_pressed(JoystickButton.R1):   # Loco, R1+A
+                elif joystick.is_button_released(JoystickButton.A) and joystick.is_button_pressed(JoystickButton.R1):   # Loco, R1+A
                     state_cmd.skill_cmd = FSMCommand.LOCO
-                elif joystick.is_button_released(JoystickButton.X) and joystick.is_button_pressed(JoystickButton.R1): # Dance, R1+X
+                elif joystick.is_button_released(JoystickButton.X) and joystick.is_button_pressed(JoystickButton.R1):   # Dance, R1+X
                     state_cmd.skill_cmd = FSMCommand.SKILL_1
-                elif joystick.is_button_released(JoystickButton.Y) and joystick.is_button_pressed(JoystickButton.R1): # KungFu, R1+Y
+                elif joystick.is_button_released(JoystickButton.Y) and joystick.is_button_pressed(JoystickButton.R1):   # KungFu, R1+Y
                     state_cmd.skill_cmd = FSMCommand.SKILL_2
-                elif joystick.is_button_released(JoystickButton.B) and joystick.is_button_pressed(JoystickButton.R1): # Kick, R1+B
+                elif joystick.is_button_released(JoystickButton.B) and joystick.is_button_pressed(JoystickButton.R1):   # Kick, R1+B
                     state_cmd.skill_cmd = FSMCommand.SKILL_3
-                elif joystick.is_button_released(JoystickButton.Y) and joystick.is_button_pressed(JoystickButton.L1): # KungFu2, L1+Y  (previously incorrectly routed to BeyondMimic)
+                elif joystick.is_button_released(JoystickButton.Y) and joystick.is_button_pressed(JoystickButton.L1):   # KungFu2, L1+Y
                     state_cmd.skill_cmd = FSMCommand.SKILL_4
-                elif joystick.is_button_released(JoystickButton.A) and joystick.is_button_pressed(JoystickButton.L1): # ASAP, L1+A
+                elif joystick.is_button_released(JoystickButton.A) and joystick.is_button_pressed(JoystickButton.L1):   # ASAP, L1+A
                     state_cmd.skill_cmd = FSMCommand.SKILL_5
-                elif joystick.is_button_released(JoystickButton.B) and joystick.is_button_pressed(JoystickButton.L1): # BeyondMimic, L1+B
+                elif joystick.is_button_released(JoystickButton.B) and joystick.is_button_pressed(JoystickButton.L1):   # BeyondMimic, L1+B
                     state_cmd.skill_cmd = FSMCommand.SKILL_6
-                elif hat_just_pressed(0, 1) and joystick.is_button_pressed(JoystickButton.R1):                        # BeyondMimicMJ, R1+D-pad UP
-                    state_cmd.skill_cmd = FSMCommand.SKILL_7
-                elif hat_just_pressed(0, -1) and joystick.is_button_pressed(JoystickButton.R1):                       # Score, R1+D-pad DOWN
-                    state_cmd.skill_cmd = FSMCommand.SKILL_8
+                elif hat_just_pressed(1, 0) and joystick.is_button_pressed(JoystickButton.R1):                          # Score, R1+D-pad RIGHT
+                    state_cmd.skill_cmd = FSMCommand.CMD_SCORE
+                elif hat_just_pressed(0, -1) and joystick.is_button_pressed(JoystickButton.L1):                         # FallGetUpMJ, L1+D-pad DOWN
+                    state_cmd.skill_cmd = FSMCommand.CMD_BEYONDMIMIC_MJ
+                elif hat_just_pressed(0, 1) and joystick.is_button_pressed(JoystickButton.L1):                          # StandUpMJ, L1+D-pad UP
+                    state_cmd.skill_cmd = FSMCommand.CMD_STANDUP_MJ
 
                 prev_hat = hat
                 state_cmd.vel_cmd[0] = -joystick.get_axis_value(1)

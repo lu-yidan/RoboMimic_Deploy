@@ -115,15 +115,17 @@ def _rot6d_from_quat(q):
 # ---------------------------------------------------------------------------
 
 class BeyondMimicMJ(FSMState):
-    def __init__(self, state_cmd: StateAndCmd, policy_output: PolicyOutput):
+    def __init__(self, state_cmd: StateAndCmd, policy_output: PolicyOutput,
+                 config_file: str = "beyondmimic_mj.yaml",
+                 state_name: FSMStateName = FSMStateName.SKILL_BEYONDMIMIC_MJ):
         super().__init__()
         self.state_cmd    = state_cmd
         self.policy_output = policy_output
-        self.name     = FSMStateName.SKILL_BEYONDMIMIC_MJ
-        self.name_str = "skill_beyondmimic_mj"
+        self.name     = state_name
+        self.name_str = "skill_" + config_file.replace(".yaml", "")
 
         current_dir = os.path.dirname(os.path.abspath(__file__))
-        config_path = os.path.join(current_dir, "config", "beyondmimic_mj.yaml")
+        config_path = os.path.join(current_dir, "config", config_file)
         with open(config_path, "r") as f:
             cfg = yaml.load(f, Loader=yaml.FullLoader)
 
@@ -358,5 +360,11 @@ class BeyondMimicMJ(FSMState):
         elif cmd == FSMCommand.POS_RESET:
             self.state_cmd.skill_cmd = FSMCommand.INVALID
             return FSMStateName.FIXEDPOSE
-        else:
+        elif cmd == FSMCommand.CMD_BEYONDMIMIC_MJ:
+            self.state_cmd.skill_cmd = FSMCommand.INVALID
             return FSMStateName.SKILL_BEYONDMIMIC_MJ
+        elif cmd == FSMCommand.CMD_STANDUP_MJ:
+            self.state_cmd.skill_cmd = FSMCommand.INVALID
+            return FSMStateName.SKILL_STANDUP_MJ
+        else:
+            return self.name

@@ -122,9 +122,11 @@ class LocoMode(FSMState):
             return FSMStateName.SKILL_ASAP
         elif(self.state_cmd.skill_cmd == FSMCommand.SKILL_6):       # BeyondMimic, L1+B
             return FSMStateName.SKILL_BEYONDMIMIC
-        elif(self.state_cmd.skill_cmd == FSMCommand.SKILL_7):       # BeyondMimicMJ, R1+D-pad UP
+        elif(self.state_cmd.skill_cmd == FSMCommand.CMD_BEYONDMIMIC_MJ):  # FallGetUpMJ, L1+D-pad DOWN
             return FSMStateName.SKILL_BEYONDMIMIC_MJ
-        elif(self.state_cmd.skill_cmd == FSMCommand.SKILL_8):       # Score, R1+D-pad DOWN
+        elif(self.state_cmd.skill_cmd == FSMCommand.CMD_STANDUP_MJ):    # StandUpMJ, L1+D-pad UP
+            return FSMStateName.SKILL_STANDUP_MJ
+        elif(self.state_cmd.skill_cmd == FSMCommand.CMD_SCORE):         # Score, R1+D-pad RIGHT
             return FSMStateName.SKILL_SCORE
         elif(self.state_cmd.skill_cmd == FSMCommand.STAND_UP):      # L1+X → HOST 爬起控制器
             return FSMStateName.STANDMODE

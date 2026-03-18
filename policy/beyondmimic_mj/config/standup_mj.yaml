@@ -1,15 +1,14 @@
-onnx_path:   "beyondmimic_mj.onnx"
-motion_path: "fallAndGetUp2_subject2_mj.npz"
+onnx_path:   "2026-03-16_17-19-14_StandUp_mj_finetune.onnx"
+motion_path: "StandUp_mj.npz"
 
 control_dt:      0.02     # 50 Hz control (sim: 5ms * 4 decimation)
 warmup_steps:    10       # interpolation steps from current pose to motion t=0
 clip_actions:    10.0     # PPO actions rarely exceed ±3; prevents runaway divergence
 
-# Optional: clip motion to a specific time window (seconds).
-# If omitted, the full motion sequence is used.
-motion_start_s:  3.0
-motion_end_s:   10.0
-# 19.0
+# Clip motion to the stand-up action window.
+motion_start_s:  0.0
+motion_end_s:    8.0
+
 
 # All arrays below are in MuJoCo DFS joint order (== hardware order):
 #   [l_hip_p, l_hip_r, l_hip_y, l_knee, l_ank_p, l_ank_r,

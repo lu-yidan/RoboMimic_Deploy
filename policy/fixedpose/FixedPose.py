@@ -66,6 +66,12 @@ class FixedPose(FSMState):
         elif(self.state_cmd.skill_cmd == FSMCommand.PASSIVE):
             self.state_cmd.skill_cmd = FSMCommand.INVALID
             return FSMStateName.PASSIVE
+        elif(self.state_cmd.skill_cmd == FSMCommand.CMD_BEYONDMIMIC_MJ):  # L1+Down → FallGetUpMJ
+            self.state_cmd.skill_cmd = FSMCommand.INVALID
+            return FSMStateName.SKILL_BEYONDMIMIC_MJ
+        elif(self.state_cmd.skill_cmd == FSMCommand.CMD_STANDUP_MJ):     # L1+Up → StandUpMJ
+            self.state_cmd.skill_cmd = FSMCommand.INVALID
+            return FSMStateName.SKILL_STANDUP_MJ
         else:
             self.state_cmd.skill_cmd = FSMCommand.INVALID
             return FSMStateName.FIXEDPOSE

@@ -46,6 +46,9 @@ class FSM:
         self.host_policy = HOST(state_cmd, policy_output)
         self.beyondmimic_policy = BeyondMimic(state_cmd, policy_output)
         self.beyondmimic_mj_policy = BeyondMimicMJ(state_cmd, policy_output)
+        self.standup_mj_policy = BeyondMimicMJ(state_cmd, policy_output,
+                                               "standup_mj.yaml",
+                                               FSMStateName.SKILL_STANDUP_MJ)
         self.score_policy = Score(state_cmd, policy_output)
 
         print("initalized all policies!!!")
@@ -116,6 +119,8 @@ class FSM:
             self.cur_policy = self.beyondmimic_mj_policy
         elif((policy_name == FSMStateName.SKILL_SCORE)):
             self.cur_policy = self.score_policy
+        elif((policy_name == FSMStateName.SKILL_STANDUP_MJ)):
+            self.cur_policy = self.standup_mj_policy
         else:
             pass
             

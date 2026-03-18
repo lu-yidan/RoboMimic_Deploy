@@ -48,10 +48,11 @@ def main(cfg: DictConfig):
     ball_body_id  = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_BODY, "ball")  # -1 if no ball in scene
 
     # ---- Ghost model for reference motion visualization ----
-    # Semi-transparent green tint; Press G in simulation to toggle.
+    # Ghost color from config (RGBA, 0-1). Adjust ghost_rgba in mujoco.yaml.
+    ghost_rgba = list(cfg.get("ghost_rgba", [0.2, 0.9, 0.4, 0.2]))
     ghost_m = copy.deepcopy(m)
-    ghost_m.geom_rgba[:, :3] = [0.2, 0.9, 0.4]   # green
-    ghost_m.geom_rgba[:, 3]  = 0.35               # semi-transparent
+    ghost_m.geom_rgba[:, :3] = ghost_rgba[:3]
+    ghost_m.geom_rgba[:, 3]  = ghost_rgba[3]
     ghost_d = mujoco.MjData(ghost_m)
     # Use a list so the key_callback closure can mutate it.
     ghost_flags = [bool(cfg.get("ghost_flags[0]", True))]

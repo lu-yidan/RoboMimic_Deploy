@@ -106,8 +106,11 @@ class BallStateSubscriber:
         while self._running:
             try:
                 samples = self._reader.take(N=10)
-                if samples:
-                    newest = samples[-1]
+                # Filter out InvalidSample objects (emitted when a remote writer
+                # is disposed/unregistered, e.g. when ball_detector is restarted).
+                valid_samples = [s for s in samples if isinstance(s, BallState)]
+                if valid_samples:
+                    newest = valid_samples[-1]
                     with self._lock:
                         self._last = newest
                     if self._callback:
@@ -120,6 +123,9 @@ class BallStateSubscriber:
         """Return the most recent BallState.  Sets valid=0 if data is stale."""
         with self._lock:
             s = self._last
+        # Guard against any non-BallState object that slipped through.
+        if not isinstance(s, BallState):
+            return BallState()
         now_us = int(time.time() * 1e6)
         if (now_us - s.timestamp_us) > BALL_STALE_MS * 1000:
             return BallState(timestamp_us=s.timestamp_us, valid=0)

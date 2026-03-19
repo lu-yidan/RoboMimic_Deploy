@@ -12,11 +12,16 @@
 onboard/
 └── perception/
     ├── lidar/
-    │   ├── ball_detector.py     ← 主服务：MID360 点云 → 球心检测 → DDS 发布
-    │   └── mid360_to_base.py   ← 坐标变换：MID360 系 → pelvis (base) 系
+    │   ├── ball_detector.py      ← 主服务：MID360 点云 → 球心检测 → DDS 发布
+    │   └── mid360_to_base.py    ← 坐标变换：MID360 系 → pelvis (base) 系
     └── camera/
-        ├── ball_detector.py     ← 主服务：RealSense D435 + YOLO → 球心检测 → DDS 发布
-        └── camera_to_base.py   ← 坐标变换：相机系 → pelvis (base) 系
+        ├── ball_detector.py      ← 主服务：RealSense D435 + YOLO11m TRT → DDS 发布
+        ├── camera_to_base.py    ← 坐标变换：相机系 → pelvis (base) 系
+        ├── run.sh               ← 一键启动（含 TRT 路径、GPU 解锁）
+        └── models/
+            ├── download_and_export.sh  ← 一键下载 .pt + 导出 TRT engine
+            ├── README.md               ← 模型精度/速度对比
+            └── .gitignore              ← 排除 *.pt / *.onnx / *.engine
 ```
 
 ---
@@ -143,7 +148,7 @@ python onboard/perception/lidar/ball_detector.py
 
 ---
 
-### 方案 B — Camera（RealSense D435 + YOLOv8）
+### 方案 B — Camera（RealSense D435 + YOLO11m TRT）
 
 #### 1. 依赖
 
@@ -158,25 +163,40 @@ conda install -c conda-forge pyrealsense2 -y
 pip install ultralytics
 ```
 
-#### 2. 启动相机球检测服务
-
-D435 通过 USB 连接机载电脑，在 `RoboMimicDeploy_G1` 根目录下运行：
+#### 2. 首次使用：下载模型并导出 TRT engine（约 15 分钟，只需一次）
 
 ```bash
-python onboard/perception/camera/ball_detector.py
-# 可选：指定更大模型（精度↑速度↓）
-python onboard/perception/camera/ball_detector.py --model yolov8s.pt --imgsz 320
+bash onboard/perception/camera/models/download_and_export.sh
+# 下载 yolo11m.pt + 导出 yolo11m.engine（TRT FP16，imgsz=320）
+```
+
+#### 3. 启动相机球检测服务
+
+```bash
+# 推荐：一键启动（自动解锁 GPU + 设置 TRT 路径）
+bash onboard/perception/camera/run.sh
+
+# 可选参数：
+bash onboard/perception/camera/run.sh --show          # +MJPEG 预览 (port 8080)
+bash onboard/perception/camera/run.sh --model models/yolov8n.pt  # 切换更快的模型
 ```
 
 终端持续打印：
 
 ```
-[BALL ] pelvis=(+0.823, -0.012, -0.673)  d=0.85m  YOLO=28.4fps
-[COAST] pelvis=(+0.821, -0.011, -0.672)  d=0.85m  YOLO=28.4fps
-[     ] no ball  YOLO=28.4fps
+[INFO] TensorRT engine found, using: models/yolo11m.engine
+[INFO] YOLO inference: 8.6 ms/frame  (≈ 116 FPS upper bound)
+[BALL ] pelvis=(+0.823, -0.012, -0.673)  d=0.85m  YOLO=35.2fps
+[COAST] pelvis=(+0.821, -0.011, -0.672)  d=0.85m  YOLO=35.2fps
+[     ] no ball  YOLO=35.2fps
 ```
 
 > **BALL**：当帧 YOLO 检测到球；**COAST**：YOLO 漏检，保持最后位置最多 10 帧；空：无球。
+
+| 模型 | 推理时间 | 整体 FPS | COCO mAP |
+|------|---------|---------|---------|
+| yolov8n.engine | 4.9 ms | ~40 FPS | 37.3 |
+| **yolo11m.engine（默认）** | **8.6 ms** | **~35 FPS** | **51.5** |
 
 两方案均发布到同一 DDS Topic `rt/ball_state`，`deploy_real.py` 无需修改，启动哪个方案即用哪个。
 
@@ -235,37 +255,42 @@ deploy_real.py → state_cmd.ball_pos_b → Score._build_obs()
 
 ```
 RealSense D435（color + depth，60 Hz）
+        │  color: 640×480 BGR, fx≈607  │  depth: 640×480 Z16, fx≈386, 基线-14.5mm
         │
-        │ rs.align() — depth 对齐到 color 视角
-        ▼
-对齐帧（color + aligned_depth，像素一一对应）
+        ▼ [主线程] pipeline.wait_for_frames()（释放 GIL，~16ms）
+raw frameset（USB DMA 缓冲区）
         │
-        │ [YOLO 线程] model.track() → sports ball BBox
-        ▼
-BBox 中心 (cx, cy) + depth patch 中位数 → depth_m
+        ▼ [YOLO 线程] get_color/depth_frame, color.copy(), depth_arr.copy()
+color numpy (640×480×3)  │  depth_arr numpy uint16 (640×480)
         │
-        │ rs2_deproject_pixel_to_point() — 像素 + 深度 → 光学系 3D 点
-        ▼
-p_optical（Z前，X右，Y下）
+        ▼ cv2.resize → (imgsz×imgsz)，model.track() → BBox（GPU TRT ~8.6ms）
+BBox 中心 (cx, cy) in 640×480
         │
-        │ optical_to_body() — 光学系 → body 系（X前，Y左，Z上）
-        ▼
-p_cam（camera body 系）
+        ▼ Color→Depth 像素映射（修正 FOV 差异 + 基线视差）
+        │   ndcx = (cx - ppx_c) / fx_c          ← 归一化方向（去 Color 内参）
+        │   dx   = ndcx × fx_d + ppx_d + tx/Z × fx_d  ← 加 Depth 内参 + 视差
+        │   patch = depth_arr[dy±5, dx±5]        ← 11×11 numpy slice
+depth_m（中位数，单位 m）
         │
-        │ EMA 时间滤波（α=0.6，跳变门限 0.6m）
-        ▼
+        ▼ rs2_deproject_pixel_to_point(color_intrin, [cx, cy], depth_m)
+p_optical [X, Y, Z]（光学坐标系：Z前，X右，Y下）
+        │
+        ▼ optical_to_body()
+p_cam（camera body 系：X前，Y左，Z上）
+        │
+        ▼ EMA 时间滤波（α=0.6，跳变门限 0.6m）
 p_cam（平滑后）
         │
-        │ transform_point_camera_to_base()
-        │ （链式正运动学：pelvis → waist_yaw → waist_roll → waist_pitch → head → camera）
-        │ 使用实时关节角 q_wy / q_wr / q_wp，q_head 固定 0.593412 rad
-        ▼
+        ▼ transform_point_camera_to_base()
+        │  链式正运动学：pelvis → waist_yaw(q_wy) → waist_roll(q_wr)
+        │                       → waist_pitch(q_wp) → head(q_head) → camera
 球心（pelvis body 系）
         │
-        │ DDS publish "rt/ball_state"
-        ▼
+        ▼ DDS publish "rt/ball_state"  (~35 Hz)
 deploy_real.py → state_cmd.ball_pos_b → Score._build_obs()
 ```
+
+> Color→Depth 映射详解见 `onboard/perception/camera/TROUBLESHOOTING.md` 第九章。
 
 ---
 

@@ -196,15 +196,40 @@ def main():
 
     profile = _start_pipeline()
 
-    # Color intrinsics — used for rs2_deproject_pixel_to_point (color pixel → 3-D ray)
+    # ── Intrinsics and extrinsics ─────────────────────────────────────────
+    # The D435 has SEPARATE color and depth sensors (measured at 640×480):
+    #   Color camera:  FOV ~55.6°H,  fx ≈ 607  ppx ≈ 317
+    #   Depth camera:  FOV ~79.3°H,  fx ≈ 386  ppx ≈ 320  ← wider FOV!
+    #   Color→Depth baseline: tx ≈ -14.5 mm horizontal
+    #
+    # Naively using color pixel (cx,cy) directly in depth_arr[cy,cx] is WRONG:
+    #   - FOV scale error: at cx=500 (183px from center), depth px offset=436 vs naive 500 → 64px error
+    #   - Baseline parallax at 1m: 14.5mm/1000mm * 386 ≈ 6px additional error
+    #   Total error at image edge: ~70 pixels = ~18cm lateral error at 1m!
+    #
+    # Correct approach:
+    #   1. Map color pixel → depth pixel via intrinsics + extrinsics
+    #   2. Sample depth_arr at the mapped depth pixel
+    #   3. Deproject using COLOR intrinsics + color pixel (gives correct 3-D ray)
     color_profile  = profile.get_stream(rs.stream.color).as_video_stream_profile()
-    intrinsics     = color_profile.get_intrinsics()
+    depth_profile  = profile.get_stream(rs.stream.depth).as_video_stream_profile()
+    color_intrin   = color_profile.get_intrinsics()
+    depth_intrin   = depth_profile.get_intrinsics()
+    # Extrinsics: rotation + translation that maps a point from color frame → depth frame
+    color_to_depth_extr = color_profile.get_extrinsics_to(depth_profile)
+    intrinsics     = color_intrin   # alias used by rs2_deproject_pixel_to_point below
+
     # Depth scale converts raw uint16 → metres (typically 0.001 for D435)
     depth_sensor   = profile.get_device().first_depth_sensor()
     depth_scale    = depth_sensor.get_depth_scale()
-    print(f"[INFO] Intrinsics — fx={intrinsics.fx:.1f}  fy={intrinsics.fy:.1f}  "
-          f"ppx={intrinsics.ppx:.1f}  ppy={intrinsics.ppy:.1f}  "
+    print(f"[INFO] Color intrinsics — fx={color_intrin.fx:.1f}  fy={color_intrin.fy:.1f}  "
+          f"ppx={color_intrin.ppx:.1f}  ppy={color_intrin.ppy:.1f}")
+    print(f"[INFO] Depth intrinsics — fx={depth_intrin.fx:.1f}  fy={depth_intrin.fy:.1f}  "
+          f"ppx={depth_intrin.ppx:.1f}  ppy={depth_intrin.ppy:.1f}  "
           f"depth_scale={depth_scale:.4f}")
+    t_cd = color_to_depth_extr.translation   # [tx, ty, tz] in metres
+    print(f"[INFO] Color→Depth translation — tx={t_cd[0]*1000:.1f}mm  "
+          f"ty={t_cd[1]*1000:.1f}mm  tz={t_cd[2]*1000:.1f}mm")
 
     # ── Shared state (camera thread → YOLO thread) ────────────────────────
     # We only share the raw frameset; alignment is done in the YOLO thread
@@ -336,14 +361,45 @@ def main():
                 x1, y1, x2, y2 = last_bbox
                 cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
 
-                # Sample depth patch around ball center using numpy slice.
-                # D435 color and depth share nearly the same FOV; without
-                # full alignment the pixel error is <5px at 1m (<2cm), fine here.
+                # ── Color pixel → Depth pixel mapping ──────────────────────
+                # The D435 color and depth sensors have different FOV and a
+                # ~55mm physical baseline.  We must map (cx,cy) in color space
+                # to (dx,dy) in depth space before reading depth_arr.
+                #
+                # Step 1 — first-pass depth estimate (use current depth_arr at
+                #   the rough position for a coarse depth needed to correct parallax).
                 dh, dw = depth_arr.shape
-                x0d = max(0, cx - DEPTH_SAMPLE_RADIUS)
-                x1d = min(dw, cx + DEPTH_SAMPLE_RADIUS + 1)
-                y0d = max(0, cy - DEPTH_SAMPLE_RADIUS)
-                y1d = min(dh, cy + DEPTH_SAMPLE_RADIUS + 1)
+                # Intrinsics-only mapping (no parallax yet):
+                ndcx = (cx - color_intrin.ppx) / color_intrin.fx
+                ndcy = (cy - color_intrin.ppy) / color_intrin.fy
+                dx0  = int(ndcx * depth_intrin.fx + depth_intrin.ppx + 0.5)
+                dy0  = int(ndcy * depth_intrin.fy + depth_intrin.ppy + 0.5)
+                dx0  = max(0, min(dw - 1, dx0))
+                dy0  = max(0, min(dh - 1, dy0))
+                raw0 = depth_arr[dy0, dx0]
+                depth_coarse = raw0 * depth_scale if raw0 > 0 else 1.0  # fallback 1m
+
+                # Step 2 — parallax correction.
+                # The extrinsics give translation from color frame to depth frame.
+                # At depth Z, a colour-ray direction (ndcx, ndcy) originates from
+                # the colour optical centre.  The depth sensor's optical centre is
+                # offset by (tx, ty, tz) from the colour sensor (from extrinsics).
+                # The additional pixel shift in the depth image is:
+                #   Δx = tx / Z * fx_depth   (and similarly for y, tz negligible)
+                tx, ty = color_to_depth_extr.translation[0], color_to_depth_extr.translation[1]
+                dx_parallax = tx / depth_coarse * depth_intrin.fx
+                dy_parallax = ty / depth_coarse * depth_intrin.fy
+
+                dx = int(ndcx * depth_intrin.fx + depth_intrin.ppx + dx_parallax + 0.5)
+                dy = int(ndcy * depth_intrin.fy + depth_intrin.ppy + dy_parallax + 0.5)
+                dx = max(0, min(dw - 1, dx))
+                dy = max(0, min(dh - 1, dy))
+
+                # Step 3 — sample depth patch at the corrected depth pixel.
+                x0d = max(0, dx - DEPTH_SAMPLE_RADIUS)
+                x1d = min(dw, dx + DEPTH_SAMPLE_RADIUS + 1)
+                y0d = max(0, dy - DEPTH_SAMPLE_RADIUS)
+                y1d = min(dh, dy + DEPTH_SAMPLE_RADIUS + 1)
                 patch   = depth_arr[y0d:y1d, x0d:x1d].astype(np.float32) * depth_scale
                 valid_d = patch[(patch > DEPTH_MIN) & (patch < DEPTH_MAX)]
                 depth_m = float(np.median(valid_d)) if len(valid_d) > 0 else 0.0

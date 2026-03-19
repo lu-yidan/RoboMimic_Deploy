@@ -17,7 +17,8 @@
 6. [性能演变总览](#六性能演变总览)
 7. [当前架构说明](#七当前架构说明)
 8. [进一步优化方向](#八进一步优化方向)
-9. [诊断命令速查](#九诊断命令速查)
+9. [Color→Depth 像素映射详解](#九colordepth-像素映射详解)
+10. [诊断命令速查](#十诊断命令速查)
 
 ---
 
@@ -140,7 +141,10 @@ color_small: numpy uint8 (imgsz×imgsz×3)   sx/sy: 缩放比例
     ▼ [⑤ model.track()，CUDA GPU]
 results → best_box: xyxy in (imgsz×imgsz)   → last_bbox: xyxy in (640×480)
     │
-    ▼ [⑥ depth_frame.get_distance(cx, cy)]
+    ▼ [⑥ color→depth 像素映射 + patch 采样]
+    │   a) 归一化: ndcx=(cx-ppx_c)/fx_c, ndcy=(cy-ppy_c)/fy_c
+    │   b) 映射到 depth 图: dx=ndcx*fx_d+ppx_d + tx/Z*fx_d
+    │   c) depth_arr[dy-5:dy+6, dx-5:dx+6] median
 depth_m: float（球心深度，单位 m）
     │
     ▼ [⑦a rs2_deproject_pixel_to_point]
@@ -702,7 +706,134 @@ bash onboard/perception/camera/run.sh --model models/yolov8n.pt  # 切回快速�
 
 ---
 
-## 九、诊断命令速查
+## 九、Color→Depth 像素映射详解
+
+### 9.1 问题：D435 色彩相机与深度相机参数不同
+
+D435 内部有两个物理上分离的传感器（实测，640×480 模式）：
+
+```
+D435 正面布局：
+┌──────────────────────────────────────┐
+│  [IR-L]  [IR-R]  [RGB]  [激光投射]   │
+│                   ↑                   │
+│             Color 光心                │
+│       ←14.5mm→                        │
+│   Depth 光心（IR 对的中点）            │
+└──────────────────────────────────────┘
+```
+
+| 参数 | Color 相机 | Depth 相机 |
+|------|-----------|-----------|
+| 焦距 fx | **607.5** px | **386.3** px |
+| 焦距 fy | 607.0 px | 386.3 px |
+| 主点 ppx | 317.2 px | 319.7 px |
+| 主点 ppy | 251.5 px | 241.9 px |
+| 水平 FOV | **55.6°** | **79.3°** → 视野更宽 |
+| 与 Color 的基线 | — | tx = **-14.5 mm** |
+
+> 以上为实际相机在 640×480 分辨率下的测量值，可在启动时从 `[INFO]` 日志确认。
+
+### 9.2 直接使用 color 坐标采样 depth 的误差
+
+若直接用 `depth_arr[cy, cx]`（把 color 像素当 depth 像素）：
+
+| 误差来源 | 公式 | 举例（cx=450，距中心 133px）| 1m 处横向误差 |
+|---------|------|--------------------------|-------------|
+| FOV 比例差 | `Δ = cx_offset × (1 − fx_d/fx_c)` | `133×(1−386/607) = 48px` | **12 cm** |
+| 基线视差 | `Δ = \|tx\|/Z × fx_d` | `0.0145/1.0×386 = 6px` | **1.5 cm** |
+| **合计** | | **~54 px** | **~14 cm** |
+
+图像边缘时误差更大（cx=500 时约 70px = 18cm），会导致深度采样到背景而非球。
+
+### 9.3 正确转换方法：三步法
+
+```
+Color 像素 (cx, cy)
+        │
+        │ Step 1 — 去除 Color 内参，得到归一化方向向量
+        │   ndcx = (cx − ppx_color) / fx_color
+        │   ndcy = (cy − ppy_color) / fy_color
+        │   含义：光线方向（与分辨率/FOV 无关的角度）
+        ▼
+归一化方向 (ndcx, ndcy)
+        │
+        │ Step 2a — 加入 Depth 内参，投影到深度图像素（修正 FOV）
+        │   dx0 = ndcx × fx_depth + ppx_depth
+        │   dy0 = ndcy × fy_depth + ppy_depth
+        │
+        │ Step 2b — 读取粗略深度，修正基线视差
+        │   Z_coarse = depth_arr[dy0, dx0] × depth_scale  (或默认 1.0m)
+        │   Δx = tx / Z_coarse × fx_depth   (tx = -0.0145m → 向左偏)
+        │   dx = dx0 + Δx
+        ▼
+深度图像素 (dx, dy)
+        │
+        │ Step 3 — numpy patch 采样（11×11，取中位数）
+        │   patch = depth_arr[dy-5:dy+6, dx-5:dx+6] × depth_scale
+        │   depth_m = median(patch[有效值])
+        ▼
+depth_m（球心深度，单位 m）
+        │
+        │ 反投影到 3D（使用 Color 内参 + color 像素，结果在 Color 坐标系下）
+        │   rs2_deproject_pixel_to_point(color_intrin, [cx, cy], depth_m)
+        │   X = (cx − ppx_color) / fx_color × depth_m
+        │   Y = (cy − ppy_color) / fy_color × depth_m
+        │   Z = depth_m
+        ▼
+p_optical [X, Y, Z]（光学坐标系，Z 朝前）
+```
+
+### 9.4 数值示例
+
+球心在 color 图 (cx=450, cy=200)，实际距离 1.2m：
+
+```
+Step 1:  ndcx = (450 − 317.2) / 607.5 = 0.2186
+         ndcy = (200 − 251.5) / 607.0 = -0.0849
+
+Step 2a: dx0 = 0.2186 × 386.3 + 319.7 = 404
+         dy0 = -0.0849 × 386.3 + 241.9 = 209
+
+         若直接用 color 坐标 cx=450，此处差了 450-404 = 46px → 12cm 误差
+
+Step 2b: depth_arr[209, 404] ≈ 1200 raw → Z_coarse = 1.2m
+         Δx = -0.0145 / 1.2 × 386.3 = -4.7 ≈ -5px   (基线视差)
+         dx = 404 + (-5) = 399
+         dy = 209
+
+Step 3:  patch = depth_arr[204:215, 394:405]
+         median ≈ 1198 raw → depth_m = 1.198m
+
+反投影: X = 0.2186 × 1.198 = 0.262m
+        Y = -0.0849 × 1.198 = -0.102m
+        Z = 1.198m
+→ 球在 color 相机前方 1.198m，右方 0.262m，上方 0.102m
+```
+
+### 9.5 计算开销
+
+| 方法 | 耗时/次 | 备注 |
+|------|--------|------|
+| 旧：直接 `depth_arr[cy, cx]` | 5.8 μs | 误差最大 14cm |
+| 新：三步法 + patch | 16.3 μs | 额外 10.5 μs |
+| 整帧耗时（TRT） | ~8,000 μs | 三步法占 **0.13%**，可忽略 |
+
+### 9.6 为什么反投影仍用 Color 内参？
+
+`rs2_deproject_pixel_to_point(color_intrin, [cx, cy], depth_m)` 的作用是：
+
+```
+像素坐标 (cx, cy) + 深度 depth_m → 3D 点（在 color 相机坐标系下）
+```
+
+- 我们传入的是 **color 像素**，所以必须用 **color 内参**
+- 得到的结果天然在 **color 相机坐标系**下，与后续 `optical_to_body()` → `transform_to_base()` 链路对齐
+- 若改用 depth 内参 + depth 像素，结果会在 depth 相机坐标系下，还需要再做一次 extrinsics 变换
+
+---
+
+## 十、诊断命令速查
 
 ```bash
 # ── GPU 状态 ──────────────────────────────────────────────

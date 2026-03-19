@@ -102,12 +102,20 @@ def main():
                         help="YOLO model path (default: yolov8n.pt)")
     parser.add_argument("--imgsz", type=int, default=480,
                         help="YOLO input size in pixels (smaller = faster)")
+    parser.add_argument("--show", action="store_true",
+                        help="stream annotated video via MJPEG HTTP (open browser on port 8080)")
     args = parser.parse_args()
 
     # ── ROS2 joint listener ───────────────────────────────────────────────
+    # spin_once at 50 Hz instead of rclpy.spin() to avoid saturating the GIL
+    # with 500 Hz /lowstate deserialization (which crushes CUDA throughput).
     rclpy.init()
     joint = _JointListener()
-    threading.Thread(target=rclpy.spin, args=(joint,), daemon=True).start()
+    def _spin_loop():
+        while True:
+            rclpy.spin_once(joint, timeout_sec=0.0)
+            time.sleep(0.02)   # 50 Hz — enough for joint angle updates
+    threading.Thread(target=_spin_loop, daemon=True).start()
     print("[INFO] ROS2 joint listener started (/lowstate)")
 
     # ── DDS publisher ─────────────────────────────────────────────────────
@@ -115,15 +123,21 @@ def main():
     print("[INFO] DDS publisher ready on 'rt/ball_state'")
 
     # ── YOLO ─────────────────────────────────────────────────────────────
-    print(f"[INFO] Loading YOLO model: {args.model}")
+    import torch
+    device = "cuda:0" if torch.cuda.is_available() else "cpu"
+    print(f"[INFO] Loading YOLO model: {args.model}  (device={device})")
     model = YOLO(args.model)
 
-    dummy = np.zeros((480, 848, 3), dtype=np.uint8)
-    model(dummy, verbose=False)   # warmup (compilation overhead excluded)
+    dummy = np.zeros((args.imgsz, args.imgsz, 3), dtype=np.uint8)
+    print("[INFO] YOLO warming up (first run triggers CUDA JIT, takes ~10s)...")
+    for i in range(5):
+        t_w = time.perf_counter()
+        model(dummy, verbose=False, device=device, half=True)
+        print(f"[INFO]   warmup[{i}]: {(time.perf_counter()-t_w)*1000:.1f}ms")
     t0 = time.perf_counter()
-    for _ in range(3):
-        model(dummy, verbose=False)
-    ms = (time.perf_counter() - t0) / 3 * 1000
+    for _ in range(10):
+        model(dummy, verbose=False, device=device, half=True)
+    ms = (time.perf_counter() - t0) / 10 * 1000
     print(f"[INFO] YOLO inference: {ms:.1f} ms/frame  (≈ {1000/ms:.0f} FPS upper bound)")
 
     # ── RealSense ─────────────────────────────────────────────────────────
@@ -161,11 +175,56 @@ def main():
           f"ppx={intrinsics.ppx:.1f}  ppy={intrinsics.ppy:.1f}")
 
     # ── Shared state (camera thread → YOLO thread) ────────────────────────
+    # We only share the raw frameset; alignment is done in the YOLO thread
+    # to avoid holding the GIL during align.process() on the camera thread.
     buf_lock    = threading.Lock()
-    buf_color   = None
-    buf_depth   = None
+    buf_frames  = None   # raw rs2.composite_frame
     buf_updated = threading.Event()
     stop_flag   = threading.Event()
+
+    # ── Display queue (YOLO thread → MJPEG server thread) ────────────────
+    import queue as _queue
+    import cv2
+    disp_queue  = _queue.Queue(maxsize=1) if args.show else None
+
+    if args.show:
+        import http.server, socketserver, io
+
+        _mjpeg_frame = [None]
+        _mjpeg_lock  = threading.Lock()
+
+        class _MJPEGHandler(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *a): pass  # silence access logs
+
+            def do_GET(self):
+                if self.path not in ('/', '/stream'):
+                    self.send_error(404)
+                    return
+                self.send_response(200)
+                self.send_header('Content-Type',
+                                 'multipart/x-mixed-replace; boundary=frame')
+                self.end_headers()
+                try:
+                    last_sent = None
+                    while True:
+                        with _mjpeg_lock:
+                            jpg = _mjpeg_frame[0]
+                        if jpg is None or jpg is last_sent:
+                            time.sleep(0.02)   # 50 Hz poll, avoid busy-loop
+                            continue
+                        last_sent = jpg
+                        self.wfile.write(
+                            b'--frame\r\n'
+                            b'Content-Type: image/jpeg\r\n\r\n' + jpg + b'\r\n'
+                        )
+                except Exception:
+                    pass
+
+        socketserver.ThreadingTCPServer.allow_reuse_address = True
+        _httpd = socketserver.ThreadingTCPServer(('0.0.0.0', 8080), _MJPEGHandler)
+        _httpd.daemon_threads = True
+        threading.Thread(target=_httpd.serve_forever, daemon=True).start()
+        print("[INFO] MJPEG stream started → open http://192.168.123.164:8080 in your browser")
 
     # ── YOLO thread ───────────────────────────────────────────────────────
     def yolo_worker():
@@ -185,20 +244,37 @@ def main():
         last_bbox  = None
         miss_count = 0
         yolo_fps   = _FPS()
+        import cv2 as _cv2
 
+        _frame_n = 0
         while not stop_flag.is_set():
             if not buf_updated.wait(timeout=1.0):
                 continue
             buf_updated.clear()
 
             with buf_lock:
-                color = buf_color.copy()
-                depth = buf_depth.copy()
+                frames = buf_frames   # grab frameset reference
+            # align.process() is CPU-intensive (~100ms) and holds the GIL.
+            # Do it here in the YOLO thread so it does NOT compete with the
+            # camera main thread; the main thread only calls
+            # pipeline.wait_for_frames() (GIL-free) + a quick lock swap.
+            aligned = align.process(frames)
+            cf = aligned.get_color_frame()
+            df = aligned.get_depth_frame()
+            if not cf or not df:
+                continue
+            color = np.asanyarray(cf.get_data()).copy()
+            depth = np.asanyarray(df.get_data()).copy()
+
+            orig_h, orig_w = color.shape[:2]
+            color_small = _cv2.resize(color, (args.imgsz, args.imgsz))
+            sx = orig_w / args.imgsz
+            sy = orig_h / args.imgsz
 
             # YOLO detection
-            results   = model.track(color, conf=CONF_THRESHOLD,
-                                    persist=True, verbose=False,
-                                    imgsz=args.imgsz)
+            results = model.track(color_small, conf=CONF_THRESHOLD,
+                                  persist=True, verbose=False,
+                                  device=device, half=True)
             best_box  = None
             best_conf = 0.0
             for result in results:
@@ -208,11 +284,12 @@ def main():
                         if c > best_conf:
                             best_conf, best_box = c, box
 
-            yolo_fps.tick()
-
             if best_box is not None:
                 miss_count = 0
-                last_bbox  = tuple(map(int, best_box.xyxy[0]))
+                # 将检测框坐标从缩放图映射回原图
+                x1s, y1s, x2s, y2s = best_box.xyxy[0]
+                last_bbox = (int(x1s * sx), int(y1s * sy),
+                             int(x2s * sx), int(y2s * sy))
             else:
                 miss_count += 1
 
@@ -261,23 +338,44 @@ def main():
                 print(f"\r[     ] no ball  YOLO={yolo_fps.fps:4.1f}fps" + " " * 30,
                       end="", flush=True)
 
+            # ── Annotate frame and push to MJPEG server ───────────────────
+            if disp_queue is not None:
+                vis = color.copy()
+                if last_bbox is not None and miss_count <= COAST_FRAMES:
+                    x1, y1, x2, y2 = last_bbox
+                    cx2, cy2 = (x1 + x2) // 2, (y1 + y2) // 2
+                    color_box = (0, 255, 0) if best_box is not None else (0, 165, 255)
+                    _cv2.rectangle(vis, (x1, y1), (x2, y2), color_box, 2)
+                    _cv2.circle(vis, (cx2, cy2), 4, color_box, -1)
+                    label = (f"ball {best_conf:.2f}" if best_box is not None
+                             else f"coast {miss_count}/{COAST_FRAMES}")
+                    _cv2.putText(vis, label, (x1, y1 - 8),
+                                _cv2.FONT_HERSHEY_SIMPLEX, 0.6, color_box, 2)
+                    if published_valid:
+                        info = f"pelvis ({x:+.2f}, {y:+.2f}, {z:+.2f})m"
+                        _cv2.putText(vis, info, (10, vis.shape[0] - 10),
+                                    _cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 0), 2)
+                fps_txt = f"YOLO {yolo_fps.fps:.1f} fps"
+                _cv2.putText(vis, fps_txt, (10, 24),
+                            _cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2)
+                _, jpg_buf = _cv2.imencode('.jpg', vis, [_cv2.IMWRITE_JPEG_QUALITY, 60])
+                with _mjpeg_lock:
+                    _mjpeg_frame[0] = jpg_buf.tobytes()
+            yolo_fps.tick()
+            _frame_n += 1
+
     yolo_thread = threading.Thread(target=yolo_worker, daemon=True)
     yolo_thread.start()
 
-    # ── Main thread: camera capture at full speed ─────────────────────────
+    # ── Main thread: camera capture ───────────────────────────────────────
     print("[INFO] Camera running. Press Ctrl+C to stop.")
     try:
         while True:
-            frames  = pipeline.wait_for_frames()
-            aligned = align.process(frames)
-            cf      = aligned.get_color_frame()
-            df      = aligned.get_depth_frame()
-            if not cf or not df:
-                continue
-
+            # pipeline.wait_for_frames() is a C extension that releases the
+            # GIL while blocking — camera capture does NOT starve YOLO.
+            frames = pipeline.wait_for_frames()
             with buf_lock:
-                buf_color = np.asanyarray(cf.get_data()).copy()
-                buf_depth = np.asanyarray(df.get_data())
+                buf_frames = frames   # just swap reference, no copies
             buf_updated.set()
 
     except KeyboardInterrupt:
@@ -286,6 +384,8 @@ def main():
         stop_flag.set()
         yolo_thread.join(timeout=2)
         pipeline.stop()
+        if args.show:
+            _httpd.shutdown()
         rclpy.shutdown()
         print("[INFO] Done.")
 

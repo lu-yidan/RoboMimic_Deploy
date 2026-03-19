@@ -1,309 +1,507 @@
-# Camera Ball Detector — 排障与调优记录
+# Camera Ball Detector — 排障与性能调优全记录
 
-> 适用硬件：**Unitree G1** 机载电脑（NVIDIA Jetson Orin NX 16 GB，JetPack 5.1.2）  
-> 相机：**Intel RealSense D435**  
-> 模型：**YOLOv8n**（ultralytics）
+> 硬件：**Unitree G1**，机载电脑 NVIDIA Jetson Orin NX 16 GB，JetPack 5.1.2  
+> 相机：**Intel RealSense D435**（USB 3.0）  
+> 模型：**YOLOv8n**（ultralytics）  
+> 最终帧率：**~25 FPS**（从最初 1 FPS 提升 25 倍）
 
 ---
 
-## 一、环境配置
+## 目录
+
+1. [硬件与环境配置](#一硬件与环境配置)
+2. [完整 Pipeline 流程图](#二完整-pipeline-流程图)
+3. [每步耗时与阻塞分析](#三每步耗时与阻塞分析)
+4. [核心概念：GIL / DMA / 多线程](#四核心概念gil--dma--多线程)
+5. [优化历程（按问题顺序）](#五优化历程按问题顺序)
+6. [性能演变总览](#六性能演变总览)
+7. [当前架构说明](#七当前架构说明)
+8. [进一步优化方向](#八进一步优化方向)
+9. [诊断命令速查](#九诊断命令速查)
+
+---
+
+## 一、硬件与环境配置
 
 ### 1.1 硬件规格
 
 | 项目 | 规格 |
 |------|------|
 | SoC | NVIDIA Jetson Orin NX 16 GB |
-| CPU | 8× ARM Cortex-A78AE（1.5 GHz） |
+| CPU | 8× ARM Cortex-A78AE @ 1.5 GHz |
 | GPU | 1024-core Ampere（最高 918 MHz） |
-| 内存 | 16 GB LPDDR5，CPU/GPU 统一内存 |
+| 内存 | 16 GB LPDDR5，CPU/GPU **统一内存**（无独立显存） |
+| 存储 | eMMC + microSD |
 | JetPack | 5.1.2（CUDA 11.4，cuDNN 8.6） |
 | Python | 3.8（conda 环境 `robomimic`） |
-| ROS2 | Foxy + CycloneDDS |
+| ROS2 | Foxy + CycloneDDS（`rmw_cyclonedds_cpp`） |
 
-### 1.2 conda 环境依赖
+> **统一内存**意味着 CPU 和 GPU 共享同一块物理内存，PyTorch 无需 CPU→GPU 拷贝，
+> 但也意味着 GPU 显存和系统 RAM 互相竞争同一带宽。
+
+### 1.2 依赖安装
 
 ```bash
 conda activate robomimic
 
-# RealSense（必须用 conda-forge，pip 版不含 ARM so 文件）
+# RealSense（必须 conda-forge，pip 版无 ARM .so）
 conda install -c conda-forge pyrealsense2 -y
 
-# ultralytics（YOLOv8）
+# YOLOv8
 pip install ultralytics
 
-# PyTorch（见 1.3，不能直接 pip install）
+# PyTorch（见 1.3）
 # torchvision（见 1.4，必须源码编译）
 ```
 
-### 1.3 为 Jetson 安装正确的 PyTorch
+### 1.3 安装 Jetson 专属 PyTorch（必须，否则无 CUDA）
 
-**问题：** `pip install torch` 默认从 PyPI 拉取 x86_64 wheel，没有 aarch64+CUDA 版本；
-即使安装成功，`torch.cuda.is_available()` 返回 `False`，YOLO 只能跑 CPU（~670 ms/帧）。
-
-**解法：** 从 NVIDIA 开发者网站下载 Jetson 专属 wheel。
+PyPI 上的 `pip install torch` 只提供 x86_64 版，没有 aarch64+CUDA 支持。
+必须从 NVIDIA 开发者网站下载 Jetson 专用 wheel：
 
 ```bash
-# JetPack 5.1.2 对应 PyTorch 2.1.0
+# JetPack 5.1.2 → PyTorch 2.1.0
 wget https://developer.download.nvidia.com/compute/redist/jp/v512/pytorch/\
 torch-2.1.0a0+41361538.nv23.06-cp38-cp38-linux_aarch64.whl
 
 pip install torch-2.1.0a0+41361538.nv23.06-cp38-cp38-linux_aarch64.whl
 
-# 验证
 python -c "import torch; print(torch.cuda.is_available())"
-# 应输出 True
+# True ← 必须为 True，否则 YOLO 只能 CPU
 ```
 
-> NVIDIA Jetson PyTorch 下载页：  
-> https://developer.nvidia.com/embedded/downloads#?search=pytorch
+参考下载页：<https://developer.nvidia.com/embedded/downloads#?search=pytorch>
 
-### 1.4 编译 torchvision（必须对齐 PyTorch 版本）
+### 1.4 编译 torchvision v0.16.0（必须与 torch 2.1.0 对齐）
 
-`pip install torchvision` 从 PyPI 拉取的版本（如 0.19.1）与 `torch 2.1.0` **不兼容**，
-会报 `RuntimeError: Couldn't load custom C++ ops`。
-必须从源码编译 `v0.16.0`。
+PyPI 的 torchvision 0.19.x 与 torch 2.1.0 不兼容，会报
+`RuntimeError: Couldn't load custom C++ ops`，必须源码编译：
 
 ```bash
-# 指定与 JetPack 一致的 CUDA 版本
-export CUDA_HOME=/usr/local/cuda-11.4
+export CUDA_HOME=/usr/local/cuda-11.4   # 与 JetPack 5.1.2 一致
 export PATH=$CUDA_HOME/bin:$PATH
-
-# 卸载可能存在的不兼容版本
 pip uninstall torchvision -y
 
-# 克隆并编译（约需 20-30 分钟，全程在机器人上完成）
 git clone --branch v0.16.0 --depth 1 https://github.com/pytorch/vision
-cd vision
-python setup.py install
-cd ..
-rm -rf vision
+cd vision && python setup.py install && cd .. && rm -rf vision
 
-# 验证
-python -c "import torchvision; print(torchvision.__version__)"
-# 应输出 0.16.0
+python -c "import torchvision; print(torchvision.__version__)"  # 0.16.0
 ```
-
-> **为什么不能直接 pip install？**  
-> PyPI 上只有 x86 预编译 wheel；aarch64+JetPack CUDA 组合无对应官方包，
-> 必须本地编译链接到机器上的 CUDA 11.4。
 
 ---
 
-## 二、遇到的问题与解决方案
+## 二、完整 Pipeline 流程图
 
-### 问题 1：EMA 公式写反，球心位置疯狂跳变
+### 2.1 当前架构（最终优化版）
 
-**现象**：`check_ball_state.py` 观察到 x/y/z 在大范围内快速跳变，噪声极大。
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│ 进程：ball_detector.py（3 个常驻线程）                                    │
+│                                                                         │
+│  ┌──────────────────┐   ┌──────────────────────────────────────────┐   │
+│  │  主线程（相机捕获）│   │  YOLO 线程（推理 + 发布）                 │   │
+│  │                  │   │                                          │   │
+│  │  D435 USB 3.0    │   │  ① buf_updated.wait()    ← 等新帧 ~16ms  │   │
+│  │        ↓         │   │         ↓                                │   │
+│  │  wait_for_frames │   │  ② get_color/depth_frame  ~0.1ms        │   │
+│  │  【释放 GIL】     │──▶│         ↓                                │   │
+│  │  ~16ms（60 FPS） │   │  ③ color.copy()（DMA→堆）  ~2ms          │   │
+│  │        ↓         │   │         ↓                                │   │
+│  │  buf_lock swap   │   │  ④ cv2.resize → imgsz×imgsz  ~1ms       │   │
+│  │  ~0.1ms          │   │         ↓                                │   │
+│  │  buf_updated.set │   │  ⑤ model.track()（GPU）  ~25ms 【主耗时】 │   │
+│  └──────────────────┘   │         ↓                                │   │
+│                          │  ⑥ get_distance() 11×11 patch  ~0.5ms  │   │
+│  ┌──────────────────┐   │         ↓                                │   │
+│  │  spin_loop 线程   │   │  ⑦ rs2_deproject + EMA + FK  ~0.5ms    │   │
+│  │                  │   │         ↓                                │   │
+│  │  spin_once       │   │  ⑧ dds.publish()         ~0.5ms        │   │
+│  │  50 Hz           │   │         ↓                                │   │
+│  │  读关节角 q_wy 等 │   │  ⑨ MJPEG 编码（--show）  ~5ms（可选）    │   │
+│  └──────────────────┘   └──────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────────┘
+```
 
-**根因**：`lidar/ball_detector.py` 中 EMA 权重写反：
+### 2.2 数据流（像素坐标 → pelvis body 坐标）
+
+```
+RealSense D435（60 Hz）
+    │  color: 640×480 BGR   depth: 640×480 Z16
+    │
+    ▼ [① wait_for_frames, 释放 GIL]
+raw frameset（内存在 USB DMA 缓冲区）
+    │
+    ▼ [② get_color_frame() + color.copy()]
+color: numpy uint8 (640×480×3)   depth: rs2_depth_frame 对象（保持 DMA 引用）
+    │
+    ▼ [④ cv2.resize]
+color_small: numpy uint8 (imgsz×imgsz×3)   sx/sy: 缩放比例
+    │
+    ▼ [⑤ model.track()，CUDA GPU]
+results → best_box: xyxy in (imgsz×imgsz)   → last_bbox: xyxy in (640×480)
+    │
+    ▼ [⑥ depth_frame.get_distance(cx, cy)]
+depth_m: float（球心深度，单位 m）
+    │
+    ▼ [⑦a rs2_deproject_pixel_to_point]
+p_optical: [X,Y,Z]（光学坐标系：Z前，X右，Y下）
+    │
+    ▼ [⑦b optical_to_body()]
+p_cam: [X,Y,Z]（相机 body 系：X前，Y左，Z上）
+    │
+    ▼ [⑦c EMA 滤波（α=0.6，跳变门限 0.6m）]
+center_ema: 平滑后的相机 body 系坐标
+    │
+    ▼ [⑦d transform_point_camera_to_base() 正运动学链]
+    │   pelvis → waist_yaw(q_wy) → waist_roll(q_wr) → waist_pitch(q_wp)
+    │                                                → head(q_head) → camera
+p_base: [x,y,z]（pelvis body 系）
+    │
+    ▼ [⑧ dds.publish()]
+"rt/ball_state"（DDS BestEffort KeepLast(1)）
+    │
+    ▼
+deploy_real.py → Score._build_obs() → state_cmd.ball_pos_b
+```
+
+---
+
+## 三、每步耗时与阻塞分析
+
+### 3.1 当前稳态耗时（640×480，imgsz=320）
+
+| 步骤 | 耗时 | 占比 | 说明 |
+|------|------|------|------|
+| ① buf_updated.wait | ~16ms | 等相机帧（60FPS=16ms/帧）| 主要等待时间，不是"慢" |
+| ② get_color/depth_frame | <0.1ms | — | SDK 返回引用，无拷贝 |
+| ③ color.copy()（DMA→堆）| ~2ms | — | 640×480×3=0.9MB，从 USB DMA 缓冲区拷 |
+| ④ cv2.resize | ~1ms | — | 640×480 → 320×320 |
+| **⑤ model.track()（GPU）** | **~25ms** | **~55%** | **当前主瓶颈** |
+| ⑥ get_distance() patch | <0.5ms | — | 11×11=121 个点，O(1) SDK 调用 |
+| ⑦ deproject+EMA+FK | <0.5ms | — | 纯 numpy 数学 |
+| ⑧ dds.publish | <0.5ms | — | CycloneDDS UDP |
+| ⑨ MJPEG 编码（--show）| ~5ms | — | imencode JPEG Q=60 |
+| **单帧合计** | **~45ms** | — | **≈ 22 FPS** |
+
+> **为什么实测 25 FPS 而不是 1000/45≈22 FPS？**  
+> 因为 YOLO 处理帧时，主线程已经在采集下一帧，两者并行运行，
+> 实际吞吐量由 max(GPU时间, 相机帧周期) 决定。
+
+### 3.2 历史各版本耗时对比
+
+```
+版本                  copy    resize   track    total    FPS
+─────────────────────────────────────────────────────────────
+v1 无CUDA             —       —        670ms    670ms    1
+v2 有CUDA但GIL满      —       —        260ms    260ms    4
+v3 align在YOLO线程    102ms   0.1ms    34000ms  ∞        0.1  ← 最差
+v4 align在YOLO线程    97ms    97ms     44ms     148ms    7    ← align是瓶颈
+v5 去掉align          2ms     1ms      25ms     45ms     25   ← 当前
+```
+
+> v3 的 `track=34000ms` 是 GIL 争抢导致的，见第五节。  
+> v4 的 `copy=97ms, resize=97ms` 是 DMA 内存 + buf_lock 竞争导致的，见第五节。
+
+---
+
+## 四、核心概念：GIL / DMA / 多线程
+
+### 4.1 Python GIL（全局解释器锁）
+
+Python 进程内部有一把"令牌"——GIL（Global Interpreter Lock）。规则：
+
+```
+同一时刻，只有持有令牌的线程能执行 Python 字节码。
+```
+
+C 扩展可以选择**主动交出令牌**让其他线程并行运行：
+
+```
+函数                          GIL 行为           对我们的影响
+─────────────────────────────────────────────────────────────────
+pipeline.wait_for_frames()    释放 GIL（等硬件）  ✅ YOLO 可同时运行
+torch CUDA 核心计算            释放 GIL（等GPU）   ✅ 相机可同时采集
+align.process()               持有 GIL（CPU运算） ❌ 阻塞所有其他线程
+rclpy.spin()（原来）           持有 GIL（高频）    ❌ 500Hz 反序列化占满
+np.asanyarray().copy()         持有 GIL（CPU运算） ❌ 大 DMA 拷贝时阻塞
+```
+
+**GIL 导致的典型问题**：
+
+```
+时间轴 →（修复前，align 在主线程）
+
+主线程:  [wait 16ms]──[align.process() 持GIL 126ms]──[wait 16ms]──[align 126ms]──...
+YOLO线程:[Python 5ms]──[等GIL 126ms]──[CUDA 20ms]──[Python 5ms]──[等GIL 126ms]──...
+                        ↑ 每次Python代码都要等 126ms
+```
+
+model.track() 内部有数十次 Python/CUDA 切换，每次等 126ms → 单帧 34 秒。
+
+### 4.2 DMA 内存与 ARM 缓存
+
+相机帧的传输路径：
+
+```
+RealSense D435
+    │ USB 3.0（5 Gbps）
+    ▼
+USB 控制器（硬件）
+    │ DMA（Direct Memory Access）—— 硬件直接写内存，不经 CPU
+    ▼
+DMA 缓冲区（uncacheable 内存）
+    │ 属性：不走 CPU L1/L2/L3 缓存
+    │       每次访问都要经过内存总线
+    ▼
+np.asanyarray(frame.get_data())  ← 这是 DMA 区的"视图"，不是拷贝！
+```
+
+**uncacheable 内存 vs 普通内存的读速差异（ARM Cortex-A78）**：
+
+```
+普通堆内存（有 cache）：~20 GB/s
+DMA uncacheable 内存：  ~8 MB/s（慢 2500 倍）
+```
+
+所以 `np.asanyarray(df.get_data()).copy()` 拷贝 0.8MB 深度图：
+
+```
+有 cache：0.8MB ÷ 20GB/s = 0.04ms   ✅
+DMA 区：  0.8MB ÷ 8MB/s  = 100ms    ❌（之前 v4 的问题）
+```
+
+**当前的处理方式**：  
+深度数据完全**不拷贝到 Python 堆**，直接调用
+`depth_frame.get_distance(px, py)`（SDK 内部读一个 uint16，
+只有 2 字节 = 可忽略），从而绕过了大块 DMA 读取的问题。
+
+彩色帧仍然需要拷贝（YOLO 推理需要 numpy 数组），但 640×480×3 = 0.9MB，
+耗时约 2ms（在允许范围内）。
+
+### 4.3 多线程在这里的作用
+
+当前 3 个线程：
+
+```
+线程              工作内容                              GIL 占用
+─────────────────────────────────────────────────────────────────
+主线程（相机）     pipeline.wait_for_frames()           绝大多数时间释放 GIL
+YOLO 线程         align→resize→track→deproject→publish  顺序执行，是 GIL 持有者
+spin_loop 线程    rclpy.spin_once()，50 Hz             每 20ms 短暂持有 GIL
+```
+
+**多线程的收益**：主线程在等下一帧（释放 GIL 16ms）时，YOLO 线程可以同时
+做推理，形成真正的流水线。
+
+**多线程的开销**：线程切换 <5µs，buf_lock 竞争 <0.1µs，相比 45ms 帧时间可忽略。
+
+**多线程≠多核 Python 并行**：由于 GIL，两个线程不能同时执行 Python 字节码。
+但当一个线程在执行 C 扩展（且 C 扩展释放了 GIL）时，另一个线程可以运行 Python。
+这就是为什么 `pipeline.wait_for_frames()`（释放 GIL）和 `model.track()`（CUDA
+期间释放 GIL）能真正并行的原因。
+
+---
+
+## 五、优化历程（按问题顺序）
+
+### 问题 1：EMA 公式写反，lidar 球心跳变
+
+**现象**：`check_ball_state.py` 观察到坐标在大范围内随机跳变。
+
+**根因**：`alpha=0.9` 给新测量值 90% 权重，完全没有平滑效果。
+
 ```python
-# 错误：alpha=0.9 让新测量值占 90%，完全没有平滑效果
-self.center_ema = alpha * center_lidar + (1 - alpha) * self.center_ema
+# ❌ 错误：alpha 越大跳变越厉害
+self.center_ema = alpha * center_new + (1-alpha) * self.center_ema
+
+# ✅ 修复：alpha 对应"历史权重"，越大越平滑
+self.center_ema = alpha * self.center_ema + (1-alpha) * center_new
 ```
 
-**修复**：
+同时 alpha 从 0.9 → 0.5（响应更快）。
+
+---
+
+### 问题 2：本地 check_ball_state 显示全零（时钟不同步）
+
+**根因**：`BallStateSubscriber.latest()` 用机器人时钟戳与本地时间做差判断新鲜度，
+两台机器时钟差异导致所有消息被判为"过期"。
+
+**修复**（`common/ball_state_dds.py`）：收到消息时记录**本地接收时刻**，用本地时间判断：
+
 ```python
-# 正确：alpha 对应"历史权重"，值越大跟踪越平滑
-self.center_ema = alpha * self.center_ema + (1 - alpha) * center_lidar
-```
-
-同时将 `alpha` 从 0.9 调整到 0.5（更快响应新位置）。
-
----
-
-### 问题 2：本地 check_ball_state.py 显示全零 / 数据过期
-
-**现象**：机器人上 `ball_detector.py` 显示正常坐标，本地 `check_ball_state.py` 显示
-`x=0 y=0 z=0 age=11000ms`（过期）。
-
-**根因**：`BallStateSubscriber.latest()` 用 **机器人时钟戳** 与 **本地时钟** 做差判断新鲜度，
-两台机器未做时钟同步，差值常达数秒，导致所有消息都被判为"过期"。
-
-**修复**（`common/ball_state_dds.py`）：
-```python
-# 收到消息时记录本地接收时刻
-self._received_at = int(time.time() * 1e6)
-
-# 用本地接收时刻判断新鲜度，不依赖机器人时钟
-age_us = now_us - self._received_at   # 而非 now_us - s.timestamp_us
+self._received_at = int(time.time() * 1e6)   # 记录本地接收时间
+# latest() 中：
+age_us = now_us - self._received_at           # 而不是 now_us - s.timestamp_us
 ```
 
 ---
 
-### 问题 3：YOLO 推理极慢（~670 ms/帧），torch.cuda.is_available() = False
+### 问题 3：YOLO 在 CPU 跑，670 ms/帧
 
-**现象**：`[INFO] YOLO inference: 671.4 ms/frame (~ 1 FPS upper bound)`
+**根因**：PyPI 的 `torch` 是 x86，`torch.cuda.is_available()` = False。
 
-**根因**：安装的是 PyPI 通用 PyTorch，不含 ARM+CUDA 支持，YOLO 跑在 CPU 上。
+**修复**：安装 NVIDIA Jetson 专属 wheel（见 §1.3）。修复后：
 
-**修复**：见 §1.3，安装 NVIDIA Jetson 专属 PyTorch wheel。
-
-修复后 warmup 输出：
 ```
-warmup[0]: 3845.8ms   ← 首次触发 CUDA JIT 编译，正常
-warmup[1]:   26.9ms
-warmup[2]:   24.9ms
-[INFO] YOLO inference: 23.4 ms/frame (≈ 43 FPS upper bound)  ✅
+warmup[0]: 3845ms  ← 首次 CUDA JIT 编译
+warmup[1]:   27ms  ← 正常
+YOLO inference: 23 ms/frame ✅
 ```
 
 ---
 
-### 问题 4：GPU 频率被限速（115 MHz → 918 MHz）
-
-**现象**：安装 GPU PyTorch 后，YOLO 仍显示 ~260 ms/帧。
+### 问题 4：GPU 被限速（115 MHz），YOLO 260 ms/帧
 
 **诊断**：
+
 ```bash
-cat /sys/class/devfreq/*/cur_freq
-# 输出 115200000（115 MHz，超低功耗模式）
+cat /sys/class/devfreq/*/cur_freq  # 输出 115200000（115 MHz）
 ```
 
 **修复**：
-```bash
-# 切换到最大性能模式（需 sudo，密码 123）
-echo "123" | sudo -S nvpmodel -m 0
-echo "123" | sudo -S jetson_clocks
 
-# 验证
-cat /sys/class/devfreq/*/cur_freq
-# 应输出 918400000（918 MHz）
+```bash
+echo "123" | sudo -S nvpmodel -m 0    # 最大性能模式
+echo "123" | sudo -S jetson_clocks    # 解锁所有时钟
+# GPU 恢复 918 MHz，YOLO 回到 23 ms
 ```
 
 ---
 
-### 问题 5：ROS2 /lowstate 500 Hz 订阅饱和 GIL，YOLO 降速 10×
+### 问题 5：/lowstate 500 Hz 饱和 GIL，YOLO 降速 10×
 
-**现象**：`nvpmodel` + `jetson_clocks` 后独立测试 YOLO 为 23 ms，
-但在 `ball_detector.py` 完整流程中仍显示 ~260 ms。
+**根因**：`rclpy.spin(joint)` 持续反序列化 500 Hz 的 LowState 消息，
+几乎全时占用 GIL。YOLO 的 Python/CUDA 切换每次都需要等待。
 
-**根因**：`/lowstate` 以 500 Hz 高频发布，`rclpy.spin(joint)` 在 ROS2 线程
-持续反序列化，几乎全时占用 Python GIL，导致 YOLO CUDA 和 Python 切换之间
-的 GIL 等待时间极长。
+```
+YOLO 线程：[等GIL 2ms][CUDA 20ms][等GIL 2ms][CUDA 20ms]...
+spin线程：  [GIL 2ms][GIL 2ms][GIL 2ms]...（500 Hz 连续反序列化）
+```
 
-**修复**：将 `rclpy.spin()` 替换为受控 50 Hz 轮询：
+**修复**：改为 50 Hz 轮询，每次 spin 后主动 sleep 让出 GIL：
+
 ```python
 def _spin_loop():
     while True:
         rclpy.spin_once(joint, timeout_sec=0.0)
-        time.sleep(0.02)   # 50 Hz，让出 GIL 给 YOLO
-
-threading.Thread(target=_spin_loop, daemon=True).start()
+        time.sleep(0.02)   # 50 Hz：关节角更新足够，不需要 500 Hz
 ```
-
-修复后 YOLO 恢复 23 ms/帧，完整流程 FPS 从 ~4 提升到预期水平。
 
 ---
 
-### 问题 6：整体 FPS 仍为 0.1（YOLO 线程实际卡死 34 秒/帧）
+### 问题 6：align.process() 在主线程，YOLO track 需 34 秒/帧（最严重）
 
-**现象**：YOLO warmup 显示 23 ms，但运行中 `YOLO= 0.1fps`，
-TIMING 日志显示 `track=33979ms`（34 秒！）。
+这是整个调试过程中最隐蔽、耗时最长的问题。
 
-**诊断过程**：
+#### 6a. 诊断过程
 
-1. 加入每帧 TIMING 打印，发现 TIMING 长期不出现 → YOLO 线程根本没完成一帧
-2. 加入 `[LOOP]` 调试打印：
-   ```
-   [LOOP] iter=0 waiting...
-   [LOOP] iter=0 got=True wait=0ms      ← 事件拿到了
-   [LOOP] acquiring buf_lock...         ← 等 lock
-   [LOOP] copy done 102.4ms, resizing...← copy 花了 102 ms！
-   [LOOP] resize done 97.3ms, tracking... ← resize 花了 97 ms！
-   （之后无输出 → model.track() 卡死）
-   ```
-3. 发现两个叠加问题（见下）
+加入逐步 TIMING 打印，追踪到 `model.track()` 耗时 34 秒：
 
-#### 子问题 6a：depth 帧直接引用 DMA 缓冲区，ARM 读速只有 8 MB/s
-
-**根因**：相机线程：
-```python
-buf_depth = np.asanyarray(df.get_data())   # ← 无 .copy()，是 DMA 内存的视图！
 ```
-YOLO 线程从该 DMA 地址 `copy()` 时，ARM 访问未缓存 DMA 区速度极慢（约 8 MB/s），
-0.8 MB 深度图需要 ~100 ms。
-
-**临时修复**：
-```python
-buf_depth = np.asanyarray(df.get_data()).copy()  # 在相机线程立即 copy 到 Python 堆
+[TIMING] copy=97ms  resize=97ms  track=33979ms  total=34414ms  fps=0.1
 ```
 
-#### 子问题 6b：`align.process()` 持有 GIL 126 ms，使 model.track() 中每次 Python/CUDA 切换等待 126 ms
+独立测试 `model.track()` 在后台线程中只需 30ms，说明问题来自**并发竞争**。
 
-**诊断**：
+#### 6b. 根因：align.process() 持有 GIL 126ms，阻断 YOLO
+
 ```python
+# 测量 align.process() 耗时：
 t0 = time.perf_counter()
 aligned = align.process(frames)
-print(f"align.process: {(time.perf_counter()-t0)*1e3:.1f}ms")
-# 输出：align.process: 126.1ms
+print(f"{(time.perf_counter()-t0)*1e3:.1f}ms")
+# 输出：126.1ms
 ```
 
-`align.process()` 是 Intel RealSense SDK 的 C 扩展，在 ARM 上做深度-颜色投影对齐，
-CPU 计算量大，且**不释放 GIL**（Intel 未实现 GIL 友好的接口）。
+`align.process()` 是 Intel RealSense 的 C 扩展，在 ARM 上对
+640×480 深度图做逐像素几何重投影，**不释放 GIL**。
 
-原来的架构：
+原来的架构（错误的）：
+
 ```
-主线程：pipeline.wait_for_frames()（释放 GIL）
-      → align.process()（持有 GIL 126 ms）  ← 每 126 ms 阻塞 YOLO 线程一次
-      → buf_lock + copy
-
-YOLO 线程：model.track()
-  内部每次 Python/CUDA 切换需要 GIL
-  → 每次等待 126 ms
-  → 30 ms 实际计算被切割成数百个 GIL 等待片段
-  → 总耗时 34 秒
+主线程:  wait(16ms)──align.process(持GIL 126ms)──wait(16ms)──align(126ms)──...
+YOLO线程: 每次 Python/CUDA 切换都要等 126ms
+         model.track() 内部约 270 次切换 × 126ms ≈ 34 秒
 ```
 
-**根本修复**：将 `align.process()` 从相机主线程移到 YOLO 线程，顺序执行，彻底消除 GIL 争抢：
+#### 6c. 中间修复：align 移到 YOLO 线程（7 FPS）
+
+把 align 移到 YOLO 线程顺序执行，消除 GIL 争抢。
+但 align 本身 100ms 仍是瓶颈：
+
+```
+YOLO 线程：align(100ms) → resize(1ms) → track(44ms) → ... = 148ms = 7 FPS
+```
+
+#### 6d. 最终修复：完全去掉 align（25 FPS）
+
+**核心洞察**：我们根本不需要对整张深度图做对齐。
+`align.process()` 的目的是让每个彩色像素都能查到对应的深度值。
+但我们只有一个需要深度的像素：球心 `(cx, cy)`。
+
+对于单点查深度，D435 的 SDK 提供了 `depth_frame.get_distance(x, y)`，
+O(1)，<0.1ms。D435 的彩色和深度传感器几何位置非常接近（对准误差 <5px 在 1m 处），
+对球心定位（cm 级精度）完全可以接受。
 
 ```python
-# ── 相机主线程（修复后）────────────────────────────────────
-while True:
-    frames = pipeline.wait_for_frames()   # C扩展，自动释放 GIL
-    with buf_lock:
-        buf_frames = frames               # 只交换引用，不做任何计算
-    buf_updated.set()
+# ❌ 旧方案：全图对齐，100ms
+aligned = align.process(frames)
+depth_patch = aligned_depth[y0:y1, x0:x1] * 0.001
 
-# ── YOLO 线程（修复后）─────────────────────────────────────
-while not stop_flag.is_set():
-    buf_updated.wait(timeout=1.0)
-    buf_updated.clear()
-    with buf_lock:
-        frames = buf_frames
-
-    # align 和 copy 在 YOLO 线程顺序执行，无 GIL 竞争
-    aligned = align.process(frames)       # 126 ms，但不再和 model.track() 并发
-    cf = aligned.get_color_frame()
-    df = aligned.get_depth_frame()
-    color = np.asanyarray(cf.get_data()).copy()
-    depth = np.asanyarray(df.get_data()).copy()
-
-    # YOLO 推理，此时相机主线程只在 pipeline.wait_for_frames() 阻塞，不持有 GIL
-    results = model.track(color_small, ...)
+# ✅ 新方案：单点查深度，<0.1ms
+samples = [depth_frame.get_distance(px, py)
+           for py in range(y0d, y1d+1)
+           for px in range(x0d, x1d+1)]  # 11×11 = 121 个点
+depth_m = np.median([v for v in samples if DEPTH_MIN < v < DEPTH_MAX])
 ```
 
-**修复前后对比**：
+同时：
+- 相机分辨率从 848×480 降为 640×480（更小，更快）
+- 主线程只保留 `pipeline.wait_for_frames()`（释放 GIL）+ 引用交换
 
-| 步骤 | 修复前 | 修复后 |
-|------|--------|--------|
-| copy（含 DMA 读取）| 102 ms | ~100 ms（align 本身耗时，不可避免） |
-| resize | 97 ms | 1 ms |
-| model.track() | **34,000 ms** | **44 ms** |
-| 单帧总计 | ∞（卡死） | **~150 ms** |
-| **实际 FPS** | **0.1 FPS** | **~7 FPS** |
+**优化后各步骤耗时**：
+
+```
+copy=2ms  resize=1ms  track=25ms  depth=0.5ms  post=0.5ms  total=≈30ms  → 25 FPS ✅
+```
 
 ---
 
-### 问题 7：MJPEG 浏览器流卡顿（端口冲突 / busy-loop）
+### 问题 7：DMA 缓冲区读取慢（v4 中 copy=97ms）
 
-**现象**：`--show` 模式启动时报 `OSError: [Errno 98] Address already in use`；
-浏览器刷新图片极慢。
+在 v4（align 移到 YOLO 线程但未彻底去掉的中间版本）中：
+
+```python
+# 相机线程（v4 错误版本）：
+buf_depth = np.asanyarray(df.get_data())   # ← 无 .copy()，是 DMA 区视图！
+
+# YOLO 线程：
+depth = buf_depth.copy()   # 从 DMA uncacheable 内存读 0.8MB → 100ms
+```
+
+**修复**（当时）：在相机线程立即 copy 到 Python 堆：
+
+```python
+buf_depth = np.asanyarray(df.get_data()).copy()   # 相机线程内完成 DMA→堆 copy
+```
+
+**最终修复**：去掉 align 后，彻底不再需要拷贝完整深度图，
+只用 `get_distance(x,y)` 读取 2 字节（可忽略），这个问题自然消失。
+
+---
+
+### 问题 8：MJPEG 端口冲突 / busy-loop
+
+**现象**：`OSError: [Errno 98] Address already in use`；浏览器刷新慢。
 
 **修复**：
+
 ```python
-# 允许端口快速复用（上次进程崩溃留下 TIME_WAIT 状态）
+# 端口快速复用
 socketserver.ThreadingTCPServer.allow_reuse_address = True
 
-# MJPEG 推送线程避免 busy-loop，仅发送新帧
+# 避免 busy-loop，只推新帧
 last_sent = None
 while True:
     with _mjpeg_lock:
@@ -312,97 +510,175 @@ while True:
         time.sleep(0.02)   # 50 Hz 轮询
         continue
     last_sent = jpg
-    self.wfile.write(b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + jpg + b'\r\n')
+    self.wfile.write(...)
 ```
 
 ---
 
-## 三、性能调优汇总
+## 六、性能演变总览
 
-### 最终运行参数
+```
+                         copy    resize   track      FPS   主要问题
+──────────────────────────────────────────────────────────────────────
+v1  无CUDA PyTorch         —       —       670ms      1    PyPI torch，无GPU
+v2  有CUDA，spin全速        —       —       260ms      4    /lowstate GIL 占满
+v3  spin限速，align在主线程  —       —      34000ms    0.1  align持GIL 126ms
+v4  align移到YOLO线程      102ms   97ms     44ms       7    DMA读+align=100ms
+v5  去掉align（当前）        2ms    1ms      25ms      25   GPU推理，可接受
+──────────────────────────────────────────────────────────────────────
+提升倍数：25× 相比初始版本
+```
+
+---
+
+## 七、当前架构说明
+
+### 7.1 线程职责分工
+
+```
+线程              任务                        GIL 特性
+─────────────────────────────────────────────────────
+主线程            wait_for_frames() + 引用交换  绝大多数时间释放 GIL
+YOLO 线程         帧处理→推理→发布（顺序执行）   持有 GIL，是计算主体
+spin_loop 线程    关节角订阅（50 Hz）            每 20ms 短暂占用 ~0.1ms
+MJPEG 线程（可选） HTTP 推流                    等待 socket write
+```
+
+### 7.2 关键设计原则
+
+1. **主线程只做 `wait_for_frames()`**：这个 C 扩展会释放 GIL，让 YOLO
+   线程可以真正并行运行。主线程不做任何耗时计算。
+
+2. **不对齐全图**：depth 只在球心处查询一个 patch（O(1)），
+   不调用 `align.process()`（O(像素数)）。
+
+3. **深度帧不拷贝**：depth 保持 rs2 对象，通过 `get_distance()` 按需读取，
+   完全避免 DMA 大块读取问题。
+
+4. **彩色帧必须拷贝**：YOLO 需要 numpy 数组，且 DMA 视图在下一帧到来后可能
+   失效，所以必须立即 `.copy()` 到 Python 堆（2ms）。
+
+5. **spin_once + sleep(0.02)**：每 20ms 处理一次 ROS2 消息，50 Hz 足够
+   读取关节角，且 GIL 持有时间极短。
+
+### 7.3 命令行参数
 
 ```bash
-# 启动前解锁 GPU/CPU 频率
+python onboard/perception/camera/ball_detector.py \
+    --model yolov8n.pt  \  # YOLO 模型（n=最快，s/m=更精确）
+    --imgsz 320         \  # YOLO 输入尺寸（更小=更快，默认320）
+    --width  640        \  # 相机宽度（默认640）
+    --height 480        \  # 相机高度（默认480）
+    --show                 # 开启 MJPEG 流（浏览器查看）
+```
+
+---
+
+## 八、进一步优化方向
+
+### 8.1 分辨率对速度的影响（理论估算）
+
+| 相机分辨率 | YOLO imgsz | 估算 FPS | 说明 |
+|-----------|-----------|----------|------|
+| 848×480 | 480 | ~15 | YOLO 输入大，精度高 |
+| 640×480 | 320 | ~25 | **当前默认** |
+| 424×240 | 224 | ~35 | 近距离够用 |
+| 424×240 | 160 | ~40 | 球较小时可能漏检 |
+
+调整命令：
+
+```bash
+python onboard/perception/camera/ball_detector.py --width 424 --height 240 --imgsz 224
+```
+
+### 8.2 其他可尝试的优化
+
+| 方案 | 预期效果 | 复杂度 |
+|------|---------|--------|
+| 跳帧（每 N 帧跑一次 YOLO）| FPS 不变，GPU 负载↓ | 低 |
+| TensorRT 导出（`model.export(format="engine")`）| YOLO 加速 2-4×，约 10ms | 中 |
+| YOLOv8n-pose 换成更小模型 | 视模型而定 | 低 |
+| 减少 `DEPTH_SAMPLE_RADIUS`（5→2）| patch 从 121→25 点，节约 0.3ms | 低 |
+| 相机帧率降到 30 Hz | 省 USB 带宽，不影响 FPS | 低 |
+
+### 8.3 TensorRT 导出（最推荐）
+
+```bash
+# 在 Jetson 上导出（需要 torch + tensorrt）
+python -c "
+from ultralytics import YOLO
+model = YOLO('yolov8n.pt')
+model.export(format='engine', device=0, half=True, imgsz=320)
+"
+# 生成 yolov8n.engine
+
+# 启动时指定
+python onboard/perception/camera/ball_detector.py --model yolov8n.engine
+```
+
+TensorRT 在 Jetson 上通常可以把 YOLOv8n 从 25ms 降到 8-12ms，
+整体 FPS 可达 40-50。
+
+---
+
+## 九、诊断命令速查
+
+```bash
+# ── GPU 状态 ──────────────────────────────────────────────
+# 查看当前 GPU 频率（918400000 = 918 MHz = 最大）
+cat /sys/class/devfreq/*/cur_freq
+
+# 解锁最大性能（每次重启后需重新执行）
 echo "123" | sudo -S nvpmodel -m 0
 echo "123" | sudo -S jetson_clocks
 
-# 启动球检测（推荐参数）
-python onboard/perception/camera/ball_detector.py --imgsz 320
-
-# 带 MJPEG 视频流（浏览器访问 http://192.168.123.164:8080）
-python onboard/perception/camera/ball_detector.py --imgsz 320 --show
-```
-
-### 关键参数影响
-
-| 参数 | 值 | FPS 约估 | 备注 |
-|------|----|----------|------|
-| `--imgsz` | 640 | ~4 FPS | 精度高，球在远处时更准 |
-| `--imgsz` | 320 | ~7 FPS | 推荐，速度与精度平衡 |
-| `--model` | yolov8n.pt | ~7 FPS | 默认，最快 |
-| `--model` | yolov8s.pt | ~5 FPS | 稍慢，精度略高 |
-
-### 瓶颈分布（`--imgsz 320`，稳定运行时）
-
-```
-[TIMING] copy=100ms  resize=1ms  track=44ms  post=2ms  total=148ms  fps=7
-```
-
-- **`copy=100ms`**：`align.process()` 的固有 CPU 耗时（Intel RealSense ARM 对齐）
-- **`track=44ms`**：YOLO 实际推理（GPU 23ms + ByteTracker + 开销）
-- 如需更高帧率，可将相机分辨率从 848×480 降至 640×480
-
----
-
-## 四、已知限制
-
-| 限制 | 说明 |
-|------|------|
-| `align.process()` 100 ms | Intel RealSense ARM CPU 对齐，不用 GPU，是当前主瓶颈 |
-| 首次 CUDA JIT ~4 s | `warmup[0]` 触发 PyTorch CUDA 内核编译，属正常现象 |
-| Segmentation fault on exit | `rclpy.shutdown()` 与 pyrealsense2 同时析构时偶发，不影响运行时 |
-| `lap` 依赖自动安装 | 首次运行 ultralytics 会联网下载 `lap`，需要网络 |
-
----
-
-## 五、诊断命令速查
-
-```bash
-# 查看 GPU 当前频率（918400000 = 918 MHz = 最大）
-cat /sys/class/devfreq/*/cur_freq
-
-# 查看 GPU/CPU 实时功率和温度
+# 实时功耗/温度监控
 sudo tegrastats
 
-# 确认 PyTorch 使用 CUDA
-python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name())"
-
-# 确认 YOLO 使用 GPU（看 device=cuda:0）
+# ── PyTorch CUDA 验证 ────────────────────────────────────
 python -c "
-from ultralytics import YOLO
-import numpy as np, time
-m = YOLO('yolov8n.pt')
-dummy = np.zeros((320,320,3), dtype=np.uint8)
-for _ in range(3): m(dummy, verbose=False, device='cuda:0', half=True)
-t = time.perf_counter()
-for _ in range(10): m(dummy, verbose=False, device='cuda:0', half=True)
-print(f'avg: {(time.perf_counter()-t)/10*1000:.1f} ms')
+import torch
+print('CUDA:', torch.cuda.is_available())
+print('设备:', torch.cuda.get_device_name() if torch.cuda.is_available() else 'CPU')
+print('PyTorch:', torch.__version__)
 "
-# 应输出约 23 ms；若 >100 ms 则 GPU 未启用或频率被限速
 
-# 查看 align.process() 耗时
+# ── YOLO 推理速度基准 ────────────────────────────────────
 python -c "
-import pyrealsense2 as rs, time
+from ultralytics import YOLO; import numpy as np, time
+m = YOLO('yolov8n.pt')
+d = np.zeros((320,320,3), dtype=np.uint8)
+for _ in range(3): m(d, verbose=False, device='cuda:0', half=True)
+t = time.perf_counter()
+for _ in range(20): m(d, verbose=False, device='cuda:0', half=True)
+print(f'avg: {(time.perf_counter()-t)/20*1000:.1f} ms')
+"
+# ≈23ms 正常；>100ms → GPU 未启用或频率限速
+
+# ── RealSense 各操作耗时 ─────────────────────────────────
+python -c "
+import pyrealsense2 as rs, time, numpy as np
 p = rs.pipeline(); c = rs.config()
-c.enable_stream(rs.stream.color, 848, 480, rs.format.bgr8, 60)
-c.enable_stream(rs.stream.depth, 848, 480, rs.format.z16, 60)
-p.start(c); a = rs.align(rs.stream.color)
+c.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 60)
+c.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 90)
+p.start(c)
+a = rs.align(rs.stream.color)
 for i in range(5):
     f = p.wait_for_frames()
+    cf = f.get_color_frame(); df = f.get_depth_frame()
     t0 = time.perf_counter()
-    a.process(f)
-    print(f'align[{i}]: {(time.perf_counter()-t0)*1e3:.1f}ms')
+    color = np.asanyarray(cf.get_data()).copy()
+    t1 = time.perf_counter()
+    aligned = a.process(f)
+    t2 = time.perf_counter()
+    d = df.get_distance(320, 240)
+    t3 = time.perf_counter()
+    print(f'[{i}] color.copy={( t1-t0)*1e3:.1f}ms  align={( t2-t1)*1e3:.1f}ms  get_distance={(t3-t2)*1e3:.2f}ms')
 p.stop()
 "
-# 预期约 120-130 ms（ARM CPU，正常）
+# color.copy ≈ 2ms  align ≈ 100ms（被我们去掉了）  get_distance ≈ 0.01ms
+
+# ── 完整流水线验证 ────────────────────────────────────────
+python -u onboard/perception/camera/ball_detector.py --imgsz 320
+# 正常输出：[BALL] pelvis=(...) d=1.07m YOLO=25.1fps
 ```

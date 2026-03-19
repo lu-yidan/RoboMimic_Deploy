@@ -410,10 +410,18 @@ def main():
                     p_cam_arr = optical_to_body(p_opt)
 
                     if center_ema is None:
+                        gate_dist = 0.0
                         center_ema = p_cam_arr.copy()
-                    elif np.linalg.norm(p_cam_arr - center_ema) < EMA_GATE:
-                        center_ema = (EMA_ALPHA * p_cam_arr
-                                      + (1 - EMA_ALPHA) * center_ema)
+                    else:
+                        gate_dist = np.linalg.norm(p_cam_arr - center_ema)
+                        if gate_dist < EMA_GATE:
+                            center_ema = (EMA_ALPHA * p_cam_arr
+                                          + (1 - EMA_ALPHA) * center_ema)
+                        else:
+                            # Jump larger than gate — reset EMA to avoid permanent freeze
+                            print(f"\n[WARN] EMA gate {gate_dist:.2f}m > {EMA_GATE}m, resetting",
+                                  flush=True)
+                            center_ema = p_cam_arr.copy()
 
                     p_base = transform_point_camera_to_base(
                         center_ema,
@@ -426,7 +434,7 @@ def main():
 
                     status = "BALL " if detected else "COAST"
                     print(f"\r[{status}] pelvis=({x:+.3f}, {y:+.3f}, {z:+.3f})  "
-                          f"d={depth_m:.2f}m  YOLO={yolo_fps.fps:4.1f}fps",
+                          f"d={depth_m:.2f}m  gate={gate_dist:.2f}m  YOLO={yolo_fps.fps:4.1f}fps",
                           end="", flush=True)
 
             if not published_valid:

@@ -107,8 +107,8 @@ def main():
     parser = argparse.ArgumentParser(
         description="RealSense D435 + YOLO ball detector → rt/ball_state"
     )
-    parser.add_argument("--model", default="yolo11m.pt",
-                        help="YOLO model path (default: yolo11m.pt; auto-uses .engine if found)")
+    parser.add_argument("--model", default="onboard/perception/camera/models/yolo11m.pt",
+                        help="YOLO model path (default: models/yolo11m.pt; auto-uses .engine if found)")
     parser.add_argument("--imgsz", type=int, default=320,
                         help="YOLO input size in pixels (smaller = faster, default 320)")
     parser.add_argument("--width",  type=int, default=640,

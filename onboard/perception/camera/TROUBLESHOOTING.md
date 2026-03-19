@@ -2,8 +2,8 @@
 
 > 硬件：**Unitree G1**，机载电脑 NVIDIA Jetson Orin NX 16 GB，JetPack 5.1.2  
 > 相机：**Intel RealSense D435**（USB 3.0）  
-> 模型：**YOLOv8n → TensorRT FP16 engine**（ultralytics）  
-> 最终帧率：**~40 FPS**（PT FP16 ~25 FPS → TRT FP16 ~40 FPS，从最初 1 FPS 提升 40 倍）
+> 模型：**YOLO11m → TensorRT FP16 engine**（ultralytics；yolov8n 也已保留作备用）  
+> 最终帧率：**~35 FPS**（YOLO11m TRT 8.6ms；精度 mAP 51.5，从最初 1 FPS 提升 35 倍）
 
 ---
 
@@ -601,27 +601,79 @@ python onboard/perception/camera/ball_detector.py --width 424 --height 240 --img
 | 减少 `DEPTH_SAMPLE_RADIUS`（5→2）| patch 从 121→25 点，节约 0.3ms | 低 |
 | 相机帧率降到 30 Hz | 省 USB 带宽，不影响 FPS | 低 |
 
-### 8.3 TensorRT 导出（已完成）✅
+### 8.3 模型选择：精度 vs 速度（实测，Jetson Orin NX，imgsz=320，FP16）✅
 
-TensorRT 8.5.2 已安装于 `/usr/lib/python3.8/dist-packages/tensorrt`（JetPack 自带）。
+> 模型文件统一存放于 `onboard/perception/camera/models/`
 
-**实测数据**（Jetson Orin NX，imgsz=320，FP16）：
+| 后端 | 推理时间 | 整体估算 FPS | COCO mAP50-95 | 备注 |
+|------|---------|------------|---------------|------|
+| yolov8n.pt | 17 ms | ~25 FPS | 37.3 | 无需环境配置，随时可用 |
+| yolov8n.engine | 4.9 ms | **~40 FPS** | 37.3 | TRT 加速 3.5×，仅限本机 |
+| yolo11n.pt | 24 ms | ~20 FPS | 39.5 | 比 v8n 略准 |
+| yolo11s.pt | 25 ms | ~20 FPS | 47.0 | 同速但精度高 |
+| yolo11m.pt | 28 ms | ~18 FPS | 51.5 | 高精度 |
+| **yolo11m.engine** | **8.6 ms** | **~35 FPS** | **51.5 (+38%)** | **当前默认，TRT 加速 3.3×** |
 
-| 后端 | 推理时间 | FPS 理论上限 |
-|------|---------|------------|
-| PyTorch FP16 | 22 ms | 46 FPS |
-| TensorRT FP16 | **7.9 ms** | **126 FPS** |
-| 加速比 | — | **2.77×** |
+> **如何选择：**  
+> - 精度优先 → **yolo11m.engine**（默认）  
+> - 速度优先 → **yolov8n.engine**（`--model models/yolov8n.pt`）  
+> - 无 GPU 解锁 → 任意 .pt 文件（`model.track(..., device='cuda:0', half=True)`）
 
-**已完成的工作：**
-1. 导出 `yolov8n.engine`（FP16，imgsz=320）— 文件在 `RoboMimic_Deploy/yolov8n.engine`
-2. `ball_detector.py` 启动时自动检测同目录的 `.engine` 文件，优先使用 TRT
-3. 修复 TRT 8.5 与 numpy 1.24 兼容性问题（`np.bool` 别名移除，在脚本头部打补丁）
-4. 创建 `onboard/perception/camera/run.sh` — 一键设置所有环境变量并启动
+### 8.4 TRT Engine 原理与可移植性
 
-**导出方法（如需重新导出）：**
+**TRT Engine 是怎么得到的？**
+
+```
+原始权重 (.pt)
+    ↓ ultralytics model.export(format='engine', half=True)
+ONNX 中间格式 (.onnx)
+    ↓ TensorRT builder（kernel profiling，~10 分钟）
+TRT Engine (.engine)  ← FP16 量化，算子融合，GPU 专属二进制
+```
+
+FP16"量化"：把权重从 float32（4 byte）压缩到 float16（2 byte），精度损失可忽略（mAP 几乎不变），计算速度翻倍。
+
+**`.engine` 文件能否直接给别人用？**
+
+| 情况 | 是否可用 | 原因 |
+|------|---------|------|
+| 同型号 Jetson Orin NX + 同 JetPack | ✅ 通常可以 | 架构/版本完全一致 |
+| 不同型号 Jetson（如 Nano/Xavier）| ❌ 不可用 | GPU 架构不同（Ampere vs Volta） |
+| x86 PC（桌面 RTX）| ❌ 不可用 | 架构完全不同 |
+| 同机器 JetPack 升级后 | ⚠️ 可能失败 | TRT 版本变化 |
+
+**结论：`.engine` 文件不应提交到 git。**
+
+### 8.5 git 提交策略（模型文件管理）
+
+```
+onboard/perception/camera/models/
+├── .gitignore          ← 排除 *.pt / *.engine / *.onnx
+├── download_and_export.sh  ← 一键下载 + 导出 TRT（提交此文件）
+└── README.md           ← 说明（提交此文件）
+```
+
+| 文件类型 | 大小 | 是否提交 | 理由 |
+|---------|------|---------|------|
+| `*.pt`（PyTorch 权重）| 6–39 MB | ❌ 不提交 | 太大；ultralytics 会自动下载 |
+| `*.onnx`（中间格式）| 12–80 MB | ❌ 不提交 | 太大；export 时自动生成 |
+| `*.engine`（TRT 二进制）| 8–42 MB | ❌ 不提交 | **硬件绑定，无法跨机器** |
+| `download_and_export.sh` | 2 KB | ✅ 提交 | 让别人一键复现 |
+
+**别人拿到代码后的操作：**
 
 ```bash
+# 1. 一键下载 + 导出（首次运行，约 15 分钟）
+bash onboard/perception/camera/models/download_and_export.sh
+
+# 2. 正常启动（自动检测 .engine）
+bash onboard/perception/camera/run.sh
+```
+
+**导出命令（手动版，如需重新导出）：**
+
+```bash
+cd RoboMimic_Deploy
 LD_LIBRARY_PATH=/usr/local/cuda-12.1/compat:$LD_LIBRARY_PATH \
 PYTHONPATH=/usr/lib/python3.8/dist-packages:$PYTHONPATH \
 python -c "
@@ -629,24 +681,24 @@ import sys, numpy as np
 if not hasattr(np, 'bool'): np.bool = bool
 sys.path.insert(0, '/usr/lib/python3.8/dist-packages')
 from ultralytics import YOLO
-YOLO('yolov8n.pt').export(format='engine', device=0, half=True, imgsz=320, workspace=4)
+YOLO('onboard/perception/camera/models/yolo11m.pt').export(
+    format='engine', device=0, half=True, imgsz=320, workspace=4)
+# 约 10-15 分钟，生成 yolo11m.engine (42 MB)
 "
-# 约需 10 分钟（Jetson kernel profiling），生成 yolov8n.engine (8.1 MB)
 ```
 
-**运行（推荐方式）：**
+**运行（推荐）：**
 
 ```bash
-# 一键启动（自动解锁 GPU + 设置 TRT 路径）
-bash onboard/perception/camera/run.sh
-bash onboard/perception/camera/run.sh --show    # 同时开 MJPEG 预览
-bash onboard/perception/camera/run.sh --imgsz 224 --width 424 --height 240  # 更低分辨率
+bash onboard/perception/camera/run.sh           # yolo11m.engine，~35 FPS
+bash onboard/perception/camera/run.sh --show    # + MJPEG 预览
+bash onboard/perception/camera/run.sh --model models/yolov8n.pt  # 切回快速模型
 ```
 
-**注意事项：**
-- `.engine` 文件绑定硬件，换 GPU 需重新导出
-- TRT 加载时需 `LD_LIBRARY_PATH=/usr/local/cuda-12.1/compat`（run.sh 已处理）
-- `PYTHONPATH=/usr/lib/python3.8/dist-packages` 让 conda Python 能 `import tensorrt`（run.sh 已处理）
+**TRT 注意事项：**
+- `.engine` 绑定硬件，换机器必须重新导出
+- 加载需要 `LD_LIBRARY_PATH=/usr/local/cuda-12.1/compat`（`run.sh` 已设置）
+- `PYTHONPATH=/usr/lib/python3.8/dist-packages` 让 conda 能 `import tensorrt`
 
 ---
 

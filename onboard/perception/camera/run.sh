@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 # ============================================================
 # 启动 camera ball_detector（含 TensorRT + GPU 解锁）
-# 默认模型：yolo11m（自动检测 .engine，优先使用 TRT）
+# 默认模型：models/yolo11m（自动检测 .engine，优先使用 TRT）
+#
+# 首次使用请先运行：
+#   bash onboard/perception/camera/models/download_and_export.sh
 #
 # 用法：bash onboard/perception/camera/run.sh [额外参数]
 #   bash onboard/perception/camera/run.sh --show
-#   bash onboard/perception/camera/run.sh --model yolo11n.pt   # 更快
-#   bash onboard/perception/camera/run.sh --model yolov8n.pt   # 回退
+#   bash onboard/perception/camera/run.sh --model models/yolov8n.pt  # 最快
+#   bash onboard/perception/camera/run.sh --model models/yolo11n.pt  # 均衡
 #   bash onboard/perception/camera/run.sh --imgsz 224 --width 424 --height 240
 # ============================================================
 set -e

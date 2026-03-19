@@ -2,8 +2,8 @@
 
 > 硬件：**Unitree G1**，机载电脑 NVIDIA Jetson Orin NX 16 GB，JetPack 5.1.2  
 > 相机：**Intel RealSense D435**（USB 3.0）  
-> 模型：**YOLOv8n**（ultralytics）  
-> 最终帧率：**~25 FPS**（从最初 1 FPS 提升 25 倍）
+> 模型：**YOLOv8n → TensorRT FP16 engine**（ultralytics）  
+> 最终帧率：**~40 FPS**（PT FP16 ~25 FPS → TRT FP16 ~40 FPS，从最初 1 FPS 提升 40 倍）
 
 ---
 
@@ -576,14 +576,14 @@ python onboard/perception/camera/ball_detector.py \
 
 ## 八、进一步优化方向
 
-### 8.1 分辨率对速度的影响（理论估算）
+### 8.1 分辨率对速度的影响
 
-| 相机分辨率 | YOLO imgsz | 估算 FPS | 说明 |
-|-----------|-----------|----------|------|
-| 848×480 | 480 | ~15 | YOLO 输入大，精度高 |
-| 640×480 | 320 | ~25 | **当前默认** |
-| 424×240 | 224 | ~35 | 近距离够用 |
-| 424×240 | 160 | ~40 | 球较小时可能漏检 |
+| 相机分辨率 | YOLO imgsz | TRT FPS（估）| PT FPS（估）| 说明 |
+|-----------|-----------|-------------|------------|------|
+| 848×480 | 480 | ~30 | ~12 | YOLO 输入大，精度高 |
+| 640×480 | 320 | **~40** | ~25 | **当前默认** |
+| 424×240 | 224 | ~55 | ~35 | 近距离够用 |
+| 424×240 | 160 | ~65 | ~45 | 球较小时可能漏检 |
 
 调整命令：
 
@@ -601,23 +601,52 @@ python onboard/perception/camera/ball_detector.py --width 424 --height 240 --img
 | 减少 `DEPTH_SAMPLE_RADIUS`（5→2）| patch 从 121→25 点，节约 0.3ms | 低 |
 | 相机帧率降到 30 Hz | 省 USB 带宽，不影响 FPS | 低 |
 
-### 8.3 TensorRT 导出（最推荐）
+### 8.3 TensorRT 导出（已完成）✅
+
+TensorRT 8.5.2 已安装于 `/usr/lib/python3.8/dist-packages/tensorrt`（JetPack 自带）。
+
+**实测数据**（Jetson Orin NX，imgsz=320，FP16）：
+
+| 后端 | 推理时间 | FPS 理论上限 |
+|------|---------|------------|
+| PyTorch FP16 | 22 ms | 46 FPS |
+| TensorRT FP16 | **7.9 ms** | **126 FPS** |
+| 加速比 | — | **2.77×** |
+
+**已完成的工作：**
+1. 导出 `yolov8n.engine`（FP16，imgsz=320）— 文件在 `RoboMimic_Deploy/yolov8n.engine`
+2. `ball_detector.py` 启动时自动检测同目录的 `.engine` 文件，优先使用 TRT
+3. 修复 TRT 8.5 与 numpy 1.24 兼容性问题（`np.bool` 别名移除，在脚本头部打补丁）
+4. 创建 `onboard/perception/camera/run.sh` — 一键设置所有环境变量并启动
+
+**导出方法（如需重新导出）：**
 
 ```bash
-# 在 Jetson 上导出（需要 torch + tensorrt）
+LD_LIBRARY_PATH=/usr/local/cuda-12.1/compat:$LD_LIBRARY_PATH \
+PYTHONPATH=/usr/lib/python3.8/dist-packages:$PYTHONPATH \
 python -c "
+import sys, numpy as np
+if not hasattr(np, 'bool'): np.bool = bool
+sys.path.insert(0, '/usr/lib/python3.8/dist-packages')
 from ultralytics import YOLO
-model = YOLO('yolov8n.pt')
-model.export(format='engine', device=0, half=True, imgsz=320)
+YOLO('yolov8n.pt').export(format='engine', device=0, half=True, imgsz=320, workspace=4)
 "
-# 生成 yolov8n.engine
-
-# 启动时指定
-python onboard/perception/camera/ball_detector.py --model yolov8n.engine
+# 约需 10 分钟（Jetson kernel profiling），生成 yolov8n.engine (8.1 MB)
 ```
 
-TensorRT 在 Jetson 上通常可以把 YOLOv8n 从 25ms 降到 8-12ms，
-整体 FPS 可达 40-50。
+**运行（推荐方式）：**
+
+```bash
+# 一键启动（自动解锁 GPU + 设置 TRT 路径）
+bash onboard/perception/camera/run.sh
+bash onboard/perception/camera/run.sh --show    # 同时开 MJPEG 预览
+bash onboard/perception/camera/run.sh --imgsz 224 --width 424 --height 240  # 更低分辨率
+```
+
+**注意事项：**
+- `.engine` 文件绑定硬件，换 GPU 需重新导出
+- TRT 加载时需 `LD_LIBRARY_PATH=/usr/local/cuda-12.1/compat`（run.sh 已处理）
+- `PYTHONPATH=/usr/lib/python3.8/dist-packages` 让 conda Python 能 `import tensorrt`（run.sh 已处理）
 
 ---
 

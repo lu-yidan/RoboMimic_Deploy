@@ -15,6 +15,15 @@ Usage (on G1 onboard):
 """
 
 import sys
+import numpy as _np_compat
+# TensorRT 8.5 Python binding was built against numpy <1.24 and uses removed
+# aliases (np.bool, np.int, np.float).  Patch them back before any TRT import.
+if not hasattr(_np_compat, 'bool'):   _np_compat.bool   = bool
+if not hasattr(_np_compat, 'int'):    _np_compat.int    = int
+if not hasattr(_np_compat, 'float'):  _np_compat.float  = float
+if not hasattr(_np_compat, 'object'): _np_compat.object = object
+del _np_compat
+
 from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent.parent.parent.absolute()))
 
@@ -98,8 +107,8 @@ def main():
     parser = argparse.ArgumentParser(
         description="RealSense D435 + YOLO ball detector → rt/ball_state"
     )
-    parser.add_argument("--model", default="yolov8n.pt",
-                        help="YOLO model path (default: yolov8n.pt)")
+    parser.add_argument("--model", default="yolo11m.pt",
+                        help="YOLO model path (default: yolo11m.pt; auto-uses .engine if found)")
     parser.add_argument("--imgsz", type=int, default=320,
                         help="YOLO input size in pixels (smaller = faster, default 320)")
     parser.add_argument("--width",  type=int, default=640,
@@ -129,18 +138,31 @@ def main():
     # ── YOLO ─────────────────────────────────────────────────────────────
     import torch
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
-    print(f"[INFO] Loading YOLO model: {args.model}  (device={device})")
-    model = YOLO(args.model)
+
+    # Auto-detect TensorRT engine: if a .engine file exists alongside the
+    # requested .pt model, prefer it (3-4× faster on Jetson).
+    model_path = args.model
+    if model_path.endswith('.pt'):
+        engine_path = model_path.replace('.pt', '.engine')
+        if __import__('os').path.exists(engine_path):
+            model_path = engine_path
+            print(f"[INFO] TensorRT engine found, using: {engine_path}")
+        else:
+            print(f"[INFO] No .engine found at {engine_path}, using .pt")
+    print(f"[INFO] Loading YOLO model: {model_path}  (device={device})")
+    model = YOLO(model_path)
 
     dummy = np.zeros((args.imgsz, args.imgsz, 3), dtype=np.uint8)
-    print("[INFO] YOLO warming up (first run triggers CUDA JIT, takes ~10s)...")
+    is_trt = str(model_path).endswith('.engine')
+    warmup_kw = {} if is_trt else dict(device=device, half=True)
+    print("[INFO] YOLO warming up (first run triggers CUDA JIT / TRT init, takes ~5s)...")
     for i in range(5):
         t_w = time.perf_counter()
-        model(dummy, verbose=False, device=device, half=True)
+        model(dummy, verbose=False, **warmup_kw)
         print(f"[INFO]   warmup[{i}]: {(time.perf_counter()-t_w)*1000:.1f}ms")
     t0 = time.perf_counter()
     for _ in range(10):
-        model(dummy, verbose=False, device=device, half=True)
+        model(dummy, verbose=False, **warmup_kw)
     ms = (time.perf_counter() - t0) / 10 * 1000
     print(f"[INFO] YOLO inference: {ms:.1f} ms/frame  (≈ {1000/ms:.0f} FPS upper bound)")
 
@@ -175,10 +197,14 @@ def main():
     profile = _start_pipeline()
 
     # Color intrinsics — used for rs2_deproject_pixel_to_point (color pixel → 3-D ray)
-    color_profile = profile.get_stream(rs.stream.color).as_video_stream_profile()
-    intrinsics    = color_profile.get_intrinsics()
+    color_profile  = profile.get_stream(rs.stream.color).as_video_stream_profile()
+    intrinsics     = color_profile.get_intrinsics()
+    # Depth scale converts raw uint16 → metres (typically 0.001 for D435)
+    depth_sensor   = profile.get_device().first_depth_sensor()
+    depth_scale    = depth_sensor.get_depth_scale()
     print(f"[INFO] Intrinsics — fx={intrinsics.fx:.1f}  fy={intrinsics.fy:.1f}  "
-          f"ppx={intrinsics.ppx:.1f}  ppy={intrinsics.ppy:.1f}")
+          f"ppx={intrinsics.ppx:.1f}  ppy={intrinsics.ppy:.1f}  "
+          f"depth_scale={depth_scale:.4f}")
 
     # ── Shared state (camera thread → YOLO thread) ────────────────────────
     # We only share the raw frameset; alignment is done in the YOLO thread
@@ -263,25 +289,29 @@ def main():
 
             # Get color and depth frames directly — NO align.process() needed.
             # align.process() remaps the full depth image (~100ms on ARM, holds GIL).
-            # We instead map only the single ball-center pixel later via
-            # rs2_project_color_pixel_to_depth_pixel, which is O(1) (<0.1ms).
+            # We only need depth at one small patch (ball center), sampled later.
             cf = frames.get_color_frame()
             df = frames.get_depth_frame()
             if not cf or not df:
                 continue
             color = np.asanyarray(cf.get_data()).copy()
-            # depth frame kept as rs2 object for direct get_distance() calls
-            depth_frame = df
+            # Copy the full depth array once from DMA into Python heap.
+            # A single numpy copy of the full 640×480 uint16 frame (0.6 MB) takes
+            # ~2ms but is much faster than 121 individual get_distance() calls
+            # (each of which incurs Python call overhead).
+            depth_raw = np.asanyarray(df.get_data())   # DMA view
+            depth_arr = depth_raw.copy()               # move to cache-friendly heap
 
             orig_h, orig_w = color.shape[:2]
             color_small = _cv2.resize(color, (args.imgsz, args.imgsz))
             sx = orig_w / args.imgsz
             sy = orig_h / args.imgsz
 
-            # YOLO detection
+            # YOLO detection — TRT engine ignores device/half (fixed at export)
+            track_kw = {} if is_trt else dict(device=device, half=True)
             results = model.track(color_small, conf=CONF_THRESHOLD,
                                   persist=True, verbose=False,
-                                  device=device, half=True)
+                                  **track_kw)
             best_box  = None
             best_conf = 0.0
             for result in results:
@@ -306,23 +336,17 @@ def main():
                 x1, y1, x2, y2 = last_bbox
                 cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
 
-                # Sample depth at the ball center using get_distance() — O(1), <0.1ms.
-                # D435 color and depth sensors share nearly the same FOV; without
-                # alignment the pixel error is <5px at 1m (< 2cm), acceptable here.
-                # We sample a small patch for robustness and take the median.
-                dw = depth_frame.get_width()
-                dh = depth_frame.get_height()
+                # Sample depth patch around ball center using numpy slice.
+                # D435 color and depth share nearly the same FOV; without
+                # full alignment the pixel error is <5px at 1m (<2cm), fine here.
+                dh, dw = depth_arr.shape
                 x0d = max(0, cx - DEPTH_SAMPLE_RADIUS)
-                x1d = min(dw - 1, cx + DEPTH_SAMPLE_RADIUS)
+                x1d = min(dw, cx + DEPTH_SAMPLE_RADIUS + 1)
                 y0d = max(0, cy - DEPTH_SAMPLE_RADIUS)
-                y1d = min(dh - 1, cy + DEPTH_SAMPLE_RADIUS)
-                samples = [
-                    depth_frame.get_distance(px, py)
-                    for py in range(y0d, y1d + 1)
-                    for px in range(x0d, x1d + 1)
-                ]
-                valid_d = [v for v in samples if DEPTH_MIN < v < DEPTH_MAX]
-                depth_m = float(np.median(valid_d)) if valid_d else 0.0
+                y1d = min(dh, cy + DEPTH_SAMPLE_RADIUS + 1)
+                patch   = depth_arr[y0d:y1d, x0d:x1d].astype(np.float32) * depth_scale
+                valid_d = patch[(patch > DEPTH_MIN) & (patch < DEPTH_MAX)]
+                depth_m = float(np.median(valid_d)) if len(valid_d) > 0 else 0.0
 
                 if depth_m > 0:
                     p_opt = rs.rs2_deproject_pixel_to_point(

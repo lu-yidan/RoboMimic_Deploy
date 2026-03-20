@@ -52,6 +52,8 @@ CONF_THRESHOLD       = 0.3
 DEPTH_SAMPLE_RADIUS  = 5
 DEPTH_MIN            = 0.1   # m
 DEPTH_MAX            = 10.0  # m
+BALL_RADIUS          = 0.115 # m — physical radius; depth sensor sees the front
+                              #     surface, so we add this to get the ball center
 EMA_ALPHA            = 0.6
 EMA_GATE             = 0.6   # m — jump larger than this skips EMA update
 COAST_FRAMES         = 10    # frames to hold last position after YOLO misses
@@ -402,7 +404,11 @@ def main():
                 y1d = min(dh, dy + DEPTH_SAMPLE_RADIUS + 1)
                 patch   = depth_arr[y0d:y1d, x0d:x1d].astype(np.float32) * depth_scale
                 valid_d = patch[(patch > DEPTH_MIN) & (patch < DEPTH_MAX)]
-                depth_m = float(np.median(valid_d)) if len(valid_d) > 0 else 0.0
+                depth_surface = float(np.median(valid_d)) if len(valid_d) > 0 else 0.0
+
+                # The depth reading is to the front surface of the ball.
+                # Shift by BALL_RADIUS along the optical axis to reach the ball center.
+                depth_m = depth_surface + BALL_RADIUS if depth_surface > 0 else 0.0
 
                 if depth_m > 0:
                     p_opt = rs.rs2_deproject_pixel_to_point(
@@ -434,7 +440,8 @@ def main():
 
                     status = "BALL " if detected else "COAST"
                     print(f"\r[{status}] pelvis=({x:+.3f}, {y:+.3f}, {z:+.3f})  "
-                          f"d={depth_m:.2f}m  gate={gate_dist:.2f}m  YOLO={yolo_fps.fps:4.1f}fps",
+                          f"surf={depth_surface:.2f}m  ctr={depth_m:.2f}m  "
+                          f"gate={gate_dist:.2f}m  YOLO={yolo_fps.fps:4.1f}fps",
                           end="", flush=True)
 
             if not published_valid:

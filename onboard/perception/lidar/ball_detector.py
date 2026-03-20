@@ -42,9 +42,16 @@ from common.ball_state_dds import BallStatePublisher
 
 def estimate_ball_center_ls(points, r=0.115, offset=0.05, max_iter=10):
     """Fit sphere of known radius r to point cloud. Returns center (3,)."""
-    c = points.mean(axis=0).astype(np.float64)
-    offset_in_dir = c/np.linalg.norm(c) * offset
-    return c + offset_in_dir
+    center = points.mean(axis=0).astype(np.float64)
+    dist   = np.linalg.norm(points - center, axis=1)
+    core   = points[dist < 0.2]
+    # If the 0.2m neighbourhood is empty (e.g. scattered noise), fall back
+    # to the full-set centroid so we never produce NaN.
+    c = core.mean(axis=0).astype(np.float64) if len(core) > 0 else center
+    norm_c = np.linalg.norm(c)
+    if norm_c < 1e-6:
+        return c   # guard against divide-by-zero at the origin
+    return c + c / norm_c * offset
     # for _ in range(max_iter):
     #     v     = points - c[None, :]
     #     dist  = np.linalg.norm(v, axis=1) + 1e-9
@@ -68,7 +75,7 @@ class BallDetector(Node):
 
         # ---- Detection params ----
         self.r           = 0.115   # ball radius [m]
-        self.reflect_thr = 150
+        self.reflect_thr = 149
         self.min_points  = 4
         self.max_range   = 1.8
         self.min_range   = 0.2
@@ -76,7 +83,7 @@ class BallDetector(Node):
         self.z_high      =  1.5
         self.x_low       =  0.0
         self.x_high      =  5.0
-        self.center_offset = 0.05  # [m], adjustable at runtime from keyboard
+        self.center_offset = 0.085  # [m], adjustable at runtime from keyboard
 
         # ---- Temporal smoothing (Kalman filter) ----
         self.center_kf = CenterKalmanFilter()
@@ -102,6 +109,20 @@ class BallDetector(Node):
         self.create_subscription(LowState, "/lowstate",
                                  self.cb_lowstate, qos_profile_sensor_data)
 
+        # ---- Worker thread: heavy processing decoupled from ROS callback ----
+        # cb_lidar() just swaps the message reference (O(1), non-blocking).
+        # All numpy/RViz work runs here, so the ROS executor stays responsive
+        # and /lowstate at 500 Hz never starves the lidar processing.
+        self._buf_lock       = threading.Lock()
+        self._buf_msg        = None
+        self._buf_recv_wall  = None
+        self._buf_event      = threading.Event()
+        self._stop_flag = threading.Event()
+        self._worker_thread = threading.Thread(
+            target=self._process_loop, daemon=True
+        )
+        self._worker_thread.start()
+
         # ---- Keyboard control for center offset ----
         self._keyboard_thread = None
         self._keyboard_running = False
@@ -119,75 +140,157 @@ class BallDetector(Node):
         self.q_wr = q[13]
         self.q_wp = q[14]
 
+    def cb_lidar(self, msg: CustomMsg):
+        # Non-blocking: just hand the message to the worker thread.
+        # Python GIL ensures the reference swap is atomic.
+        recv_wall = time.time()   # wall-clock when ROS delivered this message
+        with self._buf_lock:
+            self._buf_msg      = msg
+            self._buf_recv_wall = recv_wall
+        self._buf_event.set()
+
     # ------------------------------------------------------------------
 
-    def cb_lidar(self, msg: CustomMsg):
-        t0    = time.time()
-        pts   = msg.points
-        stamp = msg.header.stamp
-        if not pts:
-            self._publish_invalid()
-            return
+    def _process_loop(self):
+        """Worker thread — all heavy processing runs here, not in the callback."""
+        _frame_n       = 0
+        _prev_lidar_ts = None   # lidar header stamp of previous frame (seconds)
+        _prev_recv_wall = None  # wall-clock receipt time of previous frame
 
-        xyz  = np.empty((len(pts), 3), dtype=np.float32)
-        refl = np.empty((len(pts),),   dtype=np.int16)
-        for i, p in enumerate(pts):
-            xyz[i]  = (p.x, p.y, p.z)
-            refl[i] = p.reflectivity
+        while not self._stop_flag.is_set():
+            if not self._buf_event.wait(timeout=1.0):
+                continue
+            self._buf_event.clear()
 
-        d    = np.linalg.norm(xyz, axis=1)
-        mask = (
-            (refl >= self.reflect_thr) &
-            (d    >= self.min_range) & (d    <= self.max_range) &
-            (xyz[:, 2] >= self.z_low)  & (xyz[:, 2] <= self.z_high) &
-            (xyz[:, 0] >= self.x_low)  & (xyz[:, 0] <= self.x_high)
-        )
-        cand = xyz[mask]
+            t_worker_start = time.time()   # wall-clock when worker wakes up
 
-        # Publish full cloud + candidates regardless of detection outcome.
-        self._rviz.publish_clouds(xyz, cand, stamp)
+            with self._buf_lock:
+                msg       = self._buf_msg
+                recv_wall = self._buf_recv_wall
 
-        if cand.shape[0] < self.min_points:
-            self._publish_invalid()
-            return
+            t0    = time.perf_counter()
+            pts   = msg.points
+            stamp = msg.header.stamp
+            n     = len(pts)
 
-        center_lidar = estimate_ball_center_ls(
-            cand,
-            r=self.r,
-            offset=self.center_offset,
-        )
-        self.get_logger().info(
-            f"ball (raw): ({center_lidar[0]:.3f}, {center_lidar[1]:.3f}, {center_lidar[2]:.3f})"
-        )
-        self._rviz.publish_ball_raw(center_lidar, stamp)
+            # ── Timestamp diagnostics ─────────────────────────────────
+            # lidar_ts  : header stamp embedded by the Livox driver
+            # recv_wall : wall-clock when cb_lidar() was called by ROS
+            # t_worker  : wall-clock when worker picked up the message
+            lidar_ts = stamp.sec + stamp.nanosec * 1e-9
 
-        now = time.time()
-        if self._last_lidar_ts is None:
-            dt = 0.1
-        else:
-            dt = now - self._last_lidar_ts
-        self._last_lidar_ts = now
-        center_filtered = self.center_kf.step(center_lidar, dt)
-        self.get_logger().info(
-            f"ball (kf): ({center_filtered[0]:.3f}, {center_filtered[1]:.3f}, {center_filtered[2]:.3f})"
-        )
-        self._rviz.publish_ball_kf(center_filtered, stamp)
+            dt_lidar_ms  = (lidar_ts       - _prev_lidar_ts)  * 1000 if _prev_lidar_ts  else float('nan')
+            dt_recv_ms   = (recv_wall      - _prev_recv_wall)  * 1000 if _prev_recv_wall else float('nan')
+            age_ms       = (t_worker_start - recv_wall)        * 1000  # how stale the msg is
 
-        center_base = transform_point_mid360_to_base(
-            center_filtered,
-            self.q_wy, self.q_wr, self.q_wp, self.q_head, self.q_mid,
-        )
+            _prev_lidar_ts  = lidar_ts
+            _prev_recv_wall = recv_wall
 
-        x, y, z = float(center_base[0]), float(center_base[1]), float(center_base[2])
-        # self._dds.publish(x, y, z, valid=True)
+            print(
+                f"\n[TS] lidar_stamp={lidar_ts:.3f}  "
+                f"Δlidar={dt_lidar_ms:6.1f}ms  "
+                f"Δrecv={dt_recv_ms:6.1f}ms  "
+                f"age={age_ms:5.1f}ms",
+                flush=True,
+            )
 
-        dt_ms = (time.time() - t0) * 1000.0
-        self._rviz.publish_text(center_filtered, cand.shape[0],
-                                self.center_offset, dt_ms, stamp)
-        self.get_logger().info(
-            f"ball (pelvis): ({x:.3f}, {y:.3f}, {z:.3f})  "
-            f"cand={cand.shape[0]}  cost={dt_ms:.1f}ms"
-        )
+            if n == 0:
+                self._publish_invalid()
+                continue
+
+            # ── 2-Pass deserialization ────────────────────────────────
+            # Root cause of the original 200-300 ms cost:
+            #   4-field tuple comprehension × 20000 pts = 80000 Python
+            #   attribute accesses on ROS2 message objects → ~200 ms.
+            #
+            # Fix: split into two cheap passes.
+            #
+            # Pass 1 — reflectivity only (1 attr × N points)
+            #   Typical high-reflectivity ball hits: M ≈ 10-200 pts << N
+            refl_all = np.array([p.reflectivity for p in pts], dtype=np.uint8)
+            t_pass1 = time.perf_counter()
+
+            # Pass 2a — xyz only for high-refl candidates (3 attr × M)
+            high_idx = np.where(refl_all >= self.reflect_thr)[0].tolist()
+            if high_idx:
+                cand_raw = np.array(
+                    [(pts[i].x, pts[i].y, pts[i].z) for i in high_idx],
+                    dtype=np.float32,
+                )
+                d_c  = np.linalg.norm(cand_raw, axis=1)
+                roi  = (
+                    (d_c >= self.min_range) & (d_c <= self.max_range) &
+                    (cand_raw[:, 2] >= self.z_low)  & (cand_raw[:, 2] <= self.z_high) &
+                    (cand_raw[:, 0] >= self.x_low)  & (cand_raw[:, 0] <= self.x_high)
+                )
+                cand = cand_raw[roi]
+            else:
+                cand = np.zeros((0, 3), dtype=np.float32)
+            t_pass2a = time.perf_counter()
+
+            # Pass 2b — downsampled xyz for cloud_all display (~3000 pts)
+            # Full 20000-pt cloud is not needed for RViz debugging.
+            step     = max(1, n // 3000)
+            xyz_disp = np.array(
+                [(p.x, p.y, p.z) for p in pts[::step]],
+                dtype=np.float32,
+            )
+            t_pass2b = time.perf_counter()
+
+            self._rviz.publish_clouds(xyz_disp, cand, stamp)
+            t_pub = time.perf_counter()
+
+            if cand.shape[0] < self.min_points:
+                self._publish_invalid()
+                if _frame_n % 30 == 0:
+                    print(
+                        f"\r[lidar] no ball  n={n} hi={len(high_idx)} cand={cand.shape[0]}  "
+                        f"refl={1000*(t_pass1-t0):.0f}ms "
+                        f"cand_xyz={1000*(t_pass2a-t_pass1):.0f}ms "
+                        f"disp_xyz={1000*(t_pass2b-t_pass2a):.0f}ms "
+                        f"pub={1000*(t_pub-t_pass2b):.0f}ms",
+                        end="", flush=True,
+                    )
+                _frame_n += 1
+                continue
+
+            center_lidar = estimate_ball_center_ls(
+                cand, r=self.r, offset=self.center_offset,
+            )
+            self._rviz.publish_ball_raw(center_lidar, stamp)
+
+            now = time.time()
+            dt  = 0.1 if self._last_lidar_ts is None else now - self._last_lidar_ts
+            self._last_lidar_ts = now
+            center_filtered = self.center_kf.step(center_lidar, dt)
+            self._rviz.publish_ball_kf(center_filtered, stamp)
+
+            center_base = transform_point_mid360_to_base(
+                center_filtered,
+                self.q_wy, self.q_wr, self.q_wp, self.q_head, self.q_mid,
+            )
+
+            x, y, z = float(center_base[0]), float(center_base[1]), float(center_base[2])
+            # self._dds.publish(x, y, z, valid=True)
+
+            dt_ms = (time.perf_counter() - t0) * 1000.0
+            self._rviz.publish_text(center_filtered, cand.shape[0],
+                                    self.center_offset, dt_ms, stamp)
+
+            # Throttle console output to every 10 frames to avoid I/O overhead.
+            _frame_n += 1
+            if _frame_n % 10 == 0:
+                print(
+                    f"\r[lidar] pelvis=({x:+.3f},{y:+.3f},{z:+.3f})  "
+                    f"raw=({center_lidar[0]:.3f},{center_lidar[1]:.3f},{center_lidar[2]:.3f})  "
+                    f"n={n} hi={len(high_idx)} cand={cand.shape[0]}  "
+                    f"refl={1000*(t_pass1-t0):.0f}ms "
+                    f"cand_xyz={1000*(t_pass2a-t_pass1):.0f}ms "
+                    f"disp_xyz={1000*(t_pass2b-t_pass2a):.0f}ms "
+                    f"pub={1000*(t_pub-t_pass2b):.0f}ms "
+                    f"total={dt_ms:.0f}ms",
+                    end="", flush=True,
+                )
 
     def _publish_invalid(self):
         if self.center_kf.initialized:
@@ -234,6 +337,9 @@ class BallDetector(Node):
                 self.get_logger().info(f"center_offset reset to {self.center_offset:.3f} m")
 
     def destroy_node(self):
+        self._stop_flag.set()
+        self._buf_event.set()          # unblock worker if waiting
+        self._worker_thread.join(timeout=2)
         self._keyboard_running = False
         if self._stdin_fd is not None and self._stdin_old_term is not None:
             termios.tcsetattr(self._stdin_fd, termios.TCSADRAIN, self._stdin_old_term)
@@ -245,8 +351,15 @@ class BallDetector(Node):
 def main():
     rclpy.init()
     node = BallDetector()
+    # Use spin_once + sleep instead of spin() to avoid /lowstate 500 Hz
+    # saturating the GIL and starving the worker thread.  The sleep yields
+    # the GIL every 2 ms so the worker thread can run Python between spins.
     try:
-        rclpy.spin(node)
+        while rclpy.ok():
+            rclpy.spin_once(node, timeout_sec=0.0)
+            time.sleep(0.002)
+    except KeyboardInterrupt:
+        pass
     finally:
         node.destroy_node()
         rclpy.shutdown()

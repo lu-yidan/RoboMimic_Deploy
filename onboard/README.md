@@ -13,7 +13,10 @@ onboard/
 └── perception/
     ├── lidar/
     │   ├── ball_detector.py      ← 主服务：MID360 点云 → 球心检测 → DDS 发布
-    │   └── mid360_to_base.py    ← 坐标变换：MID360 系 → pelvis (base) 系
+    │   ├── rviz_publisher.py     ← RViz2 可视化：点云 + Marker 发布
+    │   ├── center_kalman_filter.py ← 卡尔曼滤波平滑球心轨迹
+    │   ├── mid360_to_base.py     ← 坐标变换：MID360 系 → pelvis (base) 系
+    │   └── README.md             ← Lidar 使用手册（含 RViz2 配置）
     └── camera/
         ├── ball_detector.py      ← 主服务：RealSense D435 + YOLO11m TRT → DDS 发布
         ├── camera_to_base.py    ← 坐标变换：相机系 → pelvis (base) 系

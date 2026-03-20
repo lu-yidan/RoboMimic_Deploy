@@ -32,6 +32,7 @@ from unitree_hg.msg import LowState
 
 from onboard.perception.lidar.center_kalman_filter import CenterKalmanFilter
 from onboard.perception.lidar.mid360_to_base import transform_point_mid360_to_base
+from onboard.perception.lidar.rviz_publisher import RvizPublisher
 from common.ball_state_dds import BallStatePublisher
 
 
@@ -68,7 +69,7 @@ class BallDetector(Node):
         # ---- Detection params ----
         self.r           = 0.115   # ball radius [m]
         self.reflect_thr = 150
-        self.min_points  = 3
+        self.min_points  = 4
         self.max_range   = 1.8
         self.min_range   = 0.2
         self.z_low       = -1.5
@@ -91,6 +92,9 @@ class BallDetector(Node):
         # ---- DDS publisher ----
         self._dds = BallStatePublisher(domain_id=0)
         self.get_logger().info("DDS publisher ready on 'rt/ball_state'")
+
+        # ---- RViz2 publisher ----
+        self._rviz = RvizPublisher(self, frame_id="livox_frame", ball_r=self.r)
 
         # ---- ROS2 subscriptions ----
         self.create_subscription(CustomMsg, "/livox/lidar",
@@ -118,8 +122,9 @@ class BallDetector(Node):
     # ------------------------------------------------------------------
 
     def cb_lidar(self, msg: CustomMsg):
-        t0  = time.time()
-        pts = msg.points
+        t0    = time.time()
+        pts   = msg.points
+        stamp = msg.header.stamp
         if not pts:
             self._publish_invalid()
             return
@@ -139,6 +144,9 @@ class BallDetector(Node):
         )
         cand = xyz[mask]
 
+        # Publish full cloud + candidates regardless of detection outcome.
+        self._rviz.publish_clouds(xyz, cand, stamp)
+
         if cand.shape[0] < self.min_points:
             self._publish_invalid()
             return
@@ -148,6 +156,10 @@ class BallDetector(Node):
             r=self.r,
             offset=self.center_offset,
         )
+        self.get_logger().info(
+            f"ball (raw): ({center_lidar[0]:.3f}, {center_lidar[1]:.3f}, {center_lidar[2]:.3f})"
+        )
+        self._rviz.publish_ball_raw(center_lidar, stamp)
 
         now = time.time()
         if self._last_lidar_ts is None:
@@ -156,6 +168,10 @@ class BallDetector(Node):
             dt = now - self._last_lidar_ts
         self._last_lidar_ts = now
         center_filtered = self.center_kf.step(center_lidar, dt)
+        self.get_logger().info(
+            f"ball (kf): ({center_filtered[0]:.3f}, {center_filtered[1]:.3f}, {center_filtered[2]:.3f})"
+        )
+        self._rviz.publish_ball_kf(center_filtered, stamp)
 
         center_base = transform_point_mid360_to_base(
             center_filtered,
@@ -163,9 +179,11 @@ class BallDetector(Node):
         )
 
         x, y, z = float(center_base[0]), float(center_base[1]), float(center_base[2])
-        self._dds.publish(x, y, z, valid=True)
+        # self._dds.publish(x, y, z, valid=True)
 
         dt_ms = (time.time() - t0) * 1000.0
+        self._rviz.publish_text(center_filtered, cand.shape[0],
+                                self.center_offset, dt_ms, stamp)
         self.get_logger().info(
             f"ball (pelvis): ({x:.3f}, {y:.3f}, {z:.3f})  "
             f"cand={cand.shape[0]}  cost={dt_ms:.1f}ms"

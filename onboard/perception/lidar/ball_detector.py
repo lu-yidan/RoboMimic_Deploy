@@ -75,7 +75,7 @@ class BallDetector(Node):
 
         # ---- Detection params ----
         self.r           = 0.115   # ball radius [m]
-        self.reflect_thr = 149
+        self.reflect_thr = 130
         self.min_points  = 4
         self.max_range   = 1.8
         self.min_range   = 0.2
@@ -123,12 +123,8 @@ class BallDetector(Node):
         )
         self._worker_thread.start()
 
-        # ---- Keyboard control for center offset ----
-        self._keyboard_thread = None
-        self._keyboard_running = False
         self._stdin_fd = None
         self._stdin_old_term = None
-        self._start_keyboard_listener()
 
         self.get_logger().info("BallDetector ready.")
 
@@ -186,13 +182,13 @@ class BallDetector(Node):
             _prev_lidar_ts  = lidar_ts
             _prev_recv_wall = recv_wall
 
-            print(
-                f"\n[TS] lidar_stamp={lidar_ts:.3f}  "
-                f"Δlidar={dt_lidar_ms:6.1f}ms  "
-                f"Δrecv={dt_recv_ms:6.1f}ms  "
-                f"age={age_ms:5.1f}ms",
-                flush=True,
-            )
+            # print(
+            #     f"\n[TS] lidar_stamp={lidar_ts:.3f}  "
+            #     f"Δlidar={dt_lidar_ms:6.1f}ms  "
+            #     f"Δrecv={dt_recv_ms:6.1f}ms  "
+            #     f"age={age_ms:5.1f}ms",
+            #     flush=True,
+            # )
 
             if n == 0:
                 self._publish_invalid()
@@ -262,11 +258,11 @@ class BallDetector(Node):
             now = time.time()
             dt  = 0.1 if self._last_lidar_ts is None else now - self._last_lidar_ts
             self._last_lidar_ts = now
-            center_filtered = self.center_kf.step(center_lidar, dt)
-            self._rviz.publish_ball_kf(center_filtered, stamp)
+            # center_filtered = self.center_kf.step(center_lidar, dt)
+            # self._rviz.publish_ball_kf(center_filtered, stamp)
 
             center_base = transform_point_mid360_to_base(
-                center_filtered,
+                center_lidar,
                 self.q_wy, self.q_wr, self.q_wp, self.q_head, self.q_mid,
             )
 
@@ -274,12 +270,12 @@ class BallDetector(Node):
             # self._dds.publish(x, y, z, valid=True)
 
             dt_ms = (time.perf_counter() - t0) * 1000.0
-            self._rviz.publish_text(center_filtered, cand.shape[0],
-                                    self.center_offset, dt_ms, stamp)
+            # self._rviz.publish_text(center_filtered, cand.shape[0],
+            #                         self.center_offset, dt_ms, stamp)
 
             # Throttle console output to every 10 frames to avoid I/O overhead.
             _frame_n += 1
-            if _frame_n % 10 == 0:
+            if _frame_n % 1 == 0:
                 print(
                     f"\r[lidar] pelvis=({x:+.3f},{y:+.3f},{z:+.3f})  "
                     f"raw=({center_lidar[0]:.3f},{center_lidar[1]:.3f},{center_lidar[2]:.3f})  "
@@ -302,45 +298,10 @@ class BallDetector(Node):
         else:
             self._dds.publish(0.0, 0.0, 0.0, valid=False)
 
-    def _start_keyboard_listener(self):
-        if not sys.stdin.isatty():
-            self.get_logger().warn("Keyboard offset control disabled (stdin is not a TTY).")
-            return
-
-        self._stdin_fd = sys.stdin.fileno()
-        self._stdin_old_term = termios.tcgetattr(self._stdin_fd)
-        tty.setcbreak(self._stdin_fd)
-        self._keyboard_running = True
-        self._keyboard_thread = threading.Thread(
-            target=self._keyboard_loop, daemon=True
-        )
-        self._keyboard_thread.start()
-        self.get_logger().info(
-            "Offset keys: '+' increase, '-' decrease, '0' reset."
-        )
-
-    def _keyboard_loop(self):
-        step = 0.005
-        while self._keyboard_running:
-            ready, _, _ = select.select([sys.stdin], [], [], 0.1)
-            if not ready:
-                continue
-            ch = sys.stdin.read(1)
-            if ch in ["+", "="]:
-                self.center_offset += step
-                self.get_logger().info(f"center_offset = {self.center_offset:.3f} m")
-            elif ch in ["-", "_"]:
-                self.center_offset = max(0.0, self.center_offset - step)
-                self.get_logger().info(f"center_offset = {self.center_offset:.3f} m")
-            elif ch == "0":
-                self.center_offset = 0.05
-                self.get_logger().info(f"center_offset reset to {self.center_offset:.3f} m")
-
     def destroy_node(self):
         self._stop_flag.set()
         self._buf_event.set()          # unblock worker if waiting
         self._worker_thread.join(timeout=2)
-        self._keyboard_running = False
         if self._stdin_fd is not None and self._stdin_old_term is not None:
             termios.tcsetattr(self._stdin_fd, termios.TCSADRAIN, self._stdin_old_term)
         return super().destroy_node()

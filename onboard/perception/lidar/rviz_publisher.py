@@ -27,6 +27,7 @@ import struct
 import numpy as np
 
 from rclpy.node import Node
+from rclpy.qos import qos_profile_sensor_data
 from builtin_interfaces.msg import Duration
 from std_msgs.msg import ColorRGBA, Header
 from geometry_msgs.msg import Point, Vector3

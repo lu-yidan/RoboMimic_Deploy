@@ -17,6 +17,10 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent.parent.parent.absolute()))
 
 import time
+import threading
+import select
+import termios
+import tty
 import numpy as np
 
 import rclpy
@@ -35,10 +39,9 @@ from common.ball_state_dds import BallStatePublisher
 # Least-squares ball center estimator
 # ---------------------------------------------------------------------------
 
-def estimate_ball_center_ls(points, r=0.115, max_iter=10):
+def estimate_ball_center_ls(points, r=0.115, offset=0.05, max_iter=10):
     """Fit sphere of known radius r to point cloud. Returns center (3,)."""
     c = points.mean(axis=0).astype(np.float64)
-    offset = 0.05
     offset_in_dir = c/np.linalg.norm(c) * offset
     return c + offset_in_dir
     # for _ in range(max_iter):
@@ -72,6 +75,7 @@ class BallDetector(Node):
         self.z_high      =  1.5
         self.x_low       =  0.0
         self.x_high      =  5.0
+        self.center_offset = 0.05  # [m], adjustable at runtime from keyboard
 
         # ---- Temporal smoothing (Kalman filter) ----
         self.center_kf = CenterKalmanFilter()
@@ -93,6 +97,13 @@ class BallDetector(Node):
                                  self.cb_lidar, 5)
         self.create_subscription(LowState, "/lowstate",
                                  self.cb_lowstate, qos_profile_sensor_data)
+
+        # ---- Keyboard control for center offset ----
+        self._keyboard_thread = None
+        self._keyboard_running = False
+        self._stdin_fd = None
+        self._stdin_old_term = None
+        self._start_keyboard_listener()
 
         self.get_logger().info("BallDetector ready.")
 
@@ -132,7 +143,11 @@ class BallDetector(Node):
             self._publish_invalid()
             return
 
-        center_lidar = estimate_ball_center_ls(cand, self.r)
+        center_lidar = estimate_ball_center_ls(
+            cand,
+            r=self.r,
+            offset=self.center_offset,
+        )
 
         now = time.time()
         if self._last_lidar_ts is None:
@@ -165,6 +180,46 @@ class BallDetector(Node):
             self._dds.publish(float(cb[0]), float(cb[1]), float(cb[2]), valid=False)
         else:
             self._dds.publish(0.0, 0.0, 0.0, valid=False)
+
+    def _start_keyboard_listener(self):
+        if not sys.stdin.isatty():
+            self.get_logger().warn("Keyboard offset control disabled (stdin is not a TTY).")
+            return
+
+        self._stdin_fd = sys.stdin.fileno()
+        self._stdin_old_term = termios.tcgetattr(self._stdin_fd)
+        tty.setcbreak(self._stdin_fd)
+        self._keyboard_running = True
+        self._keyboard_thread = threading.Thread(
+            target=self._keyboard_loop, daemon=True
+        )
+        self._keyboard_thread.start()
+        self.get_logger().info(
+            "Offset keys: '+' increase, '-' decrease, '0' reset."
+        )
+
+    def _keyboard_loop(self):
+        step = 0.005
+        while self._keyboard_running:
+            ready, _, _ = select.select([sys.stdin], [], [], 0.1)
+            if not ready:
+                continue
+            ch = sys.stdin.read(1)
+            if ch in ["+", "="]:
+                self.center_offset += step
+                self.get_logger().info(f"center_offset = {self.center_offset:.3f} m")
+            elif ch in ["-", "_"]:
+                self.center_offset = max(0.0, self.center_offset - step)
+                self.get_logger().info(f"center_offset = {self.center_offset:.3f} m")
+            elif ch == "0":
+                self.center_offset = 0.05
+                self.get_logger().info(f"center_offset reset to {self.center_offset:.3f} m")
+
+    def destroy_node(self):
+        self._keyboard_running = False
+        if self._stdin_fd is not None and self._stdin_old_term is not None:
+            termios.tcsetattr(self._stdin_fd, termios.TCSADRAIN, self._stdin_old_term)
+        return super().destroy_node()
 
 
 # ---------------------------------------------------------------------------

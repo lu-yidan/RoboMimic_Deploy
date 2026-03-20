@@ -281,7 +281,9 @@ p_optical [X, Y, Z]（光学坐标系：Z前，X右，Y下）
         ▼ optical_to_body()
 p_cam（camera body 系：X前，Y左，Z上）
         │
-        ▼ EMA 时间滤波（α=0.6，跳变门限 0.6m）
+        ▼ EMA 时间滤波（α=0.6）
+        │   跳变 < 0.6m → EMA 更新：center = 0.6×新 + 0.4×旧
+        │   跳变 ≥ 0.6m → [WARN] 打印 + 直接重置（避免永久冻结）
 p_cam（平滑后）
         │
         ▼ transform_point_camera_to_base()
@@ -317,7 +319,7 @@ dds.publish(x, y, z, valid=True)
 
 ## 参数调整
 
-`ball_detector.py` 中可调整的检测参数：
+### Lidar 方案（`onboard/perception/lidar/ball_detector.py`）
 
 | 参数 | 默认值 | 含义 |
 |------|--------|------|
@@ -328,3 +330,25 @@ dds.publish(x, y, z, valid=True)
 | `x_low / x_high` | 0~5 m | 仅检测机器人正前方区域 |
 | `z_low / z_high` | ±1.5 m | 高度范围 |
 | `alpha` | 0.6 | EMA 平滑系数，越大跟踪越灵敏，越小越平滑 |
+
+### Camera 方案（`onboard/perception/camera/ball_detector.py`）
+
+**代码常量**（直接修改源文件）：
+
+| 常量 | 默认值 | 含义 |
+|------|--------|------|
+| `CONF_THRESHOLD` | 0.3 | YOLO 置信度阈值，调高可减少误检 |
+| `DEPTH_SAMPLE_RADIUS` | 5 | 深度采样半径（像素），采样区域为 (2R+1)² |
+| `DEPTH_MIN / DEPTH_MAX` | 0.1 / 10.0 m | 有效深度范围，过滤无效深度值 |
+| `EMA_ALPHA` | 0.6 | EMA 平滑系数，越大响应越快，越小越平滑 |
+| `EMA_GATE` | 0.6 m | 跳变重置门限，超过此距离时 EMA 直接重置 |
+| `COAST_FRAMES` | 10 | YOLO 漏检时保持上一帧位置的最大帧数 |
+
+**命令行参数**：
+
+| 参数 | 默认值 | 含义 |
+|------|--------|------|
+| `--model` | `models/yolo11m.pt` | 模型路径（自动检测同名 `.engine`） |
+| `--imgsz` | 320 | YOLO 输入分辨率，越小越快，越大越准 |
+| `--width / --height` | 640 / 480 | 相机采集分辨率 |
+| `--show` | False | 开启 MJPEG 预览流（port 8080） |

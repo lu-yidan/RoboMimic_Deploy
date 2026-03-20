@@ -1,0 +1,61 @@
+import numpy as np
+
+
+class CenterKalmanFilter:
+    """Simple 3D constant-velocity Kalman filter for ball center."""
+
+    def __init__(self):
+        # State: [x, y, z, vx, vy, vz]
+        self.x = np.zeros((6, 1), dtype=np.float64)
+        self.P = np.eye(6, dtype=np.float64) * 1.0
+        self.H = np.zeros((3, 6), dtype=np.float64)
+        self.H[0, 0] = 1.0
+        self.H[1, 1] = 1.0
+        self.H[2, 2] = 1.0
+        self.Q_base = np.diag([0.01, 0.01, 0.01, 0.3, 0.3, 0.3]).astype(np.float64)
+        self.R = np.diag([0.02, 0.02, 0.02]).astype(np.float64)
+        self.initialized = False
+        self.max_jump = 0.8  # measurement gating distance [m]
+
+    def _state_transition(self, dt: float):
+        F = np.eye(6, dtype=np.float64)
+        F[0, 3] = dt
+        F[1, 4] = dt
+        F[2, 5] = dt
+        return F
+
+    def predict(self, dt: float):
+        F = self._state_transition(dt)
+        self.x = F @ self.x
+        self.P = F @ self.P @ F.T + self.Q_base
+
+    def update(self, z: np.ndarray):
+        z = np.asarray(z, dtype=np.float64).reshape(3, 1)
+        y = z - (self.H @ self.x)
+        S = self.H @ self.P @ self.H.T + self.R
+        K = self.P @ self.H.T @ np.linalg.inv(S)
+        self.x = self.x + K @ y
+        I = np.eye(6, dtype=np.float64)
+        self.P = (I - K @ self.H) @ self.P
+
+    def reset(self, z: np.ndarray):
+        z = np.asarray(z, dtype=np.float64).reshape(3,)
+        self.x[:] = 0.0
+        self.x[0, 0], self.x[1, 0], self.x[2, 0] = z[0], z[1], z[2]
+        self.P = np.eye(6, dtype=np.float64) * 0.5
+        self.initialized = True
+
+    def step(self, z: np.ndarray, dt: float):
+        z = np.asarray(z, dtype=np.float64).reshape(3,)
+        if not self.initialized:
+            self.reset(z)
+            return self.position
+
+        self.predict(max(dt, 1e-3))
+        if np.linalg.norm(z - self.position) <= self.max_jump:
+            self.update(z)
+        return self.position
+
+    @property
+    def position(self):
+        return self.x[:3, 0].astype(np.float32)

@@ -26,6 +26,7 @@ from rclpy.qos import qos_profile_sensor_data
 from livox_ros_driver2.msg import CustomMsg
 from unitree_hg.msg import LowState
 
+from onboard.perception.lidar.center_kalman_filter import CenterKalmanFilter
 from onboard.perception.lidar.mid360_to_base import transform_point_mid360_to_base
 from common.ball_state_dds import BallStatePublisher
 
@@ -37,17 +38,20 @@ from common.ball_state_dds import BallStatePublisher
 def estimate_ball_center_ls(points, r=0.115, max_iter=10):
     """Fit sphere of known radius r to point cloud. Returns center (3,)."""
     c = points.mean(axis=0).astype(np.float64)
-    for _ in range(max_iter):
-        v     = points - c[None, :]
-        dist  = np.linalg.norm(v, axis=1) + 1e-9
-        resid = dist - r
-        J     = -(v / dist[:, None])
-        A     = J.T @ J + 1e-6 * np.eye(3)
-        dc    = np.linalg.solve(A, -J.T @ resid)
-        c    += dc
-        if np.linalg.norm(dc) < 1e-5:
-            break
-    return c.astype(np.float32)
+    offset = 0.05
+    offset_in_dir = c/np.linalg.norm(c) * offset
+    return c + offset_in_dir
+    # for _ in range(max_iter):
+    #     v     = points - c[None, :]
+    #     dist  = np.linalg.norm(v, axis=1) + 1e-9
+    #     resid = dist - r
+    #     J     = -(v / dist[:, None])
+    #     A     = J.T @ J + 1e-6 * np.eye(3)
+    #     dc    = np.linalg.solve(A, -J.T @ resid)
+    #     c    += dc
+    #     if np.linalg.norm(dc) < 1e-5:
+    #         break
+    # return c.astype(np.float32)
 
 
 # ---------------------------------------------------------------------------
@@ -69,9 +73,9 @@ class BallDetector(Node):
         self.x_low       =  0.0
         self.x_high      =  5.0
 
-        # ---- Temporal smoothing (EMA) ----
-        self.alpha      = 0.6
-        self.center_ema = None
+        # ---- Temporal smoothing (Kalman filter) ----
+        self.center_kf = CenterKalmanFilter()
+        self._last_lidar_ts = None
 
         # ---- Joint angles (updated from /lowstate) ----
         self.q_wy   = 0.0
@@ -130,15 +134,16 @@ class BallDetector(Node):
 
         center_lidar = estimate_ball_center_ls(cand, self.r)
 
-        # EMA with gating
-        if self.center_ema is None:
-            self.center_ema = center_lidar
-        elif np.linalg.norm(center_lidar - self.center_ema) < 0.6:
-            self.center_ema = (self.alpha * center_lidar
-                               + (1.0 - self.alpha) * self.center_ema)
+        now = time.time()
+        if self._last_lidar_ts is None:
+            dt = 0.1
+        else:
+            dt = now - self._last_lidar_ts
+        self._last_lidar_ts = now
+        center_filtered = self.center_kf.step(center_lidar, dt)
 
         center_base = transform_point_mid360_to_base(
-            self.center_ema,
+            center_filtered,
             self.q_wy, self.q_wr, self.q_wp, self.q_head, self.q_mid,
         )
 
@@ -152,9 +157,9 @@ class BallDetector(Node):
         )
 
     def _publish_invalid(self):
-        if self.center_ema is not None:
+        if self.center_kf.initialized:
             cb = transform_point_mid360_to_base(
-                self.center_ema,
+                self.center_kf.position,
                 self.q_wy, self.q_wr, self.q_wp, self.q_head, self.q_mid,
             )
             self._dds.publish(float(cb[0]), float(cb[1]), float(cb[2]), valid=False)

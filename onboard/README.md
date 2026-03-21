@@ -18,9 +18,13 @@ onboard/
     │   ├── mid360_to_base.py     ← 坐标变换：MID360 系 → pelvis (base) 系
     │   └── README.md             ← Lidar 使用手册（含 RViz2 配置）
     └── camera/
-        ├── ball_detector.py      ← 主服务：RealSense D435 + YOLO11m TRT → DDS 发布
-        ├── camera_to_base.py    ← 坐标变换：相机系 → pelvis (base) 系
-        ├── run.sh               ← 一键启动（含 TRT 路径、GPU 解锁）
+        ├── ball_detector.py      ← 单相机：RealSense D435 + YOLO11m TRT → DDS 发布
+        ├── ball_detector_dual.py ← 双相机：2×D435 + 共享 YOLO → DDS 发布
+        ├── camera_to_base.py     ← 坐标变换：相机系 → pelvis 系（含胸部占位外参）
+        ├── run.sh                ← 单相机启动脚本（含 TRT 路径、GPU 解锁）
+        ├── run_dual.sh           ← 双相机启动脚本
+        ├── README.md             ← Camera 使用手册（本地文档）
+        ├── TROUBLESHOOTING.md    ← 性能优化全记录
         └── models/
             ├── download_and_export.sh  ← 一键下载 .pt + 导出 TRT engine
             ├── README.md               ← 模型精度/速度对比
@@ -173,33 +177,43 @@ bash onboard/perception/camera/models/download_and_export.sh
 # 下载 yolo11m.pt + 导出 yolo11m.engine（TRT FP16，imgsz=320）
 ```
 
-#### 3. 启动相机球检测服务
+#### 3a. 单相机启动
 
 ```bash
-# 推荐：一键启动（自动解锁 GPU + 设置 TRT 路径）
 bash onboard/perception/camera/run.sh
-
-# 可选参数：
 bash onboard/perception/camera/run.sh --show          # +MJPEG 预览 (port 8080)
 bash onboard/perception/camera/run.sh --model models/yolov8n.pt  # 切换更快的模型
+```
+
+#### 3b. 双相机启动（head + chest，任意一台检测到即发布）
+
+```bash
+# 查看两台相机序列号
+bash onboard/perception/camera/run_dual.sh --list-cameras
+
+# 启动双相机（推荐指定序列号，防止枚举顺序变化）
+bash onboard/perception/camera/run_dual.sh \
+    --head-serial 117322071089 --chest-serial 334622071404
+bash onboard/perception/camera/run_dual.sh --show     # +双路 MJPEG 预览 (port 8080)
 ```
 
 终端持续打印：
 
 ```
-[INFO] TensorRT engine found, using: models/yolo11m.engine
-[INFO] YOLO inference: 8.6 ms/frame  (≈ 116 FPS upper bound)
-[BALL ] pelvis=(+0.823, -0.012, -0.673)  d=0.85m  YOLO=35.2fps
-[COAST] pelvis=(+0.821, -0.011, -0.672)  d=0.85m  YOLO=35.2fps
+[BALL ] pelvis=(+0.823, -0.012, -0.673)  surf=0.71m  ctr=0.82m  YOLO=35.2fps
+[COAST] pelvis=(+0.821, -0.011, -0.672)  surf=0.71m  ctr=0.82m  YOLO=35.2fps
 [     ] no ball  YOLO=35.2fps
 ```
 
 > **BALL**：当帧 YOLO 检测到球；**COAST**：YOLO 漏检，保持最后位置最多 10 帧；空：无球。
 
-| 模型 | 推理时间 | 整体 FPS | COCO mAP |
-|------|---------|---------|---------|
-| yolov8n.engine | 4.9 ms | ~40 FPS | 37.3 |
-| **yolo11m.engine（默认）** | **8.6 ms** | **~35 FPS** | **51.5** |
+| 配置 | 模型 | 推理时间 | FPS | COCO mAP |
+|------|------|---------|-----|---------|
+| 单相机 | yolov8n.engine | 4.9 ms | ~40 FPS | 37.3 |
+| **单相机（默认）** | **yolo11m.engine** | **8.6 ms** | **~35 FPS** | **51.5** |
+| 双相机 | yolo11m.engine | 8.6 ms（共享） | ~24 FPS/路 | 51.5 |
+
+> 详见 `onboard/perception/camera/README.md`。
 
 两方案均发布到同一 DDS Topic `rt/ball_state`，`deploy_real.py` 无需修改，启动哪个方案即用哪个。
 
@@ -331,7 +345,7 @@ dds.publish(x, y, z, valid=True)
 | `z_low / z_high` | ±1.5 m | 高度范围 |
 | `alpha` | 0.6 | EMA 平滑系数，越大跟踪越灵敏，越小越平滑 |
 
-### Camera 方案（`onboard/perception/camera/ball_detector.py`）
+### Camera 方案（`onboard/perception/camera/ball_detector.py` / `ball_detector_dual.py`）
 
 **代码常量**（直接修改源文件）：
 
@@ -343,6 +357,7 @@ dds.publish(x, y, z, valid=True)
 | `EMA_ALPHA` | 0.6 | EMA 平滑系数，越大响应越快，越小越平滑 |
 | `EMA_GATE` | 0.6 m | 跳变重置门限，超过此距离时 EMA 直接重置 |
 | `COAST_FRAMES` | 10 | YOLO 漏检时保持上一帧位置的最大帧数 |
+| `VALID_HOLD_SEC` | 0.5 s | 双相机：两路都静默超过此时长才发布 valid=0 |
 
 **命令行参数**：
 
@@ -352,3 +367,8 @@ dds.publish(x, y, z, valid=True)
 | `--imgsz` | 320 | YOLO 输入分辨率，越小越快，越大越准 |
 | `--width / --height` | 640 / 480 | 相机采集分辨率 |
 | `--show` | False | 开启 MJPEG 预览流（port 8080） |
+| `--head-serial` | 第一台 | 双相机：指定 head 相机序列号 |
+| `--chest-serial` | 第二台 | 双相机：指定 chest 相机序列号 |
+| `--list-cameras` | — | 双相机：打印所有 D435 序列号后退出 |
+
+> 完整文档见 `onboard/perception/camera/README.md`。

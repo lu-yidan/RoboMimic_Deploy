@@ -86,6 +86,48 @@ def transform_point_camera_to_base(p_cam, q_wy, q_wr, q_wp, q_head):
     return (T @ np.array([*p_cam, 1.0]))[:3]
 
 
+# ── Chest camera placeholder extrinsics ──────────────────────────────────────
+# Kinematic chain:
+#   pelvis → waist_yaw(q_wy,Rz,[0,0,0])
+#          → waist_roll(q_wr,Rx,[−0.004,0,0.044])
+#          → waist_pitch(q_wp,Ry,[0,0,0])
+#          → chest_camera_joint (fixed, values below are PLACEHOLDERS)
+#
+# TODO: replace _CHEST_XYZ and _CHEST_RPY with actual measured/calibrated values.
+# Measure: x = forward offset from waist_pitch_link origin,
+#          z = upward offset, y = lateral offset (+ = left).
+_CHEST_XYZ = [0.10, 0.00, 0.12]   # TODO: measure (metres, in waist_pitch frame)
+_CHEST_RPY = (0.00, 0.30, 0.00)   # TODO: calibrate (roll, pitch, yaw) in radians
+
+_T_CHEST_CAMERA = _T(
+    _rpy_to_R(*_CHEST_RPY),
+    _CHEST_XYZ,
+)
+
+
+def transform_point_chest_camera_to_base(p_cam, q_wy, q_wr, q_wp):
+    """
+    Transform a point in chest_camera_link (body frame) to the pelvis (base) frame.
+    Extrinsics (_CHEST_XYZ, _CHEST_RPY) are placeholders — update before using.
+
+    Args:
+        p_cam : array-like (3,), point in chest camera body frame (X-forward, metres)
+        q_wy  : waist_yaw_joint angle (rad)
+        q_wr  : waist_roll_joint angle (rad)
+        q_wp  : waist_pitch_joint angle (rad)
+
+    Returns:
+        np.ndarray (3,), point in pelvis frame (metres)
+    """
+    T = (
+        _T(_Rz(q_wy), [0.0, 0.0, 0.0])
+        @ _T(_Rx(q_wr), [-0.0039635, 0.0, 0.044])
+        @ _T(_Ry(q_wp), [0.0, 0.0, 0.0])
+        @ _T_CHEST_CAMERA
+    )
+    return (T @ np.array([*p_cam, 1.0]))[:3]
+
+
 def optical_to_body(p_optical):
     """
     RealSense optical frame → body frame (REP-103).

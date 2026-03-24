@@ -96,8 +96,12 @@ def transform_point_camera_to_base(p_cam, q_wy, q_wr, q_wp, q_head):
 # TODO: replace _CHEST_XYZ and _CHEST_RPY with actual measured/calibrated values.
 # Measure: x = forward offset from waist_pitch_link origin,
 #          z = upward offset, y = lateral offset (+ = left).
-_CHEST_XYZ = [0.10, 0.00, 0.12]   # TODO: measure (metres, in waist_pitch frame)
-_CHEST_RPY = (0.00, 0.30, 0.00)   # TODO: calibrate (roll, pitch, yaw) in radians
+
+# YAW_CHEST_XYZ = [0.125, 0.00, 0.11] # measured by hand (YC_
+# YAW_PITCH_XYZ = [-0.0039635, 0.0, 0.044] #(YP)
+# PITCH_CHEST_XYZ = [0.1289635, 0.00, 0.066] #(PC = YC - YP)
+_CHEST_XYZ = [0.1289635, 0.00, 0.066]   # TODO: measure (metres, in waist_pitch frame)
+_CHEST_RPY = (0.00, 0.523599, 0.00)   # TODO: calibrate (roll, pitch, yaw) in radians
 
 _T_CHEST_CAMERA = _T(
     _rpy_to_R(*_CHEST_RPY),

@@ -103,6 +103,7 @@ python deploy_mujoco/deploy_mujoco.py --config-name mujoco_score
 | **BeyondMimicMJ**   | L1+D-pad DOWN     | Fall-and-get-up imitation policy (MuJoCo-trained, with reference motion tracking)       |
 | **StandUpMJ**       | L1+D-pad UP       | Stand-up imitation policy (MuJoCo-trained, with reference motion tracking)              |
 | **Score**           | R1+D-pad RIGHT    | Ball-kicking/scoring policy (547-dim obs, 5-frame history, requires onboard LiDAR)      |
+| **AMP**             | R2+A              | AMP locomotion policy; R2+D-pad UP → fast mode, R2+D-pad DOWN → slow mode              |
 | **SkillCast**       | —                 | Lower body + waist stabilization; upper limbs moved to specific angles (before Mimic)   |
 | **SkillCooldown**   | —                 | Lower body + waist balancing; upper limbs reset to default angles (after Mimic)         |
 
@@ -130,6 +131,10 @@ python deploy_mujoco/deploy_mujoco.py
 13. In LocoMode or FixedPose, pressing **L1 + D-pad UP** enters the StandUpMJ stand-up policy (MuJoCo-trained) — **use only in simulation**. BeyondMimicMJ and StandUpMJ can switch directly between each other.
 14. In LocoMode, pressing **R1 + D-pad RIGHT** enters the Score ball-kicking policy. Use `--config-name mujoco_score` to load the scene with the ball — **use only in simulation**.
 15. In FixedPose or LocoMode, pressing **L1 + X** enters the HOST fall-recovery (get-up) controller — **use only in simulation**.
+16. In **FixedPose or LocoMode**, pressing **R2 + A** enters the **AMP** locomotion policy. While in AMP:
+    - **R2 + D-pad UP** switches to fast mode (higher speed range).
+    - **R2 + D-pad DOWN** switches back to slow mode (default).
+    - Press **Start** to return to FixedPose, or **R1 + A** to return to LocoMode.
 
 ---
 ## 4. Real Robot Operation Instructions

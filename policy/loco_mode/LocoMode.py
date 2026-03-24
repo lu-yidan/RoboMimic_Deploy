@@ -130,6 +130,8 @@ class LocoMode(FSMState):
             return FSMStateName.SKILL_SCORE
         elif(self.state_cmd.skill_cmd == FSMCommand.STAND_UP):      # L1+X → HOST 爬起控制器
             return FSMStateName.STANDMODE
+        elif(self.state_cmd.skill_cmd == FSMCommand.CMD_AMP):           # AMP, R2+A
+            return FSMStateName.SKILL_AMP
         elif(self.state_cmd.skill_cmd == FSMCommand.POS_RESET):     # 回 FixedPose, START
             return FSMStateName.FIXEDPOSE
         elif(self.state_cmd.skill_cmd == FSMCommand.PASSIVE):

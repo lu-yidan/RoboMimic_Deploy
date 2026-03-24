@@ -143,6 +143,12 @@ class Controller:
                 self.state_cmd.skill_cmd = FSMCommand.CMD_BEYONDMIMIC_MJ
             elif self.remote_controller.is_button_pressed(KeyMap.up) and self.remote_controller.is_button_pressed(KeyMap.L1):    # StandUpMJ, L1+Up
                 self.state_cmd.skill_cmd = FSMCommand.CMD_STANDUP_MJ
+            elif self.remote_controller.is_button_pressed(KeyMap.A) and self.remote_controller.is_button_pressed(KeyMap.R2):    # AMP, R2+A
+                self.state_cmd.skill_cmd = FSMCommand.CMD_AMP
+            elif self.remote_controller.is_button_pressed(KeyMap.up) and self.remote_controller.is_button_pressed(KeyMap.R2):   # AMP fast mode, R2+Up
+                self.state_cmd.skill_cmd = FSMCommand.CMD_AMP_FAST
+            elif self.remote_controller.is_button_pressed(KeyMap.down) and self.remote_controller.is_button_pressed(KeyMap.R2): # AMP slow mode, R2+Down
+                self.state_cmd.skill_cmd = FSMCommand.CMD_AMP_SLOW
             # if self.remote_controller.is_button_pressed(KeyMap.B) and self.remote_controller.is_button_pressed(KeyMap.R1):
             #     self.state_cmd.skill_cmd = FSMCommand.SKILL_3
             # if self.remote_controller.is_button_pressed(KeyMap.Y) and self.remote_controller.is_button_pressed(KeyMap.L1):

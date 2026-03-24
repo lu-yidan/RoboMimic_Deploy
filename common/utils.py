@@ -21,6 +21,7 @@ class FSMStateName(Enum):
     SKILL_BEYONDMIMIC_MJ = 13
     SKILL_SCORE = 14
     SKILL_STANDUP_MJ = 15
+    SKILL_AMP = 16
 
 @unique
 class FSMCommand(Enum):
@@ -38,6 +39,9 @@ class FSMCommand(Enum):
     CMD_BEYONDMIMIC_MJ = 13
     CMD_SCORE = 14
     CMD_STANDUP_MJ = 15
+    CMD_AMP = 16
+    CMD_AMP_FAST = 17
+    CMD_AMP_SLOW = 18
 
 
 

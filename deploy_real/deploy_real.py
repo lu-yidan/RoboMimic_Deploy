@@ -165,7 +165,7 @@ class Controller:
 
             # imu_state quaternion: w, x, y, z
             quat = self.low_state.imu_state.quaternion
-            ang_vel = np.array([self.low_state.imu_state.gyroscope], dtype=np.float32)
+            ang_vel = np.array(self.low_state.imu_state.gyroscope, dtype=np.float32)
             
             gravity_orientation = get_gravity_orientation_real(quat)
 

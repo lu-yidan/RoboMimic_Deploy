@@ -54,7 +54,11 @@ class PolicyOutput:
         self._actions = np.zeros(num_joints, dtype=np.float32)
         self._kps     = np.zeros(num_joints, dtype=np.float32)
         self._kds     = np.zeros(num_joints, dtype=np.float32)
-        self.ghost_qpos = None  # np.ndarray (7+n_joints,) or None
+        self.ghost_qpos = None   # np.ndarray (7+n_joints,) or None
+        # Optional debug spheres drawn in MuJoCo viewer.
+        # List of dicts: {"pos": (3,) world-frame, "radius": float, "rgba": (4,) float}
+        # Set to None to skip rendering. Cleared to None by FSM between policy activations.
+        self.viz_spheres = None
 
     # ------------------------------------------------------------------
     # Property accessors: getters return the internal buffer directly so

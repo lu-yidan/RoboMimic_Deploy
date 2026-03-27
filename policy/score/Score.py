@@ -303,16 +303,18 @@ class Score(FSMState):
             # Use ball position in pelvis body frame directly as anchor_pos_b.
             if self.use_body_frame_ball:
                 anchor_pos_b_ref = aligned_anchor_pos_w - torso_pos_w
-                anchor_pos_b_ball = np.clip(self.state_cmd.ball_pos_b, -8.0, 8.0).astype(np.float32)
+                anchor_pos_b_ball = np.clip(self.state_cmd.ball_pos_b, -1.0, 1.0).astype(np.float32)
                 anchor_pos_b = 0.9*anchor_pos_b_ref + 0.1*anchor_pos_b_ball
                 anchor_pos_b[2] = aligned_anchor_pos_w[2] - torso_pos_w[2]
                 # if not seen:
                     # anchor_pos_b = anchor_pos_b_ref
             else:
-                _R_pelvis   = _quat_to_matrix(self.state_cmd.pelvis_quat_w.astype(np.float64))
-                _ball_rel_w = self.state_cmd.ball_pos_w.astype(np.float64) - self.state_cmd.pelvis_pos_w.astype(np.float64)
-                anchor_pos_b = np.clip(_R_pelvis.T @ _ball_rel_w, -8.0, 8.0).astype(np.float32)
-                anchor_pos_b[2] = aligned_anchor_pos_w[2] - torso_pos_w[2]
+                _R_pelvis    = _quat_to_matrix(self.state_cmd.pelvis_quat_w.astype(np.float64))
+                _ball_rel_w  = self.state_cmd.ball_pos_w.astype(np.float64) - self.state_cmd.pelvis_pos_w.astype(np.float64)
+                anchor_pos_b_ref  = (R_torso_w.T @ (aligned_anchor_pos_w - torso_pos_w)).astype(np.float32)
+                anchor_pos_b_ball = np.clip(_R_pelvis.T @ _ball_rel_w, -1.0, 1.0).astype(np.float32)
+                anchor_pos_b      = 0 * anchor_pos_b_ref + 1 * anchor_pos_b_ball
+                anchor_pos_b[2]   = aligned_anchor_pos_w[2] - torso_pos_w[2]
         elif self.use_body_frame_ball:
             # Real robot: torso_pos_w is always zero (no odometry).
             # Use relative displacement from entry to avoid feeding raw absolute coords to the policy.
@@ -323,6 +325,10 @@ class Score(FSMState):
         else:
             # Simulation: torso_pos_w is accurate. Use absolute coords, matching training exactly.
             anchor_pos_b = (R_torso_w.T @ (aligned_anchor_pos_w - torso_pos_w)).astype(np.float32)
+
+        # Cache for visualization (world-frame anchor position).
+        self._debug_anchor_pos_w = (torso_pos_w + R_torso_w @ anchor_pos_b.astype(np.float64)).astype(np.float32)
+        self._debug_torso_pos_w  = torso_pos_w.astype(np.float32)
 
         # ---- motion_anchor_ori_b (relative to torso orientation, in torso body frame) ----
         if self.ball_facing_anchor_ori:
@@ -457,6 +463,15 @@ class Score(FSMState):
         self.policy_output.kps     = self.kps
         self.policy_output.kds     = self.kds
 
+        # ---- Visualization: anchor sphere + line from torso to anchor ----
+        self.policy_output.viz_spheres = [
+            {"pos": self._debug_anchor_pos_w.copy(), "radius": 0.06,
+             "rgba": np.array([1.0, 0.5, 0.0, 0.9], dtype=np.float32)},
+            {"from": self._debug_torso_pos_w.copy(),
+             "to":   self._debug_anchor_pos_w.copy(), "radius": 0.008,
+             "rgba": np.array([1.0, 0.5, 0.0, 0.5], dtype=np.float32)},
+        ]
+
         self.time_step += 1
         capped = 0 if self.freeze_motion_at_first_frame else min(policy_step, self.motion_total_steps - 1)
         self.policy_output.ghost_qpos = self._compute_ghost_qpos(capped)
@@ -501,7 +516,8 @@ class Score(FSMState):
     def exit(self):
         self.time_step      = 0
         self.last_action_il = np.zeros(29, dtype=np.float32)
-        self.policy_output.ghost_qpos = None
+        self.policy_output.ghost_qpos  = None
+        self.policy_output.viz_spheres = None
         print()
 
     def checkChange(self):

@@ -21,6 +21,38 @@ import hydra
 
 
 
+def _draw_viz_spheres(scn, viz_spheres):
+    """Draw debug spheres/lines into a MuJoCo mjvScene.
+
+    Each entry in viz_spheres is a dict with either:
+      - sphere: {"pos": (3,), "radius": float, "rgba": (4,)}
+      - line:   {"from": (3,), "to": (3,), "radius": float, "rgba": (4,)}
+    """
+    if not viz_spheres:
+        return
+    for item in viz_spheres:
+        if scn.ngeom >= scn.maxgeom:
+            break
+        g = scn.geoms[scn.ngeom]
+        rgba = np.asarray(item["rgba"], dtype=np.float32)
+        if "from" in item:
+            mujoco.mjv_makeConnector(
+                g, mujoco.mjtGeom.mjGEOM_CAPSULE, item["radius"],
+                *item["from"], *item["to"],
+            )
+            g.rgba[:] = rgba
+        else:
+            r = item["radius"]
+            mujoco.mjv_initGeom(
+                g, mujoco.mjtGeom.mjGEOM_SPHERE,
+                np.array([r, r, r], dtype=np.float64),
+                np.asarray(item["pos"], dtype=np.float64),
+                np.eye(3, dtype=np.float64).flatten(),
+                rgba,
+            )
+        scn.ngeom += 1
+
+
 def quat_to_matrix(q):
     """Convert quaternion [w, x, y, z] to 3x3 rotation matrix."""
     w, x, y, z = q
@@ -211,9 +243,11 @@ def main(cfg: DictConfig):
                             mujoco.mjtCatBit.mjCAT_DYNAMIC.value,
                             viewer.user_scn,
                         )
+                        _draw_viz_spheres(viewer.user_scn, policy_output.viz_spheres)
                 else:
                     with viewer.lock():
                         viewer.user_scn.ngeom = 0
+                        _draw_viz_spheres(viewer.user_scn, policy_output.viz_spheres)
 
                 viewer.sync()
                 time_until_next_step = m.opt.timestep - (time.time() - step_start)

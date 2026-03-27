@@ -29,6 +29,11 @@ Options:
 Coordinate system (MuJoCo world frame):
     x = robot forward,  y = robot left,  z = up
     Ground plane is z = 0.  Robot pelvis is near z = 0 in real-robot logs.
+
+Ball markers (ball_pos_b transformed to world):
+    Red    — ball_valid
+    Orange — not valid but ball_pos_b ≠ 0 (e.g. coast)
+    Blue   — sim ground truth (ball_pos_w) when present
 """
 
 import sys
@@ -216,13 +221,18 @@ def main() -> None:
         # Render base scene
         renderer.update_scene(ghost_d, camera=cam, scene_option=scene_opt)
 
-        # Red sphere: ball as sensed by robot (pelvis frame → world)
+        # ball_pos_b → world: red if valid, orange if invalid but non-zero (coast)
         R_pelvis = _quat_to_matrix(data["pelvis_quat_w"][fi].astype(np.float64))
+        ball_pos_b = data["ball_pos_b"][fi].astype(np.float64)
         ball_sensor_w = (data["pelvis_pos_w"][fi].astype(np.float64)
-                         + R_pelvis @ data["ball_pos_b"][fi].astype(np.float64))
+                         + R_pelvis @ ball_pos_b)
+        ball_pos_norm = float(np.linalg.norm(ball_pos_b))
         if data["ball_valid"][fi] > 0.5:
             _add_sphere(renderer.scene, ball_sensor_w,
                         radius=0.11, rgba=[1.0, 0.2, 0.2, 0.85])
+        elif ball_pos_norm > 1e-3:
+            _add_sphere(renderer.scene, ball_sensor_w,
+                        radius=0.11, rgba=[1.0, 0.55, 0.05, 0.82])
 
         # Blue sphere: ground-truth ball position (sim logs only)
         if has_ball_gt:

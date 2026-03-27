@@ -9,7 +9,7 @@ clip_actions:    10.0     # PPO actions rarely exceed ±3; prevents runaway dive
 
 # false = simulation (ball_pos from MuJoCo world frame)
 # true  = real robot (ball_pos from DDS, already in pelvis body frame)
-use_body_frame_ball: false
+use_body_frame_ball: true
 
 # Optional: clip motion to a specific time window (seconds).
 # If omitted, the full motion sequence is used.

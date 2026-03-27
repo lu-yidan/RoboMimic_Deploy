@@ -13,9 +13,10 @@ Controls:
     q           quit
 
 Visualization:
-    Robot       joint pose from log
-    Red sphere  ball as seen by the robot sensor  (ball_pos_b → world)
-    Blue sphere ball ground-truth world position  (ball_pos_w, sim only)
+    Robot          joint pose from log
+    Red sphere     ball_pos_b → world when ball_valid (trusted detection)
+    Orange sphere  same transform when not valid but ball_pos_b ≠ 0 (e.g. coast)
+    Blue sphere    ball ground-truth world position  (ball_pos_w, sim only)
 """
 
 import sys
@@ -195,9 +196,11 @@ def main() -> None:
             # ---- Compute ball-sensor position in world frame ---------------
             # ball_pos_b is in pelvis body frame → transform to world.
             R_pelvis = _quat_to_matrix(data["pelvis_quat_w"][fi].astype(np.float64))
+            ball_pos_b = data["ball_pos_b"][fi].astype(np.float64)
             ball_sensor_world = (data["pelvis_pos_w"][fi].astype(np.float64)
-                                 + R_pelvis @ data["ball_pos_b"][fi].astype(np.float64))
+                                 + R_pelvis @ ball_pos_b)
             ball_valid = data["ball_valid"][fi] > 0.5
+            ball_pos_norm = float(np.linalg.norm(ball_pos_b))
 
             # ---- Build scene -----------------------------------------------
             with viewer.lock():
@@ -211,10 +214,13 @@ def main() -> None:
                     viewer.user_scn,
                 )
 
-                # Red sphere: ball as seen by the robot sensor
+                # ball_pos_b → world: red if valid, orange if invalid but non-zero (coast / stale)
                 if ball_valid:
                     _add_sphere(viewer.user_scn, ball_sensor_world,
                                 radius=0.11, rgba=[1.0, 0.2, 0.2, 0.85])
+                elif ball_pos_norm > 1e-3:
+                    _add_sphere(viewer.user_scn, ball_sensor_world,
+                                radius=0.11, rgba=[1.0, 0.55, 0.05, 0.82])
 
                 # Blue sphere: ground-truth ball position (sim logs only)
                 if has_ball_gt:

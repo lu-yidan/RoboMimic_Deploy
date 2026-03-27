@@ -339,7 +339,15 @@ Step 2 — 基线视差修正
 
 ## 九、常见问题
 
-### Q1：`ModuleNotFoundError: No module named 'tensorrt'`
+### Q1：`RuntimeError: Couldn't resolve requests`（RealSense pipeline.start 失败）
+
+常见原因：同时请求 **color@60 Hz + depth@90 Hz** 等**帧率不匹配**的组合，多数 D435/D435I 固件无法同时满足。
+
+当前代码已改为优先 **60/60 Hz**，失败则依次尝试 **30/30**、**15/15 Hz**。若仍失败，检查 USB 3.0、线缆、`rs-enumerate-devices`。
+
+---
+
+### Q2：`ModuleNotFoundError: No module named 'tensorrt'`
 
 必须通过 `run.sh` / `run_dual.sh` 启动，**不能直接 `python ball_detector.py`**。
 
@@ -354,7 +362,7 @@ export PYTHONPATH=/usr/lib/python3.8/dist-packages:$PYTHONPATH
 
 ---
 
-### Q2：两台相机开机后枚举顺序颠倒
+### Q3：两台相机开机后枚举顺序颠倒
 
 USB 枚举顺序不稳定，建议**固定序列号**：
 
@@ -372,13 +380,13 @@ bash onboard/perception/camera/run_dual.sh \
 
 ---
 
-### Q3：双相机模式 chest 坐标偏差很大
+### Q4：双相机模式 chest 坐标偏差很大
 
 胸部相机外参当前为**占位值**，仅用于调试流程，实测前输出的 pelvis 坐标**不可用于控制**。请先完成第五章 5.2 节的外参标定。
 
 ---
 
-### Q4：YOLO 无法检测到球（all `no ball`）
+### Q5：YOLO 无法检测到球（all `no ball`）
 
 1. `--show` 查看画面，确认球在视野内
 2. 降低 `CONF_THRESHOLD`（如 `0.15`）临时测试
@@ -386,7 +394,7 @@ bash onboard/perception/camera/run_dual.sh \
 
 ---
 
-### Q5：深度值为 0 或球心 z 坐标异常
+### Q6：深度值为 0 或球心 z 坐标异常
 
 1. 检查深度流是否正常：`--show` 下观察球周围是否有深度孔洞
 2. 调整 `DEPTH_SAMPLE_RADIUS`（适当增大）
@@ -394,7 +402,7 @@ bash onboard/perception/camera/run_dual.sh \
 
 ---
 
-### Q6：性能优化参考
+### Q7：性能优化参考
 
 详见 `TROUBLESHOOTING.md`：
 - 第三章：每步耗时分析

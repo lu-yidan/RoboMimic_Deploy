@@ -15,13 +15,16 @@ Usage (on G1 onboard):
 """
 
 import sys
+import warnings
 import numpy as _np_compat
 # TensorRT 8.5 Python binding was built against numpy <1.24 and uses removed
 # aliases (np.bool, np.int, np.float).  Patch them back before any TRT import.
-if not hasattr(_np_compat, 'bool'):   _np_compat.bool   = bool
-if not hasattr(_np_compat, 'int'):    _np_compat.int    = int
-if not hasattr(_np_compat, 'float'):  _np_compat.float  = float
-if not hasattr(_np_compat, 'object'): _np_compat.object = object
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore", FutureWarning)
+    if not hasattr(_np_compat, 'bool'):   _np_compat.bool   = bool
+    if not hasattr(_np_compat, 'int'):    _np_compat.int    = int
+    if not hasattr(_np_compat, 'float'):  _np_compat.float  = float
+    if not hasattr(_np_compat, 'object'): _np_compat.object = object
 del _np_compat
 
 from pathlib import Path
@@ -174,27 +177,58 @@ def main():
     # pixel from color space to depth space via rs2_project_color_pixel_to_depth_pixel,
     # which is a O(1) operation (<0.1 ms).
     pipeline = rs.pipeline()
-    rs_cfg   = rs.config()
-    rs_cfg.enable_stream(rs.stream.color, args.width, args.height, rs.format.bgr8, 60)
-    rs_cfg.enable_stream(rs.stream.depth, args.width, args.height, rs.format.z16,  90)
+    # D435/D435I: requesting color@60 Hz + depth@90 Hz together often fails with
+    # RuntimeError: Couldn't resolve requests — the firmware cannot satisfy
+    # mismatched rates.  Use equal FPS (60/60 preferred), then fall back.
+    _FPS_TRIES = [(60, 60), (30, 30), (15, 15)]
 
     def _start_pipeline():
-        for attempt in range(2):
-            print(f"[INFO] Starting RealSense pipeline (attempt {attempt + 1})...")
-            profile = pipeline.start(rs_cfg)
-            try:
-                pipeline.wait_for_frames(timeout_ms=5000)
-                return profile
-            except RuntimeError:
-                print("[WARN] Frame timeout — performing hardware reset...")
-                pipeline.stop()
-                ctx  = rs.context()
-                devs = ctx.query_devices()
-                if len(devs) == 0:
-                    raise RuntimeError("No RealSense device found.")
-                devs[0].hardware_reset()
-                time.sleep(3)
-        raise RuntimeError("RealSense failed to start after hardware reset.")
+        last_err = None
+        for c_fps, d_fps in _FPS_TRIES:
+            rs_cfg = rs.config()
+            rs_cfg.enable_stream(
+                rs.stream.color, args.width, args.height, rs.format.bgr8, c_fps,
+            )
+            rs_cfg.enable_stream(
+                rs.stream.depth, args.width, args.height, rs.format.z16, d_fps,
+            )
+            for attempt in range(2):
+                try:
+                    print(
+                        f"[INFO] Starting RealSense (color {c_fps} Hz, depth {d_fps} Hz, "
+                        f"attempt {attempt + 1})...",
+                    )
+                    profile = pipeline.start(rs_cfg)
+                except RuntimeError as e:
+                    msg = str(e).lower()
+                    if "resolve" in msg or "couldn't" in msg:
+                        last_err = e
+                        print(f"[WARN] Stream profile not supported: {e}")
+                        break  # try next fps pair
+                    raise
+                try:
+                    pipeline.wait_for_frames(timeout_ms=5000)
+                    print(
+                        f"[INFO] RealSense pipeline OK (color {c_fps} Hz, "
+                        f"depth {d_fps} Hz)",
+                    )
+                    return profile
+                except RuntimeError:
+                    print("[WARN] Frame timeout — performing hardware reset...")
+                    pipeline.stop()
+                    ctx  = rs.context()
+                    devs = ctx.query_devices()
+                    if len(devs) == 0:
+                        raise RuntimeError("No RealSense device found.")
+                    devs[0].hardware_reset()
+                    time.sleep(3)
+        msg = (
+            "RealSense failed to start. Tried color/depth Hz pairs: "
+            f"{_FPS_TRIES}."
+        )
+        if last_err is not None:
+            msg += f" Last resolve error: {last_err!r}"
+        raise RuntimeError(msg)
 
     profile = _start_pipeline()
 

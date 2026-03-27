@@ -31,12 +31,15 @@ Chest camera extrinsics:
 """
 
 import sys
+import warnings
 import numpy as _np_compat
 # TensorRT Python binding may need legacy numpy aliases
-if not hasattr(_np_compat, 'bool'):   _np_compat.bool   = bool
-if not hasattr(_np_compat, 'int'):    _np_compat.int    = int
-if not hasattr(_np_compat, 'float'):  _np_compat.float  = float
-if not hasattr(_np_compat, 'object'): _np_compat.object = object
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore", FutureWarning)
+    if not hasattr(_np_compat, 'bool'):   _np_compat.bool   = bool
+    if not hasattr(_np_compat, 'int'):    _np_compat.int    = int
+    if not hasattr(_np_compat, 'float'):  _np_compat.float  = float
+    if not hasattr(_np_compat, 'object'): _np_compat.object = object
 del _np_compat
 
 from pathlib import Path
@@ -71,7 +74,7 @@ DEPTH_MAX            = 10.0   # m
 BALL_RADIUS          = 0.115  # m  (depth sensor sees front surface → add radius)
 EMA_ALPHA            = 0.6
 EMA_GATE             = 0.6    # m  (jump larger than this resets EMA)
-COAST_FRAMES         = 10     # frames to hold last bbox after YOLO miss
+COAST_FRAMES         = 15     # frames to hold last bbox after YOLO miss
 VALID_HOLD_SEC       = 0.5    # publish valid=False only after both cameras are
                                # quiet for this long
 
@@ -365,28 +368,54 @@ def main():
     # ── RealSense pipeline factory ────────────────────────────────────────
     stop_flag = threading.Event()
 
+    # Same as single-camera: color@60 + depth@90 often fails ("Couldn't resolve").
+    _FPS_TRIES = [(60, 60), (30, 30), (15, 15)]
+
     def _start_pipeline(serial, name):
         pipe = rs.pipeline()
-        cfg  = rs.config()
-        cfg.enable_device(serial)
-        cfg.enable_stream(rs.stream.color, args.width, args.height, rs.format.bgr8, 60)
-        cfg.enable_stream(rs.stream.depth, args.width, args.height, rs.format.z16,  90)
-        for attempt in range(2):
-            print(f"[INFO] Starting [{name}] pipeline (attempt {attempt + 1})...")
-            profile = pipe.start(cfg)
-            try:
-                pipe.wait_for_frames(timeout_ms=5000)
-                print(f"[INFO] [{name}] pipeline OK (serial={serial})")
-                return pipe, profile
-            except RuntimeError:
-                print(f"[WARN] [{name}] frame timeout — hardware reset...")
-                pipe.stop()
-                for dev in rs.context().query_devices():
-                    if dev.get_info(rs.camera_info.serial_number) == serial:
-                        dev.hardware_reset()
+        last_err = None
+        for c_fps, d_fps in _FPS_TRIES:
+            cfg = rs.config()
+            cfg.enable_device(serial)
+            cfg.enable_stream(
+                rs.stream.color, args.width, args.height, rs.format.bgr8, c_fps,
+            )
+            cfg.enable_stream(
+                rs.stream.depth, args.width, args.height, rs.format.z16, d_fps,
+            )
+            for attempt in range(2):
+                try:
+                    print(
+                        f"[INFO] Starting [{name}] (color {c_fps} Hz, depth {d_fps} Hz, "
+                        f"attempt {attempt + 1})...",
+                    )
+                    profile = pipe.start(cfg)
+                except RuntimeError as e:
+                    msg = str(e).lower()
+                    if "resolve" in msg or "couldn't" in msg:
+                        last_err = e
+                        print(f"[WARN] [{name}] profile not supported: {e}")
                         break
-                time.sleep(3)
-        raise RuntimeError(f"[{name}] pipeline failed to start after hardware reset.")
+                    raise
+                try:
+                    pipe.wait_for_frames(timeout_ms=5000)
+                    print(
+                        f"[INFO] [{name}] pipeline OK (serial={serial}, "
+                        f"color {c_fps} Hz, depth {d_fps} Hz)",
+                    )
+                    return pipe, profile
+                except RuntimeError:
+                    print(f"[WARN] [{name}] frame timeout — hardware reset...")
+                    pipe.stop()
+                    for dev in rs.context().query_devices():
+                        if dev.get_info(rs.camera_info.serial_number) == serial:
+                            dev.hardware_reset()
+                            break
+                    time.sleep(3)
+        msg = f"[{name}] pipeline failed. Tried Hz pairs {_FPS_TRIES}."
+        if last_err is not None:
+            msg += f" Last resolve error: {last_err!r}"
+        raise RuntimeError(msg)
 
     pipe_head,  prof_head  = _start_pipeline(serial_head,  "head")
     pipe_chest, prof_chest = _start_pipeline(serial_chest, "chest")

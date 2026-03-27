@@ -184,6 +184,7 @@ class Score(FSMState):
         self.WARMUP_STEPS     = int(cfg.get("warmup_steps", 10))
         self.freeze_motion_at_first_frame = bool(cfg.get("freeze_motion_at_first_frame", False))
         self.zero_anchor_pos        = bool(cfg.get("zero_anchor_pos",        False))
+        self.ball_as_anchor_pos     = bool(cfg.get("ball_as_anchor_pos",     False))
         self.ball_facing_anchor_ori = bool(cfg.get("ball_facing_anchor_ori", False))
         self.target_pos_w     = np.array(cfg["target_pos"],        dtype=np.float32)  # world frame
         # True on real robot: ball_pos is already in pelvis body frame (from DDS sensor).
@@ -298,6 +299,20 @@ class Score(FSMState):
         aligned_anchor_pos_w = self._init_to_world @ ref_anchor_pos_w
         if self.zero_anchor_pos:
             anchor_pos_b = np.zeros(3, dtype=np.float32)
+        elif self.ball_as_anchor_pos:
+            # Use ball position in pelvis body frame directly as anchor_pos_b.
+            if self.use_body_frame_ball:
+                anchor_pos_b_ref = aligned_anchor_pos_w - torso_pos_w
+                anchor_pos_b_ball = np.clip(self.state_cmd.ball_pos_b, -8.0, 8.0).astype(np.float32)
+                anchor_pos_b = 0.9*anchor_pos_b_ref + 0.1*anchor_pos_b_ball
+                anchor_pos_b[2] = aligned_anchor_pos_w[2] - torso_pos_w[2]
+                # if not seen:
+                    # anchor_pos_b = anchor_pos_b_ref
+            else:
+                _R_pelvis   = _quat_to_matrix(self.state_cmd.pelvis_quat_w.astype(np.float64))
+                _ball_rel_w = self.state_cmd.ball_pos_w.astype(np.float64) - self.state_cmd.pelvis_pos_w.astype(np.float64)
+                anchor_pos_b = np.clip(_R_pelvis.T @ _ball_rel_w, -8.0, 8.0).astype(np.float32)
+                anchor_pos_b[2] = aligned_anchor_pos_w[2] - torso_pos_w[2]
         elif self.use_body_frame_ball:
             # Real robot: torso_pos_w is always zero (no odometry).
             # Use relative displacement from entry to avoid feeding raw absolute coords to the policy.

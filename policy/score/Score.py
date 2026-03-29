@@ -304,8 +304,10 @@ class Score(FSMState):
             if self.use_body_frame_ball:
                 anchor_pos_b_ref  = (R_torso_w.T @ (aligned_anchor_pos_w - torso_pos_w)).astype(np.float32)
                 if self.state_cmd.ball_valid:
-                    anchor_pos_b_ball = np.clip(self.state_cmd.ball_pos_b, -1.0, 1.0).astype(np.float32)
-                    anchor_pos_b = 0.1 * anchor_pos_b_ref + 0.9 * anchor_pos_b_ball
+                    anchor_cmd_xy = self.state_cmd.ball_pos_b[:2]
+                    anchor_cmd_xy = anchor_cmd_xy / np.linalg.norm(anchor_cmd_xy)
+                    anchor_pos_b_ball = 0.05*anchor_cmd_xy
+                    anchor_pos_b = np.concatenate([anchor_pos_b_ball, [aligned_anchor_pos_w[2] - torso_pos_w[2]]])
                 else:
                     anchor_pos_b = anchor_pos_b_ref
                 anchor_pos_b[2] = aligned_anchor_pos_w[2] - torso_pos_w[2]
@@ -313,9 +315,10 @@ class Score(FSMState):
                 _R_pelvis    = _quat_to_matrix(self.state_cmd.pelvis_quat_w.astype(np.float64))
                 _ball_rel_w  = self.state_cmd.ball_pos_w.astype(np.float64) - self.state_cmd.pelvis_pos_w.astype(np.float64)
                 anchor_pos_b_ref  = (R_torso_w.T @ (aligned_anchor_pos_w - torso_pos_w)).astype(np.float32)
-                anchor_pos_b_ball = np.clip(_R_pelvis.T @ _ball_rel_w, -1.0, 1.0).astype(np.float32)
-                anchor_pos_b      = 0.1 * anchor_pos_b_ref + 0.9 * anchor_pos_b_ball
-                anchor_pos_b[2]   = aligned_anchor_pos_w[2] - torso_pos_w[2]
+                anchor_cmd_xy = (_R_pelvis.T @ _ball_rel_w)[:2]
+                anchor_cmd_xy = anchor_cmd_xy / np.linalg.norm(anchor_cmd_xy)
+                anchor_pos_b_ball = 0.05*anchor_cmd_xy
+                anchor_pos_b = np.concatenate([anchor_pos_b_ball, [aligned_anchor_pos_w[2] - torso_pos_w[2]]])
         elif self.use_body_frame_ball:
             # Real robot: torso_pos_w is always zero (no odometry).
             # Use relative displacement from entry to avoid feeding raw absolute coords to the policy.

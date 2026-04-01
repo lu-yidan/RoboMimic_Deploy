@@ -317,7 +317,7 @@ class Score(FSMState):
                 anchor_pos_b_ref  = (R_torso_w.T @ (aligned_anchor_pos_w - torso_pos_w)).astype(np.float32)
                 anchor_cmd_xy = (_R_pelvis.T @ _ball_rel_w)[:2]
                 anchor_cmd_xy = anchor_cmd_xy / np.linalg.norm(anchor_cmd_xy)
-                anchor_pos_b_ball = 0.05*anchor_cmd_xy
+                anchor_pos_b_ball = 0.2*anchor_cmd_xy
                 anchor_pos_b = np.concatenate([anchor_pos_b_ball, [aligned_anchor_pos_w[2] - torso_pos_w[2]]])
         elif self.use_body_frame_ball:
             # Real robot: torso_pos_w is always zero (no odometry).

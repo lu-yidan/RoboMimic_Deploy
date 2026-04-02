@@ -171,6 +171,7 @@ class Score(FSMState):
         self.motion_body_quat = body_quat_full[i0:i1]
         self.motion_body_pos  = body_pos_full[i0:i1]
         self.motion_total_steps = self.motion_joint_pos.shape[0]
+
         print(f"Score motion window: {i0 * self.control_dt:.2f}s ~ "
               f"{i1 * self.control_dt:.2f}s  ({self.motion_total_steps} frames)")
 
@@ -183,6 +184,7 @@ class Score(FSMState):
         self.clip_actions      = float(cfg.get("clip_actions", 3.0))
         self.WARMUP_STEPS     = int(cfg.get("warmup_steps", 10))
         self.freeze_motion_at_first_frame = bool(cfg.get("freeze_motion_at_first_frame", False))
+        self.adapt_play_motion      = bool(cfg.get("adapt_play_motion",      False))
         self.zero_anchor_pos        = bool(cfg.get("zero_anchor_pos",        False))
         self.ball_as_anchor_pos     = bool(cfg.get("ball_as_anchor_pos",     False))
         self.ball_facing_anchor_ori = bool(cfg.get("ball_facing_anchor_ori", False))
@@ -190,6 +192,14 @@ class Score(FSMState):
         # True on real robot: ball_pos is already in pelvis body frame (from DDS sensor).
         # False in simulation: ball_pos is in world frame and needs coordinate transform.
         self.use_body_frame_ball = bool(cfg.get("use_body_frame_ball", False))
+
+        # ---- Ball-trigger gate: hold at frame 0 until ball enters the circle ----
+        self.wait_for_ball    = bool(cfg.get("wait_for_ball",    False))
+        self.trigger_radius   = float(cfg.get("trigger_radius",  0.5))
+        self.trigger_horizon  = float(cfg.get("trigger_horizon", 0.5))
+        self.trigger_frame    = int(cfg.get("trigger_frame",     252))
+        _tpe = cfg.get("trigger_play_end_frame", None)
+        self.trigger_play_end_frame = int(_tpe) if _tpe is not None else None
 
         # Default joint pos in Isaac Lab order (for joint_pos_rel obs)
         self.default_q_il = self.default_q_mj[ISAAC_TO_MUJOCO]
@@ -203,6 +213,10 @@ class Score(FSMState):
         self._init_to_world = np.eye(3, dtype=np.float64)
         self._entry_q       = self.default_q_mj.copy()
         self._t0_target_q   = self.default_q_mj.copy()
+        self._motion_triggered    = True   # overwritten in enter()
+        self._trigger_policy_step = 0
+        # After a finite trigger burst, require ball to leave trigger zone before re-arming.
+        self._burst_need_ball_clear = False
 
         # History buffers (oldest → newest, HISTORY_LEN frames each)
         self._ang_vel_buf   = deque([np.zeros(3,  dtype=np.float32)] * HISTORY_LEN, maxlen=HISTORY_LEN)
@@ -218,6 +232,7 @@ class Score(FSMState):
             self.ort_session.run(["actions"], {"obs": _dummy_obs})
 
         freeze_note = " [freeze_motion_at_first_frame=ON]" if self.freeze_motion_at_first_frame else ""
+        adapt_play_motion_note = " [adapt_play_motion=ON]" if self.adapt_play_motion else ""
         print("Score policy initialized "
               f"(547-dim, {self.motion_total_steps} motion frames){freeze_note}.")
 
@@ -266,11 +281,78 @@ class Score(FSMState):
         # motion_joint_pos is in Isaac Lab order; convert to MuJoCo for warmup
         self._t0_target_q = self.motion_joint_pos[0][MUJOCO_TO_ISAAC].copy()
 
+        # ---- Trigger gate ----
+        # If wait_for_ball is on, hold at frame 0 until ball enters the circle.
+        self._motion_triggered    = not self.wait_for_ball
+        self._trigger_policy_step = 0
+        self._burst_need_ball_clear = False
+
         max_delta = np.abs(self._t0_target_q - self._entry_q).max()
+        if self.wait_for_ball:
+            if self.trigger_play_end_frame is not None:
+                s0 = int(np.clip(self.trigger_frame, 0, self.motion_total_steps - 1))
+                s1 = int(np.clip(self.trigger_play_end_frame, 0, self.motion_total_steps - 1))
+                s1 = max(s0, s1)
+                trigger_note = (f", waiting for ball (r={self.trigger_radius}m, "
+                                f"h={self.trigger_horizon}s → play frames {s0}..{s1}, then wait)")
+            else:
+                trigger_note = (f", waiting for ball (r={self.trigger_radius}m, "
+                                f"h={self.trigger_horizon}s → frame {self.trigger_frame}..end)")
+        else:
+            trigger_note = ""
         print(f"Score enter: warmup {self.WARMUP_STEPS} steps, "
-              f"max joint delta = {max_delta:.3f} rad")
+              f"max joint delta = {max_delta:.3f} rad{trigger_note}")
 
     # ------------------------------------------------------------------
+
+    def _trigger_segment_bounds(self):
+        """Inclusive segment [s0, s1] in loaded motion indices (clamped)."""
+        s0 = int(np.clip(self.trigger_frame, 0, self.motion_total_steps - 1))
+        s1 = int(np.clip(
+            self.trigger_play_end_frame
+            if self.trigger_play_end_frame is not None else self.motion_total_steps - 1,
+            0, self.motion_total_steps - 1))
+        if s1 < s0:
+            s1 = s0
+        return s0, s1
+
+    def _motion_frame_index(self, policy_step: int) -> int:
+        """Motion frame index for obs / ghost (policy_step excludes warmup)."""
+        if self.freeze_motion_at_first_frame or not self._motion_triggered:
+            return 0
+        steps_since_trigger = policy_step - self._trigger_policy_step
+        if self.wait_for_ball and self.trigger_play_end_frame is not None:
+            s0, s1 = self._trigger_segment_bounds()
+            t_lin = s0 + steps_since_trigger
+            return int(min(t_lin, s1))
+        return min(self.trigger_frame + steps_since_trigger, self.motion_total_steps - 1)
+
+    def _ball_enters_circle(
+        self,
+        ball_pos_xy: np.ndarray,  # (2,)
+        ball_vel_xy: np.ndarray,  # (2,)
+        anchor_xy: np.ndarray,    # (2,)
+        radius: float,
+        horizon: float,
+    ) -> bool:
+        """True if the ball's linear trajectory passes within `radius` m of
+        `anchor_xy` at any t ∈ [0, horizon] seconds.
+
+        d²(t) = |dp + t·v|²  (dp = ball_pos - anchor)
+              = |v|²·t² + 2·dot(dp,v)·t + |dp|²
+        Minimum at t* = −dot(dp,v)/|v|²,  clamped to [0, horizon].
+        """
+        dp  = ball_pos_xy - anchor_xy
+        v2  = float(np.dot(ball_vel_xy, ball_vel_xy))
+        dpv = float(np.dot(dp, ball_vel_xy))
+        dp2 = float(np.dot(dp, dp))
+
+        t_star    = (-dpv / v2) if v2 > 1e-6 else 0.0
+        t_clamp   = float(np.clip(t_star, 0.0, horizon))
+        min_dist2 = v2 * t_clamp ** 2 + 2.0 * dpv * t_clamp + dp2
+
+        return min_dist2 < radius * radius
+
 
     def _build_obs(self) -> np.ndarray:
         """547-dim obs:
@@ -278,10 +360,8 @@ class Score(FSMState):
         base_ang_vel(15) | joint_pos(145) | joint_vel(145) |
         actions(145) | soccer_pos_b(15) | target_pos_b(15)
         """
-        if self.freeze_motion_at_first_frame:
-            t = 0
-        else:
-            t = min(self.time_step - self.WARMUP_STEPS, self.motion_total_steps - 1)
+        policy_step = self.time_step - self.WARMUP_STEPS
+        t = self._motion_frame_index(policy_step)
 
         # anchor obs uses torso_link as reference body (matches training: anchor_body_name = "torso_link")
         torso_quat_w = self.state_cmd.torso_quat_w.astype(np.float64)
@@ -440,6 +520,46 @@ class Score(FSMState):
         # ---- Policy phase ----
         policy_step = self.time_step - self.WARMUP_STEPS
 
+        # Finite burst finished → hold frame 0 until next ball (see ball-trigger gate).
+        if (self.wait_for_ball and self._motion_triggered
+                and self.trigger_play_end_frame is not None):
+            s0, s1 = self._trigger_segment_bounds()
+            if policy_step - self._trigger_policy_step > (s1 - s0):
+                self._motion_triggered = False
+                self._burst_need_ball_clear = True
+                print(f"\n[Score] Played frames {s0}..{s1} → hold frame 0, wait for next ball",
+                      flush=True)
+
+        # ---- Ball-trigger gate ----
+        if not self._motion_triggered:
+            if not self.use_body_frame_ball:
+                # Sim: all positions in world frame.
+                ball_pos_xy = self.state_cmd.ball_pos_w[:2].astype(np.float64)
+                ball_vel_xy = self.state_cmd.ball_vel_w[:2].astype(np.float64)
+                anchor_xy   = self.state_cmd.pelvis_pos_w[:2].astype(np.float64)
+            else:
+                # Real robot: ball already in pelvis body frame; robot is at origin.
+                ball_pos_xy = self.state_cmd.ball_pos_b[:2].astype(np.float64)
+                ball_vel_xy = np.zeros(2, dtype=np.float64)  # no velocity in body frame #TODO: Temporal Difference
+                anchor_xy   = np.zeros(2, dtype=np.float64)
+
+            in_circle = self._ball_enters_circle(
+                ball_pos_xy, ball_vel_xy, anchor_xy,
+                self.trigger_radius, self.trigger_horizon)
+            if self._burst_need_ball_clear:
+                if not in_circle:
+                    self._burst_need_ball_clear = False
+            elif in_circle:
+                self._motion_triggered = True
+                self._trigger_policy_step = policy_step
+                if self.trigger_play_end_frame is not None:
+                    s0, s1 = self._trigger_segment_bounds()
+                    print(f"\n[Score] Ball trigger at policy_step={policy_step} "
+                          f"→ play frames {s0}..{s1}")
+                else:
+                    print(f"\n[Score] Ball trigger at policy_step={policy_step} "
+                          f"→ from frame {self.trigger_frame} to clip end")
+
         obs = self._build_obs()
 
         out = self.ort_session.run(
@@ -467,20 +587,46 @@ class Score(FSMState):
         self.policy_output.kps     = self.kps
         self.policy_output.kds     = self.kds
 
-        # ---- Visualization: anchor sphere + line from torso to anchor ----
-        self.policy_output.viz_spheres = [
+        # ---- Visualization: anchor sphere + line from torso to anchor + target square ----
+        target_marker_pos = np.array([self.target_pos_w[0], self.target_pos_w[1], 0.15],
+                                     dtype=np.float64)
+        viz = [
             {"pos": self._debug_anchor_pos_w.copy(), "radius": 0.06,
              "rgba": np.array([1.0, 0.5, 0.0, 0.9], dtype=np.float32)},
             {"from": self._debug_torso_pos_w.copy(),
              "to":   self._debug_anchor_pos_w.copy(), "radius": 0.008,
              "rgba": np.array([1.0, 0.5, 0.0, 0.5], dtype=np.float32)},
+            {"pos": target_marker_pos, "size": np.array([0.002, 0.15, 0.15]),
+             "rgba": np.array([1.0, 0.4, 0.8, 0.85], dtype=np.float32)},
         ]
+        # While waiting for the ball: show a semi-transparent cyan sphere indicating
+        # the trigger circle radius around the pelvis.
+        if self.wait_for_ball and not self._motion_triggered:
+            trigger_center = np.array([
+                self.state_cmd.pelvis_pos_w[0],
+                self.state_cmd.pelvis_pos_w[1],
+                0.1,
+            ], dtype=np.float64)
+            viz.append({"pos": trigger_center, "radius": self.trigger_radius,
+                        "rgba": np.array([0.0, 1.0, 1.0, 0.15], dtype=np.float32)})
+        self.policy_output.viz_spheres = viz
 
         self.time_step += 1
-        capped = 0 if self.freeze_motion_at_first_frame else min(policy_step, self.motion_total_steps - 1)
+        capped = self._motion_frame_index(policy_step)
         self.policy_output.ghost_qpos = self._compute_ghost_qpos(capped)
-        print(progress_bar(capped * self.control_dt,
-                           self.motion_total_steps * self.control_dt),
+        if self.wait_for_ball and self.trigger_play_end_frame is not None:
+            s0, s1 = self._trigger_segment_bounds()
+            span_ct = s1 - s0 + 1
+            bar_total = span_ct * self.control_dt
+            if self._motion_triggered:
+                st = policy_step - self._trigger_policy_step
+                bar_prog = min(st + 1, span_ct) * self.control_dt
+            else:
+                bar_prog = 0.0
+        else:
+            bar_total = self.motion_total_steps * self.control_dt
+            bar_prog = capped * self.control_dt
+        print(progress_bar(bar_prog, bar_total),
               end="", flush=True)
 
     # ------------------------------------------------------------------

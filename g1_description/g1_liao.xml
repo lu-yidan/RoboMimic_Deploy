@@ -479,7 +479,7 @@
             <geom name="box_geom" type="box" size="0.3 5.0 1.0"
                   rgba="0.8 0.3 0.2 1"
                   contype="1" conaffinity="1"
-                  friction="0.3 0.005 0.00001"
+                  friction="0.2 0.005 0.00001"
                   solref="0.0005 1.0"
                   solimp="0.99 0.999 0.001"/>
         </body>

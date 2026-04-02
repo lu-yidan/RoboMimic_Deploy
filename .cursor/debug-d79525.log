@@ -1,0 +1,6 @@
+{"sessionId": "d79525", "runId": "pre-fix", "hypothesisId": "H1", "location": "deploy_mujoco.py:_draw_viz_spheres:entry", "message": "viz list received", "data": {"count": 4}, "timestamp": 1775058560511}
+{"sessionId": "d79525", "runId": "pre-fix", "hypothesisId": "H2", "location": "deploy_mujoco.py:_draw_viz_spheres:item", "message": "processing viz item", "data": {"keys": ["pos", "radius", "rgba"]}, "timestamp": 1775058560511}
+{"sessionId": "d79525", "runId": "pre-fix", "hypothesisId": "H3", "location": "deploy_mujoco.py:_draw_viz_spheres:else", "message": "entered sphere-only branch", "data": {"has_radius": true, "has_size": false}, "timestamp": 1775058560511}
+{"sessionId": "d79525", "runId": "pre-fix", "hypothesisId": "H2", "location": "deploy_mujoco.py:_draw_viz_spheres:item", "message": "processing viz item", "data": {"keys": ["from", "radius", "rgba", "to"]}, "timestamp": 1775058560511}
+{"sessionId": "d79525", "runId": "pre-fix", "hypothesisId": "H2", "location": "deploy_mujoco.py:_draw_viz_spheres:item", "message": "processing viz item", "data": {"keys": ["pos", "rgba", "size"]}, "timestamp": 1775058560511}
+{"sessionId": "d79525", "runId": "pre-fix", "hypothesisId": "H3", "location": "deploy_mujoco.py:_draw_viz_spheres:else", "message": "entered sphere-only branch", "data": {"has_radius": false, "has_size": true}, "timestamp": 1775058560511}

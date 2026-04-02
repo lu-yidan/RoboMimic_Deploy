@@ -1,12 +1,12 @@
-# onnx_path:   "policy-obs-fg8.onnx"
-onnx_path:   "policy-obs-aic.onnx"
-# onnx_path:   "policy-obs-325-uz8.onnx"
-# onnx_path:   "policy-obs-47-77.onnx"
+# onnx_path:   "policy-obs.onnx"
+# onnx_path:   "policy-obs-aic.onnx"
+onnx_path:   "policy-obs-325-uz8.onnx"
+# onnx_path:   "policy-obs-41-lbs.onnx"
 motion_path: "score_motion.npz"
 
 control_dt:      0.02     # 50 Hz control (sim: 2ms * 10 decimation)
 warmup_steps:    10       # interpolation steps from current pose to motion t=0
-clip_actions:    15.0     # PPO actions rarely exceed ±3; prevents runaway divergence
+clip_actions:    10.0     # PPO actions rarely exceed ±3; prevents runaway divergence
 
 # false = simulation (ball_pos from MuJoCo world frame)
 # true  = real robot (ball_pos from DDS, already in pelvis body frame)
@@ -27,6 +27,8 @@ ball_obs_lost_norm_max: 1.0e-3
 # Useful for debugging pose-tracking behaviour without motion progression.
 freeze_motion_at_first_frame: false
 
+adapt_play_motion: true
+
 # If true, anchor_pos_b is always [0, 0, 0] (anchor treated as coincident with torso).
 zero_anchor_pos: false
 
@@ -42,7 +44,22 @@ ball_facing_anchor_ori: true
 
 # Target position in world frame [x, y, z] (e.g. goal center ~5m ahead)
 target_pos: [7.0, 0.0, 1.0]
+target_pos: [7.0, 0.0, 1.0]
 
+# Ball-trigger gate: hold at frame 0 until the ball enters the circle.
+# When `trigger_play_end_frame` is set, on trigger play inclusive segment
+# [trigger_frame, trigger_play_end_frame], then return to frame 0 and wait
+# (ball must leave the trigger zone once before the next trigger).
+# If `trigger_play_end_frame` is omitted, plays from `trigger_frame` to clip end (one-shot).
+wait_for_ball:   true
+trigger_radius:  0.1    # metres
+trigger_horizon: 0.4    # look-ahead seconds
+trigger_frame:            252   # first motion frame on trigger (loaded clip indices)
+trigger_play_end_frame:   302   # last motion frame inclusive (252..302 = 51 frames)
+# Default settings:
+# wait_for_ball:   false
+# trigger_frame:   0  
+# freeze_motion_at_first_frame: true
 # All arrays below are in MuJoCo DFS joint order (== hardware order).
 # Fill in from ONNX metadata after training.
 

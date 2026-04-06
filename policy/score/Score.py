@@ -402,12 +402,11 @@ class Score(FSMState):
             # Use ball position in pelvis body frame directly as anchor_pos_b.
             if self.use_body_frame_ball:
                 anchor_pos_b_ref  = (R_torso_w.T @ (aligned_anchor_pos_w - torso_pos_w)).astype(np.float32)
-                # Blend with ball when detection is valid OR coast (invalid but non-zero estimate).
-                ball_b = ball_b_effective
-                use_ball = self.state_cmd.ball_valid or float(np.linalg.norm(ball_b)) > 1e-3
-                if use_ball:
-                    anchor_pos_b_ball = np.clip(ball_b, -1.0, 1.0).astype(np.float32)
-                    anchor_pos_b = 0.1 * anchor_pos_b_ref + 0.9 * anchor_pos_b_ball
+                if self.state_cmd.ball_valid:
+                    anchor_cmd_xy = self.state_cmd.ball_pos_b[:2]
+                    anchor_cmd_xy = anchor_cmd_xy / np.linalg.norm(anchor_cmd_xy)
+                    anchor_pos_b_ball = 0.25*anchor_cmd_xy
+                    anchor_pos_b = np.concatenate([anchor_pos_b_ball, [aligned_anchor_pos_w[2] - torso_pos_w[2]]])
                 else:
                     anchor_pos_b = anchor_pos_b_ref
                 anchor_pos_b[2] = aligned_anchor_pos_w[2] - torso_pos_w[2]

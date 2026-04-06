@@ -386,7 +386,7 @@ class Score(FSMState):
                 if self.state_cmd.ball_valid:
                     anchor_cmd_xy = self.state_cmd.ball_pos_b[:2]
                     anchor_cmd_xy = anchor_cmd_xy / np.linalg.norm(anchor_cmd_xy)
-                    anchor_pos_b_ball = 0.05*anchor_cmd_xy
+                    anchor_pos_b_ball = 0.25*anchor_cmd_xy
                     anchor_pos_b = np.concatenate([anchor_pos_b_ball, [aligned_anchor_pos_w[2] - torso_pos_w[2]]])
                 else:
                     anchor_pos_b = anchor_pos_b_ref

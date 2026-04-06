@@ -16,6 +16,12 @@ class CenterKalmanFilter:
         self.R = np.diag([0.02, 0.02, 0.02]).astype(np.float64)
         self.initialized = False
         self.max_jump = 0.8  # measurement gating distance [m]
+        self._max_predict_dt = 0.2  # cap integration step [s] after perception gaps
+
+    def freeze_motion(self):
+        """Zero velocity when perception is absent — avoids ballistic drift and huge
+        single-step predicts when measurements resume."""
+        self.x[3:6, 0] = 0.0
 
     def _state_transition(self, dt: float):
         F = np.eye(6, dtype=np.float64)
@@ -51,9 +57,14 @@ class CenterKalmanFilter:
             self.reset(z)
             return self.position
 
-        self.predict(max(dt, 1e-3))
-        if np.linalg.norm(z - self.position) <= self.max_jump:
+        dt = float(np.clip(dt, 1e-3, self._max_predict_dt))
+        self.predict(dt)
+        innov = np.linalg.norm(z - self.position)
+        if innov <= self.max_jump:
             self.update(z)
+        else:
+            # Re-acquire after drift / outlier: snap to measurement (same idea as fused KF)
+            self.reset(z)
         return self.position
 
     @property

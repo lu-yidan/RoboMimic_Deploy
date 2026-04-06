@@ -122,6 +122,8 @@ def main():
                         help="camera capture height (default 480)")
     parser.add_argument("--show", action="store_true",
                         help="stream annotated video via MJPEG HTTP (open browser on port 8080)")
+    parser.add_argument("--dds-topic", default="rt/ball_state",
+                        help="DDS topic name to publish to (default: rt/ball_state)")
     args = parser.parse_args()
 
     # ── ROS2 joint listener ───────────────────────────────────────────────
@@ -137,8 +139,8 @@ def main():
     print("[INFO] ROS2 joint listener started (/lowstate)")
 
     # ── DDS publisher ─────────────────────────────────────────────────────
-    dds = BallStatePublisher(domain_id=0)
-    print("[INFO] DDS publisher ready on 'rt/ball_state'")
+    dds = BallStatePublisher(domain_id=0, topic_name=args.dds_topic)
+    print(f"[INFO] DDS publisher ready on '{args.dds_topic}'")
 
     # ── YOLO ─────────────────────────────────────────────────────────────
     import torch

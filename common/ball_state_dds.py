@@ -23,6 +23,11 @@ BALL_STATE_TOPIC = "rt/ball_state"
 BALL_STALE_MS    = 300   # ms — if no update within this window, report invalid
 
 
+SOURCE_NONE  = 0
+SOURCE_CAM   = 1
+SOURCE_LIDAR = 2
+
+
 @dataclass
 class BallState(idl.IdlStruct, typename="mjlab::msg::dds_::BallState_"):
     """Ball position in pelvis (base) body frame."""
@@ -31,6 +36,7 @@ class BallState(idl.IdlStruct, typename="mjlab::msg::dds_::BallState_"):
     y            : types.float32 = 0.0
     z            : types.float32 = 0.0
     valid        : types.uint8   = 0    # 1 = detection valid, 0 = no ball
+    source       : types.uint8   = 0    # 0=none, 1=camera, 2=lidar
 
 
 # Best-effort, keep only the latest sample — appropriate for sensor data.
@@ -45,19 +51,21 @@ _SENSOR_QOS = Qos(
 # ---------------------------------------------------------------------------
 
 class BallStatePublisher:
-    def __init__(self, domain_id: int = 0):
+    def __init__(self, domain_id: int = 0, topic_name: str = BALL_STATE_TOPIC):
         self._dp     = DomainParticipant(domain_id)
-        self._topic  = Topic(self._dp, BALL_STATE_TOPIC, BallState, qos=_SENSOR_QOS)
+        self._topic  = Topic(self._dp, topic_name, BallState, qos=_SENSOR_QOS)
         self._pub    = Publisher(self._dp)
         self._writer = DataWriter(self._pub, self._topic, qos=_SENSOR_QOS)
 
-    def publish(self, x: float, y: float, z: float, valid: bool = True):
+    def publish(self, x: float, y: float, z: float, valid: bool = True,
+                source: int = SOURCE_NONE):
         msg = BallState(
             timestamp_us=int(time.time() * 1e6),
             x=float(x),
             y=float(y),
             z=float(z),
             valid=1 if valid else 0,
+            source=source,
         )
         self._writer.write(msg)
 
@@ -77,14 +85,16 @@ class BallStateSubscriber:
         ball = sub.latest()   # returns BallState; check .valid before using
     """
 
-    def __init__(self, domain_id: int = 0, callback=None):
+    def __init__(self, domain_id: int = 0, callback=None,
+                 topic_name: str = BALL_STATE_TOPIC):
         """
         Args:
             callback: optional callable(BallState) invoked on each new sample.
                       If None, use latest() to poll.
+            topic_name: DDS topic to subscribe to.
         """
         self._dp     = DomainParticipant(domain_id)
-        self._topic  = Topic(self._dp, BALL_STATE_TOPIC, BallState, qos=_SENSOR_QOS)
+        self._topic  = Topic(self._dp, topic_name, BallState, qos=_SENSOR_QOS)
         self._sub    = Subscriber(self._dp)
         self._reader = DataReader(self._sub, self._topic, qos=_SENSOR_QOS)
         self._callback = callback

@@ -103,8 +103,9 @@ bash onboard/perception/camera/run_dual.sh
 
 # 推荐：明确指定序列号，防止 USB 枚举顺序变化
 bash onboard/perception/camera/run_dual.sh \
-    --head-serial 117322071089 \
-    --chest-serial 334622071404
+    --head-serial  334622071404 \
+    --chest-serial 244622070281 \
+    --show
 
 # 带预览
 bash onboard/perception/camera/run_dual.sh --show

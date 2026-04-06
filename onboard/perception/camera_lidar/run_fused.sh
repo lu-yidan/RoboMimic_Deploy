@@ -1,47 +1,88 @@
 #!/usr/bin/env bash
-# run_fused.sh — Launch the fused chest-camera + LiDAR ball detector.
+# run_fused.sh — 双进程融合：camera + lidar 独立进程，fusion 节点合并输出
 #
-# Usage:
-#   bash onboard/perception/run_fused.sh               # default settings
-#   bash onboard/perception/run_fused.sh --show        # open MJPEG stream on port 8080
-#   bash onboard/perception/run_fused.sh --list-cameras
-#   bash onboard/perception/run_fused.sh --chest-serial 123456789
-#   bash onboard/perception/run_fused.sh --model onboard/perception/camera/models/yolo11m.engine
+# 架构：
+#   1. Livox MID360 驱动       → /livox/lidar topic
+#   2. camera/ball_detector.py → DDS rt/cam_ball_state   (~20-30 Hz)
+#   3. lidar/ball_detector.py  → DDS rt/lidar_ball_state (~10 Hz)
+#   4. fusion_node.py          → DDS rt/ball_state       (~50 Hz, 相机优先)
 #
-# Environment:
-#   Requires ROS2 (foxy/humble) + ws_livox overlay to be sourced.
-#   All additional args are forwarded to ball_detector_fused.py.
+# 用法：
+#   bash onboard/perception/camera_lidar/run_fused.sh
+#   bash onboard/perception/camera_lidar/run_fused.sh --show
 
-set -euo pipefail
-
+set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
-# ── ROS2 environment ─────────────────────────────────────────────────────────
-ROS_DISTRO="${ROS_DISTRO:-foxy}"
-ROS_SETUP="/opt/ros/${ROS_DISTRO}/setup.bash"
-LIVOX_SETUP="${HOME}/yixuan/yichao-deploy/ws_livox/install/setup.sh"
+CAM_LOG=/tmp/cam_detector.log
+LIDAR_LOG=/tmp/lidar_detector.log
+LIVOX_LOG=/tmp/livox_driver.log
 
-if [[ -f "$ROS_SETUP" ]]; then
-    # shellcheck source=/dev/null
-    source "$ROS_SETUP"
-    echo "[run_fused] sourced $ROS_SETUP"
-else
-    echo "[run_fused] WARNING: $ROS_SETUP not found — ROS2 may not be available"
-fi
+# ── 1. 解锁 GPU / CPU 频率 ──────────────────────────────────────────────────
+echo "[run_fused] Unlocking Jetson clocks..."
+echo "123" | sudo -S nvpmodel -m 0  2>/dev/null || true
+echo "123" | sudo -S jetson_clocks  2>/dev/null || true
 
-if [[ -f "$LIVOX_SETUP" ]]; then
-    # shellcheck source=/dev/null
-    source "$LIVOX_SETUP"
-    echo "[run_fused] sourced $LIVOX_SETUP"
-else
-    echo "[run_fused] WARNING: $LIVOX_SETUP not found — /livox/lidar topic may not be available"
-fi
+# ── 2. TensorRT ──────────────────────────────────────────────────────────────
+export LD_LIBRARY_PATH=/usr/local/cuda-12.1/compat:${LD_LIBRARY_PATH:-}
+export PYTHONPATH=/usr/lib/python3.8/dist-packages:${PYTHONPATH:-}
 
-# ── Launch ────────────────────────────────────────────────────────────────────
+# ── 3. ROS2 + Livox 环境 ────────────────────────────────────────────────────
+source /opt/ros/foxy/setup.bash
+source ~/yixuan/yichao-deploy/ws_livox/install/setup.sh 2>/dev/null || true
+
 cd "$ROOT_DIR"
-echo "[run_fused] Starting ball_detector_fused.py  args: $*"
-echo "[run_fused] HEAD_JOINT_ANGLE fixed at 2.3° (edit ball_detector_fused.py to change)"
-echo "──────────────────────────────────────────────────────────────────────────"
 
-exec python onboard/perception/ball_detector_fused.py "$@"
+# ── 4. 清理函数：按名称杀掉所有相关进程 ──────────────────────────────────────
+cleanup() {
+    echo ""
+    echo "[run_fused] Stopping all processes..."
+    # Kill by specific command patterns (catches conda wrappers + python children)
+    pkill -f "ball_detector.py.*--dds-topic rt/cam_ball_state" 2>/dev/null || true
+    pkill -f "ball_detector.py.*--dds-topic rt/lidar_ball_state" 2>/dev/null || true
+    pkill -f "fusion_node.py" 2>/dev/null || true
+    pkill -f "msg_MID360_launch" 2>/dev/null || true
+    pkill -f "livox_ros_driver2_node" 2>/dev/null || true
+    sleep 1
+    # Force kill any survivors
+    pkill -9 -f "ball_detector.py.*--dds-topic rt/cam_ball_state" 2>/dev/null || true
+    pkill -9 -f "ball_detector.py.*--dds-topic rt/lidar_ball_state" 2>/dev/null || true
+    pkill -9 -f "fusion_node.py" 2>/dev/null || true
+    pkill -9 -f "msg_MID360_launch" 2>/dev/null || true
+    pkill -9 -f "livox_ros_driver2_node" 2>/dev/null || true
+    echo "[run_fused] Logs: $CAM_LOG  $LIDAR_LOG  $LIVOX_LOG"
+    echo "[run_fused] Done."
+}
+trap cleanup EXIT INT TERM
+
+# ── 5. Livox MID360 驱动 ─────────────────────────────────────────────────────
+echo "[run_fused] Starting Livox MID360 driver..."
+ros2 launch livox_ros_driver2 msg_MID360_launch.py > "$LIVOX_LOG" 2>&1 &
+sleep 3
+echo "[run_fused] Livox driver started"
+
+# ── 6. LiDAR 检测进程 → rt/lidar_ball_state ──────────────────────────────────
+echo "[run_fused] Starting lidar detector  (log: $LIDAR_LOG)"
+conda run -n robomimic --no-capture-output \
+    python -u onboard/perception/lidar/ball_detector.py \
+        --dds-topic rt/lidar_ball_state > "$LIDAR_LOG" 2>&1 &
+sleep 1
+
+# ── 7. Camera 检测进程 → rt/cam_ball_state ───────────────────────────────────
+echo "[run_fused] Starting camera detector  (log: $CAM_LOG)"
+conda run -n robomimic --no-capture-output \
+    python -u onboard/perception/camera/ball_detector.py \
+        --dds-topic rt/cam_ball_state "$@" > "$CAM_LOG" 2>&1 &
+sleep 2
+
+# ── 8. Fusion 节点（前台） ───────────────────────────────────────────────────
+echo "══════════════════════════════════════════════════════════════════════════"
+echo "[run_fused] Camera  → rt/cam_ball_state    (log: $CAM_LOG)"
+echo "[run_fused] LiDAR   → rt/lidar_ball_state  (log: $LIDAR_LOG)"
+echo "[run_fused] Fusion  → rt/ball_state  (output below)"
+echo "[run_fused] Ctrl-C to stop all."
+echo "══════════════════════════════════════════════════════════════════════════"
+
+conda run -n robomimic --no-capture-output \
+    python -u onboard/perception/camera_lidar/fusion_node.py

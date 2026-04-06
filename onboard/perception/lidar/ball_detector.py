@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Ball detector service — runs on G1 onboard computer.
 
 Subscribes to:
@@ -7,9 +8,12 @@ Subscribes to:
 Publishes via DDS:
   "rt/ball_state"  (BallState — ball position in pelvis body frame, ~10 Hz)
 
-Usage (on G1 onboard):
-    cd RoboMimicDeploy_G1
-    python onboard/perception/lidar/ball_detector.py
+Usage (from this repository root, e.g. RoboMimic_Deploy):
+
+    python3 onboard/perception/lidar/ball_detector.py
+
+Must be run with the Python interpreter (after sourcing ROS + workspace if needed).
+Do not run: ``bash onboard/perception/lidar/ball_detector.py`` — that feeds the file to bash.
 """
 
 import sys
@@ -40,7 +44,7 @@ from common.ball_state_dds import BallStatePublisher
 # Least-squares ball center estimator
 # ---------------------------------------------------------------------------
 
-def estimate_ball_center_ls(points, r=0.115, offset=0.05, max_iter=10):
+def estimate_ball_center_ls(points, r=0.115, offset=0.095, max_iter=10):
     """Fit sphere of known radius r to point cloud. Returns center (3,)."""
     center = points.mean(axis=0).astype(np.float64)
     dist   = np.linalg.norm(points - center, axis=1)
@@ -51,7 +55,11 @@ def estimate_ball_center_ls(points, r=0.115, offset=0.05, max_iter=10):
     norm_c = np.linalg.norm(c)
     if norm_c < 1e-6:
         return c   # guard against divide-by-zero at the origin
-    return c + c / norm_c * offset
+    pc = c + c / norm_c * offset
+    dists = np.linalg.norm(points - pc[None, :], axis=1)
+    in_shell = (dists < (r + 0.01)) & (dists > (r - 0.01))
+    in_n = int(in_shell.sum())
+    return pc, in_n
     # for _ in range(max_iter):
     #     v     = points - c[None, :]
     #     dist  = np.linalg.norm(v, axis=1) + 1e-9
@@ -70,19 +78,21 @@ def estimate_ball_center_ls(points, r=0.115, offset=0.05, max_iter=10):
 # ---------------------------------------------------------------------------
 
 class BallDetector(Node):
-    def __init__(self):
+    def __init__(self, dds_topic: str = "rt/ball_state"):
         super().__init__("ball_detector")
 
         # ---- Detection params ----
         self.r           = 0.115   # ball radius [m]
-        self.reflect_thr = 130
+        self.reflect_thr = 150
         self.min_points  = 4
-        self.max_range   = 1.8
+        self.max_range   = 4
         self.min_range   = 0.2
         self.z_low       = -1.5
         self.z_high      =  1.5
         self.x_low       =  0.0
         self.x_high      =  5.0
+        self.y_low       = -1.0
+        self.y_high      =  1.0
         self.center_offset = 0.085  # [m], adjustable at runtime from keyboard
 
         # ---- Temporal smoothing (Kalman filter) ----
@@ -97,8 +107,9 @@ class BallDetector(Node):
         self.q_mid  = 0.0
 
         # ---- DDS publisher ----
-        self._dds = BallStatePublisher(domain_id=0)
-        self.get_logger().info("DDS publisher ready on 'rt/ball_state'")
+        self._dds_topic = dds_topic
+        self._dds = BallStatePublisher(domain_id=0, topic_name=dds_topic)
+        self.get_logger().info(f"DDS publisher ready on '{dds_topic}'")
 
         # ---- RViz2 publisher ----
         self._rviz = RvizPublisher(self, frame_id="livox_frame", ball_r=self.r)
@@ -191,6 +202,7 @@ class BallDetector(Node):
             # )
 
             if n == 0:
+                self.center_kf.freeze_motion()
                 self._publish_invalid()
                 continue
 
@@ -217,7 +229,8 @@ class BallDetector(Node):
                 roi  = (
                     (d_c >= self.min_range) & (d_c <= self.max_range) &
                     (cand_raw[:, 2] >= self.z_low)  & (cand_raw[:, 2] <= self.z_high) &
-                    (cand_raw[:, 0] >= self.x_low)  & (cand_raw[:, 0] <= self.x_high)
+                    (cand_raw[:, 0] >= self.x_low)  & (cand_raw[:, 0] <= self.x_high) &
+                    (cand_raw[:, 1] >= self.y_low)  & (cand_raw[:, 1] <= self.y_high)
                 )
                 cand = cand_raw[roi]
             else:
@@ -237,6 +250,7 @@ class BallDetector(Node):
             t_pub = time.perf_counter()
 
             if cand.shape[0] < self.min_points:
+                self.center_kf.freeze_motion()
                 self._publish_invalid()
                 if _frame_n % 30 == 0:
                     print(
@@ -250,7 +264,7 @@ class BallDetector(Node):
                 _frame_n += 1
                 continue
 
-            center_lidar = estimate_ball_center_ls(
+            center_lidar, in_n = estimate_ball_center_ls(
                 cand, r=self.r, offset=self.center_offset,
             )
             self._rviz.publish_ball_raw(center_lidar, stamp)
@@ -258,16 +272,16 @@ class BallDetector(Node):
             now = time.time()
             dt  = 0.1 if self._last_lidar_ts is None else now - self._last_lidar_ts
             self._last_lidar_ts = now
-            # center_filtered = self.center_kf.step(center_lidar, dt)
-            # self._rviz.publish_ball_kf(center_filtered, stamp)
+            center_filtered = self.center_kf.step(center_lidar, dt)
+            self._rviz.publish_ball_kf(center_filtered, stamp)
 
             center_base = transform_point_mid360_to_base(
-                center_lidar,
+                center_filtered,
                 self.q_wy, self.q_wr, self.q_wp, self.q_head, self.q_mid,
             )
 
             x, y, z = float(center_base[0]), float(center_base[1]), float(center_base[2])
-            # self._dds.publish(x, y, z, valid=True)
+            self._dds.publish(x, y, z, valid=True)
 
             dt_ms = (time.perf_counter() - t0) * 1000.0
             # self._rviz.publish_text(center_filtered, cand.shape[0],
@@ -279,7 +293,7 @@ class BallDetector(Node):
                 print(
                     f"\r[lidar] pelvis=({x:+.3f},{y:+.3f},{z:+.3f})  "
                     f"raw=({center_lidar[0]:.3f},{center_lidar[1]:.3f},{center_lidar[2]:.3f})  "
-                    f"n={n} hi={len(high_idx)} cand={cand.shape[0]}  "
+                    f"surf_n={in_n} hi={len(high_idx)} cand={cand.shape[0]}  "
                     f"refl={1000*(t_pass1-t0):.0f}ms "
                     f"cand_xyz={1000*(t_pass2a-t_pass1):.0f}ms "
                     f"disp_xyz={1000*(t_pass2b-t_pass2a):.0f}ms "
@@ -310,8 +324,14 @@ class BallDetector(Node):
 # ---------------------------------------------------------------------------
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="LiDAR ball detector")
+    parser.add_argument("--dds-topic", default="rt/ball_state",
+                        help="DDS topic name to publish to (default: rt/ball_state)")
+    args, _ = parser.parse_known_args()
+
     rclpy.init()
-    node = BallDetector()
+    node = BallDetector(dds_topic=args.dds_topic)
     # Use spin_once + sleep instead of spin() to avoid /lowstate 500 Hz
     # saturating the GIL and starving the worker thread.  The sleep yields
     # the GIL every 2 ms so the worker thread can run Python between spins.

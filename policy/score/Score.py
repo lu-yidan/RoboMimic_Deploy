@@ -190,6 +190,12 @@ class Score(FSMState):
         # True on real robot: ball_pos is already in pelvis body frame (from DDS sensor).
         # False in simulation: ball_pos is in world frame and needs coordinate transform.
         self.use_body_frame_ball = bool(cfg.get("use_body_frame_ball", False))
+        # soccer_pos_b obs only: when invalid + ~zero sensor ball, substitute (e.g. avoid [0,0,0]).
+        _lost_default = cfg.get("ball_obs_default_when_lost", None)
+        self._ball_obs_default_when_lost = (
+            np.array(_lost_default, dtype=np.float32) if _lost_default is not None else None
+        )
+        self._ball_obs_lost_norm_max = float(cfg.get("ball_obs_lost_norm_max", 1e-3))
 
         # Default joint pos in Isaac Lab order (for joint_pos_rel obs)
         self.default_q_il = self.default_q_mj[ISAAC_TO_MUJOCO]
@@ -292,6 +298,19 @@ class Score(FSMState):
         ref_jpos = self.motion_joint_pos[t]   # (29,) Isaac Lab order
         ref_jvel = self.motion_joint_vel[t]   # (29,) Isaac Lab order
 
+        # Pelvis-frame ball for policy: sensor, or ball_obs_default_when_lost when invalid + ~zero.
+        ball_b_effective = None
+        if self.use_body_frame_ball:
+            ball_b_effective = np.clip(self.state_cmd.ball_pos_b, -8.0, 8.0).astype(np.float32)
+            if (
+                self._ball_obs_default_when_lost is not None
+                and not self.state_cmd.ball_valid
+                and float(np.linalg.norm(self.state_cmd.ball_pos_b)) <= self._ball_obs_lost_norm_max
+            ):
+                ball_b_effective = np.clip(
+                    self._ball_obs_default_when_lost, -8.0, 8.0
+                ).astype(np.float32)
+
         # ---- motion_anchor_pos_b (relative to torso, expressed in torso body frame) ----
         # Yaw-align the reference anchor world position, then express in torso body frame.
         init_world_quat      = _matrix_to_quat(self._init_to_world)
@@ -304,7 +323,7 @@ class Score(FSMState):
             if self.use_body_frame_ball:
                 anchor_pos_b_ref  = (R_torso_w.T @ (aligned_anchor_pos_w - torso_pos_w)).astype(np.float32)
                 # Blend with ball when detection is valid OR coast (invalid but non-zero estimate).
-                ball_b = self.state_cmd.ball_pos_b.astype(np.float32)
+                ball_b = ball_b_effective
                 use_ball = self.state_cmd.ball_valid or float(np.linalg.norm(ball_b)) > 1e-3
                 if use_ball:
                     anchor_pos_b_ball = np.clip(ball_b, -1.0, 1.0).astype(np.float32)
@@ -340,7 +359,7 @@ class Score(FSMState):
             if self.use_body_frame_ball:
                 _R_pelvis = _quat_to_matrix(self.state_cmd.pelvis_quat_w.astype(np.float64))
                 ball_pos_w_f64 = (self.state_cmd.pelvis_pos_w.astype(np.float64)
-                                  + _R_pelvis @ self.state_cmd.ball_pos_b.astype(np.float64))
+                                  + _R_pelvis @ ball_b_effective.astype(np.float64))
             else:
                 ball_pos_w_f64 = self.state_cmd.ball_pos_w.astype(np.float64)
 
@@ -382,12 +401,12 @@ class Score(FSMState):
 
         # ---- Ball and target in pelvis body frame (training uses root/pelvis, not torso) ----
         if self.use_body_frame_ball:
-            # Real robot: ball_pos_b comes directly from DDS (already in pelvis frame).
+            # Real robot: ball_pos_b for obs (same as ball_b_effective: DDS or lost default).
             # Target direction is corrected each frame for robot yaw rotation since entry:
             #   target_world ≈ R_entry_yaw @ target_pos_b_entry
             #   target_pos_b  = R_current_yaw.T @ target_world
-            ball_pos_b = np.clip(self.state_cmd.ball_pos_b, -8.0, 8.0).astype(np.float32)
-            
+            ball_pos_b = ball_b_effective
+
             pelvis_quat = self.state_cmd.pelvis_quat_w.astype(np.float64)
             current_yaw_mat = _quat_to_matrix(_yaw_quat(pelvis_quat))
             target_world = self._entry_yaw_mat @ self.target_pos_b_entry.astype(np.float64)

@@ -19,7 +19,7 @@ class CenterKalmanFilter:
         self._max_predict_dt = 0.2  # cap integration step [s] after perception gaps
         # Missing-measurement handling
         self._miss_time = 0.0        # seconds accumulated without measurements
-        self._freeze_after = 0.2     # seconds to tolerate before freezing velocity
+        self._freeze_after = 2     # seconds to tolerate before freezing velocity
         self._frozen = False
 
     def freeze_motion(self):
@@ -93,6 +93,10 @@ class CenterKalmanFilter:
             self.freeze_motion()
         self.predict(dt_eff)
         return self.position
+
+    @property
+    def miss_time(self) -> float:
+        return float(self._miss_time)
 
     @property
     def position(self):

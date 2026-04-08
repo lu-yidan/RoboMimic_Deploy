@@ -137,8 +137,8 @@ class BallDetector(Node):
         self.z_high      =  1.5
         self.x_low       =  0.0
         self.x_high      =  5.0
-        self.y_low       = -1.0
-        self.y_high      =  1.0
+        self.y_low       = -1.5
+        self.y_high      =  1.5
         self.center_offset = 0.085  # [m], adjustable at runtime from keyboard
 
         # ---- Temporal smoothing (Kalman filter) ----

@@ -29,9 +29,18 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-# ── 启动 Livox MID360 驱动 ───────────────────────────────────────────────────
+# ── 启动 Livox MID360 驱动（PointCloud2 模式，Python 端明显更快） ───────────
 echo "[run_lidar] Starting Livox MID360 driver..."
-ros2 launch livox_ros_driver2 msg_MID360_launch.py > /tmp/livox_driver.log 2>&1 &
+ros2 run livox_ros_driver2 livox_ros_driver2_node \
+    --ros-args \
+    -p xfer_format:=0 \
+    -p multi_topic:=0 \
+    -p data_src:=0 \
+    -p publish_freq:=10.0 \
+    -p output_data_type:=0 \
+    -p frame_id:=livox_frame \
+    -p user_config_path:=/home/unitree/yixuan/yichao-deploy/ws_livox/src/livox_ros_driver2/config/MID360_config.json \
+    -p cmdline_input_bd_code:=livox0000000001 > /tmp/livox_driver.log 2>&1 &
 sleep 3
 echo "[run_lidar] Livox driver started"
 
@@ -40,4 +49,4 @@ echo "[run_lidar] Starting lidar ball detector..."
 echo "──────────────────────────────────────────────────────────────────────────"
 
 conda run -n robomimic --no-capture-output \
-    python -u onboard/perception/lidar/ball_detector.py "$@"
+    python -u onboard/perception/lidar/ball_detector.py --msg-type pc2 "$@"

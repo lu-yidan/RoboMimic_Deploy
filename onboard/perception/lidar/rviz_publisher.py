@@ -116,10 +116,20 @@ def _text_marker(
 class RvizPublisher:
     """Thin wrapper around ROS2 publishers; attach to any Node instance."""
 
-    def __init__(self, node: Node, frame_id: str = "livox_frame", ball_r: float = 0.115):
+    def __init__(
+        self,
+        node: Node,
+        frame_id: str = "livox_frame",
+        ball_r: float = 0.115,
+        enable: bool = False,
+        cloud_publish_hz: float = 5.0,
+    ):
         self._node     = node
         self._frame_id = frame_id
         self._ball_r   = ball_r
+        self._enable   = enable
+        self._cloud_period_s = 0.0 if cloud_publish_hz <= 0 else 1.0 / cloud_publish_hz
+        self._last_cloud_pub_t = 0.0
 
         self._pub_all   = node.create_publisher(PointCloud2, "/ball_detector/cloud_all",        5)
         self._pub_cand  = node.create_publisher(PointCloud2, "/ball_detector/cloud_candidates", 5)
@@ -134,16 +144,37 @@ class RvizPublisher:
 
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _has_subscribers(pub) -> bool:
+        try:
+            return pub.get_subscription_count() > 0
+        except Exception:
+            return True
+
+    def should_publish_clouds(self) -> bool:
+        if not self._enable:
+            return False
+        if not (self._has_subscribers(self._pub_all) or self._has_subscribers(self._pub_cand)):
+            return False
+        if self._cloud_period_s <= 0.0:
+            return True
+        return (self._node.get_clock().now().nanoseconds * 1e-9 - self._last_cloud_pub_t) >= self._cloud_period_s
+
     def publish_clouds(self, all_xyz: np.ndarray, cand_xyz: np.ndarray, stamp):
         """Publish full cloud and filtered candidate cloud."""
+        if not self.should_publish_clouds():
+            return
         hdr = _make_header(self._frame_id, stamp)
-        if len(all_xyz):
+        if len(all_xyz) and self._has_subscribers(self._pub_all):
             self._pub_all.publish(_xyz_to_pointcloud2(all_xyz, hdr))
-        if len(cand_xyz):
+        if len(cand_xyz) and self._has_subscribers(self._pub_cand):
             self._pub_cand.publish(_xyz_to_pointcloud2(cand_xyz, hdr))
+        self._last_cloud_pub_t = self._node.get_clock().now().nanoseconds * 1e-9
 
     def publish_ball_raw(self, center: np.ndarray, stamp):
         """Red semi-transparent sphere at the raw LS-estimated ball centre."""
+        if not self._enable or not self._has_subscribers(self._pub_raw):
+            return
         hdr = _make_header(self._frame_id, stamp)
         self._pub_raw.publish(
             _sphere_marker(center, self._ball_r, hdr,
@@ -152,6 +183,8 @@ class RvizPublisher:
 
     def publish_ball_kf(self, center: np.ndarray, stamp):
         """Green opaque sphere at the Kalman-filtered ball centre."""
+        if not self._enable or not self._has_subscribers(self._pub_kf):
+            return
         hdr = _make_header(self._frame_id, stamp)
         self._pub_kf.publish(
             _sphere_marker(center, self._ball_r, hdr,
@@ -161,6 +194,8 @@ class RvizPublisher:
     def publish_text(self, center: np.ndarray, n_cand: int,
                      offset: float, cost_ms: float, stamp):
         """White text label above the KF sphere with key debug values."""
+        if not self._enable or not self._has_subscribers(self._pub_text):
+            return
         hdr  = _make_header(self._frame_id, stamp)
         text = f"n={n_cand}  off={offset:.3f}m  cost={cost_ms:.1f}ms"
         self._pub_text.publish(_text_marker(center, text, hdr, marker_id=2))

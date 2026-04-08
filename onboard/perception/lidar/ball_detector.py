@@ -25,6 +25,7 @@ import threading
 import select
 import termios
 import tty
+from typing import Dict
 import numpy as np
 
 import rclpy
@@ -32,10 +33,11 @@ from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 
 from livox_ros_driver2.msg import CustomMsg
+from sensor_msgs.msg import PointCloud2, PointField
 from unitree_hg.msg import LowState
 
 from onboard.perception.lidar.center_kalman_filter import CenterKalmanFilter
-from onboard.perception.lidar.mid360_to_base import transform_point_mid360_to_base
+from onboard.perception.lidar.mid360_to_base import compute_mid360_to_base_transform
 from onboard.perception.lidar.rviz_publisher import RvizPublisher
 from common.ball_state_dds import BallStatePublisher
 
@@ -73,12 +75,56 @@ def estimate_ball_center_ls(points, r=0.115, offset=0.095, max_iter=10):
     # return c.astype(np.float32)
 
 
+def _pc2_field_map(msg: PointCloud2) -> Dict[str, PointField]:
+    return {f.name: f for f in msg.fields}
+
+
+def _extract_xyz_intensity_from_pc2(msg: PointCloud2):
+    """Fast zero-copy-ish extraction for Livox PointCloud2."""
+    fields = _pc2_field_map(msg)
+    required = ("x", "y", "z", "intensity")
+    if not all(name in fields for name in required):
+        return (
+            np.zeros((0, 3), dtype=np.float32),
+            np.zeros((0,), dtype=np.float32),
+        )
+
+    raw = np.frombuffer(msg.data, dtype=np.uint8)
+    point_count = int(msg.width) * int(msg.height)
+    if point_count == 0 or msg.point_step <= 0:
+        return (
+            np.zeros((0, 3), dtype=np.float32),
+            np.zeros((0,), dtype=np.float32),
+        )
+
+    points_u8 = raw.reshape(point_count, msg.point_step)
+
+    def _float32_field(name: str) -> np.ndarray:
+        off = fields[name].offset
+        return np.frombuffer(
+            points_u8[:, off:off + 4].copy().tobytes(), dtype=np.float32
+        )
+
+    xyz = np.stack([
+        _float32_field("x"),
+        _float32_field("y"),
+        _float32_field("z"),
+    ], axis=1).astype(np.float32, copy=False)
+    intensity = _float32_field("intensity")
+    return xyz, intensity
+
+
 # ---------------------------------------------------------------------------
 # ROS2 node
 # ---------------------------------------------------------------------------
 
 class BallDetector(Node):
-    def __init__(self, dds_topic: str = "rt/ball_state"):
+    def __init__(
+        self,
+        dds_topic: str = "rt/ball_state",
+        show: bool = False,
+        msg_type: str = "pc2",
+    ):
         super().__init__("ball_detector")
 
         # ---- Detection params ----
@@ -105,6 +151,10 @@ class BallDetector(Node):
         self.q_wp   = 0.0
         self.q_head = 0.593412
         self.q_mid  = 0.0
+        self._T_base_mid360 = compute_mid360_to_base_transform(
+            self.q_wy, self.q_wr, self.q_wp, self.q_head, self.q_mid
+        )
+        self._joint_dirty = False
 
         # ---- DDS publisher ----
         self._dds_topic = dds_topic
@@ -112,11 +162,20 @@ class BallDetector(Node):
         self.get_logger().info(f"DDS publisher ready on '{dds_topic}'")
 
         # ---- RViz2 publisher ----
-        self._rviz = RvizPublisher(self, frame_id="livox_frame", ball_r=self.r)
+        self._show = show
+        self._msg_type = msg_type
+        self._rviz = RvizPublisher(
+            self, frame_id="livox_frame", ball_r=self.r,
+            enable=show, cloud_publish_hz=5.0,
+        )
 
         # ---- ROS2 subscriptions ----
-        self.create_subscription(CustomMsg, "/livox/lidar",
-                                 self.cb_lidar, 5)
+        if msg_type == "pc2":
+            self.create_subscription(PointCloud2, "/livox/lidar",
+                                     self.cb_lidar, 5)
+        else:
+            self.create_subscription(CustomMsg, "/livox/lidar",
+                                     self.cb_lidar, 5)
         self.create_subscription(LowState, "/lowstate",
                                  self.cb_lowstate, qos_profile_sensor_data)
 
@@ -146,8 +205,20 @@ class BallDetector(Node):
         self.q_wy = q[12]
         self.q_wr = q[13]
         self.q_wp = q[14]
+        self._joint_dirty = True
 
-    def cb_lidar(self, msg: CustomMsg):
+    def _transform_point_mid360_to_base_fast(self, point_mid360: np.ndarray) -> np.ndarray:
+        if self._joint_dirty:
+            self._T_base_mid360 = compute_mid360_to_base_transform(
+                self.q_wy, self.q_wr, self.q_wp, self.q_head, self.q_mid
+            )
+            self._joint_dirty = False
+        p_homogeneous = np.empty(4, dtype=np.float64)
+        p_homogeneous[:3] = point_mid360
+        p_homogeneous[3] = 1.0
+        return (self._T_base_mid360 @ p_homogeneous)[:3]
+
+    def cb_lidar(self, msg):
         # Non-blocking: just hand the message to the worker thread.
         # Python GIL ensures the reference swap is atomic.
         recv_wall = time.time()   # wall-clock when ROS delivered this message
@@ -176,9 +247,16 @@ class BallDetector(Node):
                 recv_wall = self._buf_recv_wall
 
             t0    = time.perf_counter()
-            pts   = msg.points
             stamp = msg.header.stamp
-            n     = len(pts)
+            if self._msg_type == "pc2":
+                xyz_all, refl_all = _extract_xyz_intensity_from_pc2(msg)
+                pts = None
+                n = xyz_all.shape[0]
+            else:
+                pts = msg.points
+                xyz_all = None
+                refl_all = np.array([p.reflectivity for p in pts], dtype=np.uint8)
+                n = len(pts)
 
             # ── Timestamp diagnostics ─────────────────────────────────
             # lidar_ts  : header stamp embedded by the Livox driver
@@ -215,16 +293,18 @@ class BallDetector(Node):
             #
             # Pass 1 — reflectivity only (1 attr × N points)
             #   Typical high-reflectivity ball hits: M ≈ 10-200 pts << N
-            refl_all = np.array([p.reflectivity for p in pts], dtype=np.uint8)
             t_pass1 = time.perf_counter()
 
             # Pass 2a — xyz only for high-refl candidates (3 attr × M)
             high_idx = np.where(refl_all >= self.reflect_thr)[0].tolist()
             if high_idx:
-                cand_raw = np.array(
-                    [(pts[i].x, pts[i].y, pts[i].z) for i in high_idx],
-                    dtype=np.float32,
-                )
+                if xyz_all is not None:
+                    cand_raw = xyz_all[high_idx]
+                else:
+                    cand_raw = np.array(
+                        [(pts[i].x, pts[i].y, pts[i].z) for i in high_idx],
+                        dtype=np.float32,
+                    )
                 d_c  = np.linalg.norm(cand_raw, axis=1)
                 roi  = (
                     (d_c >= self.min_range) & (d_c <= self.max_range) &
@@ -237,16 +317,22 @@ class BallDetector(Node):
                 cand = np.zeros((0, 3), dtype=np.float32)
             t_pass2a = time.perf_counter()
 
-            # Pass 2b — downsampled xyz for cloud_all display (~3000 pts)
-            # Full 20000-pt cloud is not needed for RViz debugging.
-            step     = max(1, n // 3000)
-            xyz_disp = np.array(
-                [(p.x, p.y, p.z) for p in pts[::step]],
-                dtype=np.float32,
-            )
+            if self._rviz.should_publish_clouds():
+                # Full 20000-pt cloud is not needed for RViz debugging.
+                step     = max(1, n // 1500)
+                if xyz_all is not None:
+                    xyz_disp = xyz_all[::step]
+                else:
+                    xyz_disp = np.array(
+                        [(p.x, p.y, p.z) for p in pts[::step]],
+                        dtype=np.float32,
+                    )
+            else:
+                xyz_disp = None
             t_pass2b = time.perf_counter()
 
-            self._rviz.publish_clouds(xyz_disp, cand, stamp)
+            if xyz_disp is not None:
+                self._rviz.publish_clouds(xyz_disp, cand, stamp)
             t_pub = time.perf_counter()
 
             if cand.shape[0] < self.min_points:
@@ -275,10 +361,7 @@ class BallDetector(Node):
             center_filtered = self.center_kf.step(center_lidar, dt)
             self._rviz.publish_ball_kf(center_filtered, stamp)
 
-            center_base = transform_point_mid360_to_base(
-                center_filtered,
-                self.q_wy, self.q_wr, self.q_wp, self.q_head, self.q_mid,
-            )
+            center_base = self._transform_point_mid360_to_base_fast(center_filtered)
 
             x, y, z = float(center_base[0]), float(center_base[1]), float(center_base[2])
             self._dds.publish(x, y, z, valid=True)
@@ -287,9 +370,9 @@ class BallDetector(Node):
             # self._rviz.publish_text(center_filtered, cand.shape[0],
             #                         self.center_offset, dt_ms, stamp)
 
-            # Throttle console output to every 10 frames to avoid I/O overhead.
+            # Throttle console output to avoid terminal I/O jitter.
             _frame_n += 1
-            if _frame_n % 1 == 0:
+            if _frame_n % 10 == 0:
                 print(
                     f"\r[lidar] pelvis=({x:+.3f},{y:+.3f},{z:+.3f})  "
                     f"raw=({center_lidar[0]:.3f},{center_lidar[1]:.3f},{center_lidar[2]:.3f})  "
@@ -304,10 +387,7 @@ class BallDetector(Node):
 
     def _publish_invalid(self):
         if self.center_kf.initialized:
-            cb = transform_point_mid360_to_base(
-                self.center_kf.position,
-                self.q_wy, self.q_wr, self.q_wp, self.q_head, self.q_mid,
-            )
+            cb = self._transform_point_mid360_to_base_fast(self.center_kf.position)
             self._dds.publish(float(cb[0]), float(cb[1]), float(cb[2]), valid=False)
         else:
             self._dds.publish(0.0, 0.0, 0.0, valid=False)
@@ -328,10 +408,14 @@ def main():
     parser = argparse.ArgumentParser(description="LiDAR ball detector")
     parser.add_argument("--dds-topic", default="rt/ball_state",
                         help="DDS topic name to publish to (default: rt/ball_state)")
+    parser.add_argument("--show", action="store_true",
+                        help="Enable RViz debug publishers (slower)")
+    parser.add_argument("--msg-type", choices=("pc2", "custom"), default="pc2",
+                        help="Livox ROS message type on /livox/lidar (default: pc2)")
     args, _ = parser.parse_known_args()
 
     rclpy.init()
-    node = BallDetector(dds_topic=args.dds_topic)
+    node = BallDetector(dds_topic=args.dds_topic, show=args.show, msg_type=args.msg_type)
     # Use spin_once + sleep instead of spin() to avoid /lowstate 500 Hz
     # saturating the GIL and starving the worker thread.  The sleep yields
     # the GIL every 2 ms so the worker thread can run Python between spins.

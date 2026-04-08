@@ -17,11 +17,16 @@ class CenterKalmanFilter:
         self.initialized = False
         self.max_jump = 0.8  # measurement gating distance [m]
         self._max_predict_dt = 0.2  # cap integration step [s] after perception gaps
+        # Missing-measurement handling
+        self._miss_time = 0.0        # seconds accumulated without measurements
+        self._freeze_after = 1.0     # seconds to tolerate before freezing velocity
+        self._frozen = False
 
     def freeze_motion(self):
         """Zero velocity when perception is absent — avoids ballistic drift and huge
         single-step predicts when measurements resume."""
         self.x[3:6, 0] = 0.0
+        self._frozen = True
 
     def _state_transition(self, dt: float):
         F = np.eye(6, dtype=np.float64)
@@ -55,6 +60,8 @@ class CenterKalmanFilter:
         z = np.asarray(z, dtype=np.float64).reshape(3,)
         if not self.initialized:
             self.reset(z)
+            self._miss_time = 0.0
+            self._frozen = False
             return self.position
 
         dt = float(np.clip(dt, 1e-3, self._max_predict_dt))
@@ -65,6 +72,26 @@ class CenterKalmanFilter:
         else:
             # Re-acquire after drift / outlier: snap to measurement (same idea as fused KF)
             self.reset(z)
+        # Measurement received → reset missing timer / unfreeze
+        self._miss_time = 0.0
+        self._frozen = False
+        return self.position
+
+    def predict_only(self, dt: float):
+        """Handle a cycle with no measurement.
+
+        - If missing duration ≤ _freeze_after: keep normal predict (retain velocity).
+        - If missing duration  > _freeze_after: freeze velocity once, then keep predicting
+          (position will hold because v=0).
+        """
+        if not self.initialized:
+            return self.position
+
+        self._miss_time += max(dt, 0.0)
+        dt_eff = float(np.clip(dt, 1e-3, self._max_predict_dt))
+        if self._miss_time > self._freeze_after and not self._frozen:
+            self.freeze_motion()
+        self.predict(dt_eff)
         return self.position
 
     @property

@@ -12,7 +12,7 @@ Examples:
     # Full export at 1280×720
     conda run -n robomimic python tools/export_video.py logs/20260324_155110_score.bin \
       --width 1280 --height 720
-
+logs/20260406_220340_score.bin
 Options:
     --xml path/to/robot.xml      Override XML (default: from log meta or g1_liao.xml)
     --output out.mp4             Output path (default: <log_stem>.mp4 next to log)

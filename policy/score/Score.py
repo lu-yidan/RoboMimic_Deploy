@@ -438,10 +438,15 @@ class Score(FSMState):
             if self.use_body_frame_ball:
                 anchor_pos_b_ref  = (R_torso_w.T @ (aligned_anchor_pos_w - torso_pos_w)).astype(np.float32)
                 if self.state_cmd.ball_valid:
-                    anchor_cmd_xy = self.state_cmd.ball_pos_b[:2]
-                    anchor_cmd_xy = anchor_cmd_xy / np.linalg.norm(anchor_cmd_xy)
-                    anchor_pos_b_ball = 0.2*anchor_cmd_xy
-                    anchor_pos_b = np.concatenate([anchor_pos_b_ball, [aligned_anchor_pos_w[2] - torso_pos_w[2]]])
+                    anchor_cmd_xy = ball_b_effective[:2].astype(np.float32)
+                    norm_xy = float(np.linalg.norm(anchor_cmd_xy))
+                    if norm_xy > 1e-6:
+                        anchor_pos_b_ball = 0.2 * (anchor_cmd_xy / norm_xy)
+                        anchor_pos_b = np.concatenate(
+                            [anchor_pos_b_ball, [aligned_anchor_pos_w[2] - torso_pos_w[2]]]
+                        )
+                    else:
+                        anchor_pos_b = anchor_pos_b_ref
                 else:
                     anchor_pos_b = anchor_pos_b_ref
                 anchor_pos_b[2] = aligned_anchor_pos_w[2] - torso_pos_w[2]
@@ -450,9 +455,12 @@ class Score(FSMState):
                 _ball_rel_w  = self.state_cmd.ball_pos_w.astype(np.float64) - self.state_cmd.pelvis_pos_w.astype(np.float64)
                 anchor_pos_b_ref  = (R_torso_w.T @ (aligned_anchor_pos_w - torso_pos_w)).astype(np.float32)
                 anchor_cmd_xy = (_R_pelvis.T @ _ball_rel_w)[:2]
-                anchor_cmd_xy = anchor_cmd_xy / np.linalg.norm(anchor_cmd_xy)
-                anchor_pos_b_ball = 0.2*anchor_cmd_xy
-                anchor_pos_b = np.concatenate([anchor_pos_b_ball, [aligned_anchor_pos_w[2] - torso_pos_w[2]]])
+                norm_xy = float(np.linalg.norm(anchor_cmd_xy))
+                if norm_xy > 1e-6:
+                    anchor_pos_b_ball = 0.2 * (anchor_cmd_xy / norm_xy)
+                    anchor_pos_b = np.concatenate([anchor_pos_b_ball, [aligned_anchor_pos_w[2] - torso_pos_w[2]]])
+                else:
+                    anchor_pos_b = anchor_pos_b_ref
         elif self.use_body_frame_ball:
             # Real robot: torso_pos_w is always zero (no odometry).
             # Use relative displacement from entry to avoid feeding raw absolute coords to the policy.
@@ -470,37 +478,46 @@ class Score(FSMState):
 
         # ---- motion_anchor_ori_b (relative to torso orientation, in torso body frame) ----
         if self.ball_facing_anchor_ori:
-            # World-frame ball position (sim: direct; real robot: transform pelvis-frame → world).
             if self.use_body_frame_ball:
-                _R_pelvis = _quat_to_matrix(self.state_cmd.pelvis_quat_w.astype(np.float64))
-                ball_pos_w_f64 = (self.state_cmd.pelvis_pos_w.astype(np.float64)
-                                  + _R_pelvis @ ball_b_effective.astype(np.float64))
+                # Real robot: use yaw-only direction from ball_pos_b in pelvis/body frame.
+                # This matches the intent: relative rotation in the horizontal plane.
+                ball_xy_b = ball_b_effective[:2].astype(np.float64)
+                norm_xy = float(np.linalg.norm(ball_xy_b))
+                if norm_xy < 1e-6:
+                    yaw_rel = 0.0
+                else:
+                    yaw_rel = float(np.arctan2(ball_xy_b[1], ball_xy_b[0]))
+                rel_quat = np.array(
+                    [np.cos(yaw_rel * 0.5), 0.0, 0.0, np.sin(yaw_rel * 0.5)],
+                    dtype=np.float64,
+                )
+                anchor_ori_6d = _rot6d_from_quat(rel_quat)   # (6,)
             else:
+                # Simulation: use world-frame ball position directly.
                 ball_pos_w_f64 = self.state_cmd.ball_pos_w.astype(np.float64)
+                # Direction from torso to ball; Z uses ref-anchor height (matches training reference).
+                to_ball_w = ball_pos_w_f64 - torso_pos_w
+                to_ball_w[2] = aligned_anchor_pos_w[2] - torso_pos_w[2]
+                norm = np.linalg.norm(to_ball_w)
+                if norm < 1e-6:
+                    to_ball_dir = np.array([1.0, 0.0, 0.0])
+                else:
+                    to_ball_dir = to_ball_w / norm
 
-            # Direction from torso to ball; Z uses ref-anchor height (matches training reference).
-            to_ball_w = ball_pos_w_f64 - torso_pos_w
-            to_ball_w[2] = aligned_anchor_pos_w[2] - torso_pos_w[2]
-            norm = np.linalg.norm(to_ball_w)
-            if norm < 1e-6:
-                to_ball_dir = np.array([1.0, 0.0, 0.0])
-            else:
-                to_ball_dir = to_ball_w / norm
+                # Rodrigues half-angle: quaternion [w,x,y,z] rotating +X onto to_ball_dir.
+                # Degenerate case (ball directly behind, d ≈ -1): rotate 180° around Z.
+                x_axis = np.array([1.0, 0.0, 0.0])
+                d = float(np.dot(x_axis, to_ball_dir))
+                if d < -1.0 + 1e-6:
+                    ball_facing_quat_w = np.array([0.0, 0.0, 0.0, 1.0])  # 180° around Z
+                else:
+                    c = np.cross(x_axis, to_ball_dir)
+                    q_unnorm = np.array([1.0 + d, c[0], c[1], c[2]])
+                    ball_facing_quat_w = q_unnorm / np.linalg.norm(q_unnorm)
 
-            # Rodrigues half-angle: quaternion [w,x,y,z] rotating +X onto to_ball_dir.
-            # Degenerate case (ball directly behind, d ≈ -1): rotate 180° around Z.
-            x_axis = np.array([1.0, 0.0, 0.0])
-            d = float(np.dot(x_axis, to_ball_dir))
-            if d < -1.0 + 1e-6:
-                ball_facing_quat_w = np.array([0.0, 0.0, 0.0, 1.0])  # 180° around Z
-            else:
-                c = np.cross(x_axis, to_ball_dir)
-                q_unnorm = np.array([1.0 + d, c[0], c[1], c[2]])
-                ball_facing_quat_w = q_unnorm / np.linalg.norm(q_unnorm)
-
-            rel_quat = _quat_mul(_quat_conj(torso_quat_w), ball_facing_quat_w)
-            rel_quat = rel_quat / np.linalg.norm(rel_quat)
-            anchor_ori_6d = _rot6d_from_quat(rel_quat)   # (6,)
+                rel_quat = _quat_mul(_quat_conj(torso_quat_w), ball_facing_quat_w)
+                rel_quat = rel_quat / np.linalg.norm(rel_quat)
+                anchor_ori_6d = _rot6d_from_quat(rel_quat)   # (6,)
         else:
             ref_anchor_quat_w = self.motion_body_quat[t, NPZ_ANCHOR_IDX].astype(np.float64)
             aligned_quat      = _quat_mul(init_world_quat, ref_anchor_quat_w)

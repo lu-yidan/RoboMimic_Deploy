@@ -84,6 +84,26 @@ def pd_control(target_q, q, kp, target_dq, dq, kd):
     """Calculates torques from position commands"""
     return (target_q - q) * kp + (target_dq - dq) * kd
 
+
+def _reset_ball_state(m, d, ball_body_id, pos_w, vel_w, quat_w=None, ang_vel_w=None):
+    """Reset the free-joint ball pose/velocity in-place."""
+    if ball_body_id < 0 or m.body_jntnum[ball_body_id] <= 0:
+        return False
+
+    ball_jnt_id = m.body_jntadr[ball_body_id]
+    qpos_adr = m.jnt_qposadr[ball_jnt_id]
+    qvel_adr = m.jnt_dofadr[ball_jnt_id]
+
+    quat_w = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float64) if quat_w is None else np.asarray(quat_w, dtype=np.float64)
+    ang_vel_w = np.zeros(3, dtype=np.float64) if ang_vel_w is None else np.asarray(ang_vel_w, dtype=np.float64)
+
+    d.qpos[qpos_adr:qpos_adr+3] = np.asarray(pos_w, dtype=np.float64)
+    d.qpos[qpos_adr+3:qpos_adr+7] = quat_w
+    d.qvel[qvel_adr:qvel_adr+3] = np.asarray(vel_w, dtype=np.float64)
+    d.qvel[qvel_adr+3:qvel_adr+6] = ang_vel_w
+    mujoco.mj_forward(m, d)
+    return True
+
 @hydra.main(config_path="config", config_name="mujoco")
 def main(cfg: DictConfig):
     xml_path = os.path.join(PROJECT_ROOT, cfg.xml_path)
@@ -96,6 +116,10 @@ def main(cfg: DictConfig):
     m.opt.timestep = simulation_dt
     torso_body_id = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_BODY, "torso_link")
     ball_body_id  = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_BODY, "ball")  # -1 if no ball in scene
+    ball_reset_pos_w = np.array(cfg.get("ball_reset_pos_w", [1.0, 0.0, 0.115]), dtype=np.float64)
+    ball_reset_vel_w = np.array(cfg.get("ball_reset_vel_w", [0.0, 0.0, 0.0]), dtype=np.float64)
+    ball_reset_quat_w = np.array(cfg.get("ball_reset_quat_w", [1.0, 0.0, 0.0, 0.0]), dtype=np.float64)
+    ball_reset_ang_vel_w = np.array(cfg.get("ball_reset_ang_vel_w", [0.0, 0.0, 0.0]), dtype=np.float64)
 
     # ---- Ghost model for reference motion visualization ----
     # Ghost color from config (RGBA, 0-1). Adjust ghost_rgba in mujoco.yaml.
@@ -153,6 +177,18 @@ def main(cfg: DictConfig):
                 if joystick.is_button_released(JoystickButton.L3):                                                    # Ghost toggle, L3
                     ghost_flags[0] = not ghost_flags[0]
                     print(f"[Ghost] {'ON' if ghost_flags[0] else 'OFF'}")
+                if joystick.is_button_released(JoystickButton.X) and joystick.is_button_pressed(JoystickButton.R1):   # Ball reset, R1+X
+                    if _reset_ball_state(
+                        m, d, ball_body_id,
+                        ball_reset_pos_w, ball_reset_vel_w,
+                        ball_reset_quat_w, ball_reset_ang_vel_w,
+                    ):
+                        print(
+                            f"[Ball] Reset to pos={ball_reset_pos_w.tolist()} "
+                            f"vel={ball_reset_vel_w.tolist()}"
+                        )
+                    else:
+                        print("[Ball] Reset requested, but no ball body exists in this scene.")
 
                 # PASSIVE: safety command — always overrides any pending command
                 if joystick.is_button_released(JoystickButton.L1) and joystick.is_button_pressed(JoystickButton.R1):  # 阻尼保护, L1 release + R1
@@ -168,7 +204,7 @@ def main(cfg: DictConfig):
                     state_cmd.skill_cmd = FSMCommand.STAND_UP
                 elif joystick.is_button_released(JoystickButton.A) and joystick.is_button_pressed(JoystickButton.R1):   # Loco, R1+A
                     state_cmd.skill_cmd = FSMCommand.LOCO
-                elif joystick.is_button_released(JoystickButton.X) and joystick.is_button_pressed(JoystickButton.R1):   # Dance, R1+X
+                elif joystick.is_button_released(JoystickButton.R3):                                                    # Dance, R3
                     state_cmd.skill_cmd = FSMCommand.SKILL_1
                 elif joystick.is_button_released(JoystickButton.Y) and joystick.is_button_pressed(JoystickButton.R1):   # KungFu, R1+Y
                     state_cmd.skill_cmd = FSMCommand.SKILL_2

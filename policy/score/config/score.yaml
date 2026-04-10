@@ -1,7 +1,8 @@
 # onnx_path:   "policy-obs.onnx"
 # onnx_path:   "policy-obs-aic.onnx"
 # onnx_path:   "policy-obs-325-uz8.onnx"
-onnx_path:   "policy-obs-47-77.onnx"
+# onnx_path:   "policy-stop.onnx"
+onnx_path:   "policy-obs-410-vvj.onnx"
 motion_path: "score_motion.npz"
 
 control_dt:      0.02     # 50 Hz control (sim: 2ms * 10 decimation)
@@ -27,7 +28,7 @@ ball_obs_lost_norm_max: 1.0e-3
 # Useful for debugging pose-tracking behaviour without motion progression.
 freeze_motion_at_first_frame: true
 
-adapt_play_motion: true
+adapt_play_motion: false
 
 # If true, anchor_pos_b is always [0, 0, 0] (anchor treated as coincident with torso).
 zero_anchor_pos: false
@@ -43,14 +44,14 @@ ball_as_anchor_pos: true
 ball_facing_anchor_ori: true
 
 # Target position in world frame [x, y, z] (e.g. goal center ~5m ahead)
-target_pos: [6.0, 0.2, 0.0]
+target_pos: [6.0, 0.0, 1.0]
 
 # Ball-trigger gate: hold at frame 0 until the ball enters the circle.
 # When `trigger_play_end_frame` is set, on trigger play inclusive segment
 # [trigger_frame, trigger_play_end_frame], then return to frame 0 and wait
 # (ball must leave the trigger zone once before the next trigger).
 # If `trigger_play_end_frame` is omitted, plays from `trigger_frame` to clip end (one-shot).
-wait_for_ball:   true
+wait_for_ball:   false
 trigger_radius:  0.3    # metres
 trigger_horizon: 0.5    # look-ahead seconds
 trigger_frame:            253   # first motion frame on trigger (loaded clip indices)

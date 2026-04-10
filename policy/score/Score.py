@@ -198,6 +198,7 @@ class Score(FSMState):
             np.array(_lost_default, dtype=np.float32) if _lost_default is not None else None
         )
         self._ball_obs_lost_norm_max = float(cfg.get("ball_obs_lost_norm_max", 1e-3))
+        self._ball_vel_b_alpha = float(cfg.get("ball_vel_b_alpha", 0.5))
 
         # ---- Ball-trigger gate: hold at frame 0 until ball enters the circle ----
         self.wait_for_ball    = bool(cfg.get("wait_for_ball",    False))
@@ -223,6 +224,8 @@ class Score(FSMState):
         self._trigger_policy_step = 0
         # After a finite trigger burst, require ball to leave trigger zone before re-arming.
         self._burst_need_ball_clear = False
+        self._prev_ball_pos_b_for_trigger = None
+        self._ball_vel_b_est = np.zeros(3, dtype=np.float32)
 
         # History buffers (oldest → newest, HISTORY_LEN frames each)
         self._ang_vel_buf   = deque([np.zeros(3,  dtype=np.float32)] * HISTORY_LEN, maxlen=HISTORY_LEN)
@@ -292,6 +295,8 @@ class Score(FSMState):
         self._motion_triggered    = not self.wait_for_ball
         self._trigger_policy_step = 0
         self._burst_need_ball_clear = False
+        self._prev_ball_pos_b_for_trigger = None
+        self._ball_vel_b_est[:] = 0.0
 
         max_delta = np.abs(self._t0_target_q - self._entry_q).max()
         if self.wait_for_ball:
@@ -332,6 +337,36 @@ class Score(FSMState):
             t_lin = s0 + steps_since_trigger
             return int(min(t_lin, s1))
         return min(self.trigger_frame + steps_since_trigger, self.motion_total_steps - 1)
+
+    def _estimate_ball_vel_b(self) -> np.ndarray:
+        """Estimate body-frame ball velocity on real robot from `ball_pos_b`.
+
+        `ball_pos_b` is already expressed in the pelvis frame, so its derivative
+        naturally gives ball velocity relative to the robot. Use light smoothing
+        to reduce trigger jitter from perception noise.
+        """
+        if not self.use_body_frame_ball:
+            return np.zeros(3, dtype=np.float32)
+
+        if not self.state_cmd.ball_valid:
+            self._prev_ball_pos_b_for_trigger = None
+            self._ball_vel_b_est[:] = 0.0
+            return self._ball_vel_b_est.copy()
+
+        cur_ball_pos_b = self.state_cmd.ball_pos_b.astype(np.float32)
+        if self._prev_ball_pos_b_for_trigger is None:
+            self._prev_ball_pos_b_for_trigger = cur_ball_pos_b.copy()
+            self._ball_vel_b_est[:] = 0.0
+            return self._ball_vel_b_est.copy()
+
+        dt = max(float(self.control_dt), 1e-3)
+        raw_vel_b = (cur_ball_pos_b - self._prev_ball_pos_b_for_trigger) / dt
+        alpha = float(np.clip(self._ball_vel_b_alpha, 0.0, 1.0))
+        self._ball_vel_b_est = (
+            alpha * raw_vel_b + (1.0 - alpha) * self._ball_vel_b_est
+        ).astype(np.float32)
+        self._prev_ball_pos_b_for_trigger = cur_ball_pos_b.copy()
+        return self._ball_vel_b_est.copy()
 
     def _ball_enters_circle(
         self,
@@ -405,7 +440,7 @@ class Score(FSMState):
                 if self.state_cmd.ball_valid:
                     anchor_cmd_xy = self.state_cmd.ball_pos_b[:2]
                     anchor_cmd_xy = anchor_cmd_xy / np.linalg.norm(anchor_cmd_xy)
-                    anchor_pos_b_ball = 0.25*anchor_cmd_xy
+                    anchor_pos_b_ball = 0.2*anchor_cmd_xy
                     anchor_pos_b = np.concatenate([anchor_pos_b_ball, [aligned_anchor_pos_w[2] - torso_pos_w[2]]])
                 else:
                     anchor_pos_b = anchor_pos_b_ref
@@ -551,16 +586,25 @@ class Score(FSMState):
 
         # ---- Ball-trigger gate ----
         if not self._motion_triggered:
-            if not self.use_body_frame_ball:
-                # Sim: all positions in world frame.
-                ball_pos_xy = self.state_cmd.ball_pos_w[:2].astype(np.float64)
-                ball_vel_xy = self.state_cmd.ball_vel_w[:2].astype(np.float64)
-                anchor_xy   = self.state_cmd.pelvis_pos_w[:2].astype(np.float64)
+            # Always evaluate trigger in pelvis body frame
+            if self.use_body_frame_ball:
+                ball_pos_b = self.state_cmd.ball_pos_b.astype(np.float64)
+                ball_vel_b = self._estimate_ball_vel_b().astype(np.float64)
             else:
-                # Real robot: ball already in pelvis body frame; robot is at origin.
-                ball_pos_xy = self.state_cmd.ball_pos_b[:2].astype(np.float64)
-                ball_vel_xy = np.zeros(2, dtype=np.float64)  # no velocity in body frame #TODO: Temporal Difference
-                anchor_xy   = np.zeros(2, dtype=np.float64)
+                # Simulation: relative ball velocity in pelvis body frame.
+                R_pelvis = _quat_to_matrix(self.state_cmd.pelvis_quat_w.astype(np.float64))
+                ball_pos_b = R_pelvis.T @ (
+                    self.state_cmd.ball_pos_w.astype(np.float64)
+                    - self.state_cmd.pelvis_pos_w.astype(np.float64)
+                )
+                ball_vel_b = (
+                    R_pelvis.T @ self.state_cmd.ball_vel_w.astype(np.float64)
+                    - self.state_cmd.root_lin_vel_b.astype(np.float64)
+                )
+
+            ball_pos_xy = ball_pos_b[:2]
+            ball_vel_xy = ball_vel_b[:2]
+            anchor_xy   = np.zeros(2, dtype=np.float64)  # pelvis origin in body frame
 
             in_circle = self._ball_enters_circle(
                 ball_pos_xy, ball_vel_xy, anchor_xy,

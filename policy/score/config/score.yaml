@@ -11,13 +11,14 @@ clip_actions:    10.0     # PPO actions rarely exceed ±3; prevents runaway dive
 
 # false = simulation (ball_pos from MuJoCo world frame)
 # true  = real robot (ball_pos from DDS, already in pelvis body frame)
-use_body_frame_ball: false
+use_body_frame_ball: true
 
 # When ball_valid is false and sensor ball is ~zero: use this pelvis-frame default for
 # soccer_pos_b history, ball_as_anchor_pos blend, and ball_facing_anchor_ori (not raw [0,0,0]).
 # Omit key to disable substitution.
 ball_obs_default_when_lost: [2.0, 0.0, -0.7]
 ball_obs_lost_norm_max: 1.0e-3
+ball_vel_b_alpha: 0.5   # real模式下由 ball_pos_b 差分估计 ball_vel_b 的平滑系数
 
 # Optional: clip motion to a specific time window (seconds).
 # If omitted, the full motion sequence is used.
@@ -27,8 +28,6 @@ ball_obs_lost_norm_max: 1.0e-3
 # If true, the reference motion is frozen at frame 0 for the entire episode.
 # Useful for debugging pose-tracking behaviour without motion progression.
 freeze_motion_at_first_frame: true
-
-adapt_play_motion: false
 
 # If true, anchor_pos_b is always [0, 0, 0] (anchor treated as coincident with torso).
 zero_anchor_pos: false
@@ -41,10 +40,11 @@ ball_as_anchor_pos: true
 # If true, anchor_ori_6d is computed so its +X axis always points toward the ball
 # (world-frame direction from torso to ball, with Z = ref-anchor height - torso height).
 # Overrides the default reference-motion orientation.
-ball_facing_anchor_ori: true
+ball_facing_anchor_ori: false
 
-# Target position in world frame [x, y, z] (e.g. goal center ~5m ahead)
-target_pos: [6.0, 0.0, 1.0]
+# Simulation: world-frame target position [x, y, z]
+# Real robot: entry时刻记录的 pelvis/body-frame target offset
+target_pos: [6.0, 0.0, 0.0]
 
 # Ball-trigger gate: hold at frame 0 until the ball enters the circle.
 # When `trigger_play_end_frame` is set, on trigger play inclusive segment
@@ -74,12 +74,6 @@ action_scale: [0.548, 0.351, 0.548, 0.351, 0.439, 0.439,
                0.548, 0.439, 0.439,
                0.439, 0.439, 0.439, 0.439, 0.439, 0.075, 0.075,
                0.439, 0.439, 0.439, 0.439, 0.439, 0.075, 0.075]
-
-tau_limit: [88,  139,  88,  139,  50,  50,
-            88,  139,  88,  139,  50,  50,
-            88,   50,  50,
-            25,   25,  25,   25,  25,   5,   5,
-            25,   25,  25,   25,  25,   5,   5]
 
 kps: [ 40.179,  99.098,  40.179,  99.098,  28.501,  28.501,
        40.179,  99.098,  40.179,  99.098,  28.501,  28.501,

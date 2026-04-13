@@ -62,6 +62,13 @@ BALL_CONFIGS = {
                  "model": str(_THIS_DIR / "weights/yolo11n.engine")},
     "soccer-m": {"class_id": 32, "radius": 0.11,  "conf": 0.15,
                  "model": str(_THIS_DIR / "weights/yolo11m.engine")},
+    # Roboflow 足球模型（广播视角，效果一般）
+    "football": {"class_id": 0,  "radius": 0.11,  "conf": 0.30,
+                 "model": str(_THIS_DIR / "weights/football.engine")},
+    # TORSO-21 机器人视角足球模型（推荐，和 ZED X 胸部视角最匹配）
+    # 下载+训练：cd weights && python3 prepare_torso21.py
+    "torso21":  {"class_id": 0,  "radius": 0.11,  "conf": 0.30,
+                 "model": str(_THIS_DIR / "weights/football_torso21.engine")},
 }
 
 CONF_THRESHOLD      = 0.30

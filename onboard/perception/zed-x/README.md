@@ -87,7 +87,37 @@ bash onboard/perception/zed-x/run.sh --ball tennis --show
 ## 检测精度说明
 
 `yolo11m` 使用 COCO 预训练权重，class 32（sports ball）在真实场景下置信度偏低。  
-如需更高检测率，建议在足球专用数据集上微调（Roboflow 有公开足球数据集）。
+如需更高检测率，建议使用以下数据集微调（按推荐优先级排序）：
+
+### 推荐训练数据集
+
+#### ⭐ 最推荐：RoboCup 机器人视角数据集
+
+**1. TORSO-21**（最适合 ZED X 胸部安装场景）
+- 地址：https://github.com/bit-bots/TORSO_21_dataset
+- 下载：https://data.bit-bots.de/TORSO-21/
+- 内容：**10,464 张真实图 + 24,000 张仿真图**，6,081 个球标注
+- 视角：人形机器人胸部/头部摄像头，地面近距离侧视 ← **和 ZED X 胸部完全一致**
+- 格式：YAML，自带 YOLO 转换脚本
+- 训练：`cd weights && python3 prepare_torso21.py`（全自动，约 1 小时）
+
+**2. Hamburg Bit-Bots Ball Dataset 2018**（数量最多）
+- 地址：https://robocup.informatik.uni-hamburg.de/en/bit-bots-ball-dataset-2018/
+- 内容：**35,327 张训练图 + 14,886 张负样本**
+- 视角：机器人地面近距离，4 种球类型，各角度
+
+#### Roboflow Universe（YOLO 格式，直接可用）
+
+**3. Soccer Ball Dataset**（4,377 张）
+- 地址：https://universe.roboflow.com/queendev9516-gmail-com/soccer-ball-oa830
+- 下载：`roboflow download queendev9516-gmail-com/soccer-ball-oa830/1 -f yolov8`
+
+**4. yolo_soccer_ball_tracker**（250 张，含预训练模型）
+- 地址：https://universe.roboflow.com/ball-tracker/yolo_soccer_ball_tracker
+- 最小，快速验证用
+
+> **注意**：`football-ball-detection-rejhg`（Roboflow，1237 张）为广播俯视视角，  
+> 与胸部相机侧视场景不匹配，**不推荐**用于本项目。
 
 ---
 

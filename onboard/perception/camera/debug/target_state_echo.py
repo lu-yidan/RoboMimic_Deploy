@@ -10,7 +10,7 @@ from pathlib import Path
 
 import numpy as np
 
-sys.path.append(str(Path(__file__).parent.parent.parent.parent.absolute()))
+sys.path.append(str(Path(__file__).parent.parent.parent.parent.parent.absolute()))
 
 from common.target_state_dds import INVALID_CLASS_ID, TargetStateSubscriber
 

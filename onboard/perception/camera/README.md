@@ -1,4 +1,4 @@
-# Camera 球检测模块
+# Camera 感知模块
 
 > 硬件：**Unitree G1**，机载电脑 NVIDIA Jetson Orin NX 16 GB，JetPack 5.1.2  
 > 相机：**Intel RealSense D435I**（USB 3.0）× 1（单相机）或 × 2（双相机）  
@@ -31,11 +31,16 @@
 
 ```
 onboard/perception/camera/
-├── ball_detector.py        ← 单相机：D435 + YOLO → DDS
-├── ball_detector_dual.py   ← 双相机：2×D435 + 共享 YOLO → DDS
+├── ball_detector.py        ← 单相机球检测：D435 + YOLO → DDS
+├── ball_detector_dual.py   ← 双相机球检测：2×D435 + 共享 YOLO → DDS
+├── target_detector.py      ← 胸前相机 target 检测：D435 + YOLO → rt/target_state
 ├── camera_to_base.py       ← 坐标变换：相机系 → pelvis 系（含胸部占位外参）
-├── run.sh                  ← 单相机启动脚本（含 TRT 路径、GPU 解锁）
-├── run_dual.sh             ← 双相机启动脚本
+├── run.sh                  ← 单相机球检测启动脚本（含 TRT 路径、GPU 解锁）
+├── run_dual.sh             ← 双相机球检测启动脚本
+├── run_target.sh           ← 胸前相机 target 检测启动脚本
+├── debug/
+│   ├── target_state_echo.py      ← 调试：打印 rt/target_state 最新值
+│   └── target_extrinsics_eval.py ← 调试：统计 target 位姿均值/方差，辅助外参标定
 ├── README.md               ← 本文档
 ├── TROUBLESHOOTING.md      ← 性能优化全记录（GIL/DMA/TRT/Color-Depth 映射）
 └── models/
@@ -87,6 +92,28 @@ bash onboard/perception/camera/run.sh --imgsz 224 --width 424 --height 240  # �
 | `BALL`   | 本帧 YOLO 检测到球，发布 valid=1 |
 | `COAST`  | 本帧漏检，沿用上帧位置，最多保持 10 帧，发布 valid=1 |
 | `(空)`   | 超过 10 帧未检测到，发布 valid=0 |
+
+---
+
+### 2.1b 胸前相机 target 检测
+
+在项目根目录执行：
+
+```bash
+bash onboard/perception/camera/run_target.sh --target-class bottle
+```
+
+常用调试命令：
+
+```bash
+bash onboard/perception/camera/run_target.sh --show
+python onboard/perception/camera/debug/target_state_echo.py
+python onboard/perception/camera/debug/target_extrinsics_eval.py
+```
+
+说明：
+- `target_detector.py` 与球检测逻辑分离，方便后续更换胸前相机角度、位置或目标类别。
+- `debug/` 下脚本仅用于联调、观察和外参校准，不参与正式感知链路。
 
 ---
 

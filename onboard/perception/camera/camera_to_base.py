@@ -111,6 +111,17 @@ _T_CHEST_CAMERA = _T(
 )
 
 
+def get_default_chest_extrinsics():
+    """Return the baked-in chest camera extrinsics."""
+    return tuple(_CHEST_XYZ), tuple(_CHEST_RPY)
+
+
+def _build_chest_camera_transform(chest_xyz=None, chest_rpy=None):
+    xyz = _CHEST_XYZ if chest_xyz is None else chest_xyz
+    rpy = _CHEST_RPY if chest_rpy is None else chest_rpy
+    return _T(_rpy_to_R(*rpy), xyz)
+
+
 def transform_point_chest_camera_to_base(p_cam, q_wy, q_wr, q_wp):
     """
     Transform a point in chest_camera_link (body frame) to the pelvis (base) frame.
@@ -130,6 +141,24 @@ def transform_point_chest_camera_to_base(p_cam, q_wy, q_wr, q_wp):
         @ _T(_Rx(q_wr), [-0.0039635, 0.0, 0.044])
         @ _T(_Ry(q_wp), [0.0, 0.0, 0.0])
         @ _T_CHEST_CAMERA
+    )
+    return (T @ np.array([*p_cam, 1.0]))[:3]
+
+
+def transform_point_chest_camera_to_base_with_extrinsics(
+    p_cam,
+    q_wy,
+    q_wr,
+    q_wp,
+    chest_xyz=None,
+    chest_rpy=None,
+):
+    """Chest-camera to pelvis transform with optional runtime extrinsics override."""
+    T = (
+        _T(_Rz(q_wy), [0.0, 0.0, 0.0])
+        @ _T(_Rx(q_wr), [-0.0039635, 0.0, 0.044])
+        @ _T(_Ry(q_wp), [0.0, 0.0, 0.0])
+        @ _build_chest_camera_transform(chest_xyz=chest_xyz, chest_rpy=chest_rpy)
     )
     return (T @ np.array([*p_cam, 1.0]))[:3]
 

@@ -32,6 +32,7 @@ sys.path.append(str(Path(__file__).parent.parent.parent.parent.absolute()))
 
 import argparse
 import queue
+import socket
 import threading
 import time
 
@@ -243,7 +244,12 @@ def _start_mjpeg_server():
             pass
 
         def do_GET(self):
-            if self.path not in ("/", "/stream"):
+            if self.path == "/":
+                self.send_response(302)
+                self.send_header("Location", "/stream")
+                self.end_headers()
+                return
+            if self.path != "/stream":
                 self.send_error(404)
                 return
             self.send_response(200)
@@ -270,6 +276,25 @@ def _start_mjpeg_server():
     httpd.daemon_threads = True
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     return httpd, mjpeg_frame, mjpeg_lock
+
+
+def _get_stream_url(port=8080, path="/stream"):
+    host = "127.0.0.1"
+    sock = None
+    try:
+        # Ask the OS which outbound interface would be used for a LAN address.
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.connect(("192.168.123.1", 1))
+        host = sock.getsockname()[0]
+    except OSError:
+        try:
+            host = socket.gethostbyname(socket.gethostname())
+        except OSError:
+            pass
+    finally:
+        if sock is not None:
+            sock.close()
+    return f"http://{host}:{port}{path}"
 
 
 def main():
@@ -379,7 +404,7 @@ def main():
 
     if args.show:
         httpd, mjpeg_frame, mjpeg_lock = _start_mjpeg_server()
-        print("[INFO] MJPEG stream started -> open http://<robot-ip>:8080")
+        print(f"[INFO] MJPEG stream started -> open {_get_stream_url()}")
     else:
         httpd = None
         mjpeg_frame = None

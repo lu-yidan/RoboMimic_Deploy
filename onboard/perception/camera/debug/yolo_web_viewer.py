@@ -6,6 +6,19 @@ This is a debugging utility for real-robot bring-up:
 - streams the annotated frames via MJPEG in a browser
 
 It intentionally does not publish DDS or apply target-selection logic.
+
+Usage:
+    bash onboard/perception/camera/run_yolo_web.sh
+    bash onboard/perception/camera/run_yolo_web.sh --list-cameras
+    bash onboard/perception/camera/run_yolo_web.sh --camera-serial 244622070281
+    bash onboard/perception/camera/run_yolo_web.sh --conf-threshold 0.15 --imgsz 320
+    bash onboard/perception/camera/run_yolo_web.sh --class-filter bottle,cup,vase
+
+What to look for on the real robot:
+1. Whether the target object gets any box at all.
+2. Whether the class label is stable or jumps between similar classes.
+3. Whether clutter produces stronger boxes than the actual target.
+4. Whether detection quality drops at specific chest-camera angles or distances.
 """
 
 import sys

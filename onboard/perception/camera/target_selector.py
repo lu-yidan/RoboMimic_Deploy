@@ -1,5 +1,7 @@
 """Heuristics for selecting one best target from many YOLO detections."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field, replace
 import math
 

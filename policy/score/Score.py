@@ -485,22 +485,21 @@ class Score(FSMState):
         """Compute anchor orientation observation in torso/body frame."""
         if self.anchor_ori_mode == "ball_facing":
             if self.runtime_mode == "real":
-                # `ball_pos_b` is in pelvis frame, but anchor_ori_b is defined in
-                # torso-relative/body coordinates. Use yaw-only pelvis→world→torso
-                # transform so the command stays horizontal and does not inject
-                # artificial pitch/downward components.
-                ball_xy_pelvis = (
+                # Real robot: directly use the ball direction relative to pelvis.
+                # Only horizontal relative yaw is kept here.
+                ball_relevant_pos_to_pelvis = (
                     np.zeros(2, dtype=np.float64)
                     if ball_b_effective is None else
                     ball_b_effective[:2].astype(np.float64)
                 )
-                ball_dir_pelvis = np.array([ball_xy_pelvis[0], ball_xy_pelvis[1], 0.0], dtype=np.float64)
-                R_pelvis_yaw_w = _quat_to_matrix(_yaw_quat(self.state_cmd.pelvis_quat_w.astype(np.float64)))
-                R_torso_yaw_w = _quat_to_matrix(_yaw_quat(torso_quat_w))
-                ball_dir_torso_yaw = R_torso_yaw_w.T @ (R_pelvis_yaw_w @ ball_dir_pelvis)
-                ball_xy_torso = ball_dir_torso_yaw[:2]
-                norm_xy = float(np.linalg.norm(ball_xy_torso))
-                yaw_rel = 0.0 if norm_xy < 1e-6 else float(np.arctan2(ball_xy_b[1], ball_xy_b[0]))
+                norm_xy = float(np.linalg.norm(ball_relevant_pos_to_pelvis))
+                yaw_rel = (
+                    0.0 if norm_xy < 1e-6 else
+                    float(np.arctan2(
+                        ball_relevant_pos_to_pelvis[1],
+                        ball_relevant_pos_to_pelvis[0],
+                    ))
+                )
                 rel_quat = np.array(
                     [np.cos(yaw_rel * 0.5), 0.0, 0.0, np.sin(yaw_rel * 0.5)],
                     dtype=np.float64,
@@ -508,8 +507,9 @@ class Score(FSMState):
                 return _rot6d_from_quat(rel_quat)
 
             ball_pos_w_f64 = self.state_cmd.ball_pos_w.astype(np.float64)
-            to_ball_w = ball_pos_w_f64 - torso_pos_w
-            to_ball_w[2] = aligned_anchor_pos_w[2] - torso_pos_w[2]
+            pelvis_pos_w = self.state_cmd.pelvis_pos_w.astype(np.float64)
+            to_ball_w = ball_pos_w_f64 - pelvis_pos_w
+            to_ball_w[2] = aligned_anchor_pos_w[2] - pelvis_pos_w[2]
             norm = np.linalg.norm(to_ball_w)
             if norm < 1e-6:
                 to_ball_dir = np.array([1.0, 0.0, 0.0])

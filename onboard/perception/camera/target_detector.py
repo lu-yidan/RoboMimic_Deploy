@@ -8,6 +8,12 @@ Publishes via DDS:
 
 The detector is intentionally separate from ball_detector.py so camera-target
 logic can evolve independently of the ball pipeline.
+
+Usage:
+    bash onboard/perception/camera/run_target.sh
+    bash onboard/perception/camera/run_target.sh --show
+    bash onboard/perception/camera/run_target.sh --target-class bottle --target-class cup
+    bash onboard/perception/camera/run_target.sh --use-all-classes-as-candidates
 """
 
 import sys
@@ -51,6 +57,7 @@ from onboard.perception.camera.camera_to_base import (
     optical_to_body,
     transform_point_chest_camera_to_base_with_extrinsics,
 )
+from onboard.perception.camera.target_selector import DetectionCandidate, TargetSelector
 from common.target_state_dds import (
     INVALID_CLASS_ID,
     SOURCE_CHEST_CAMERA,
@@ -67,6 +74,20 @@ EMA_ALPHA = 0.5
 EMA_GATE = 0.5
 COAST_FRAMES = 8
 DEPTH_BIAS_Y = 0.5
+SELECTOR_DRAW_TOPK = 6
+
+
+def _format_score_details(score_details):
+    if not score_details:
+        return "prior=0.00 conf=0.00 area=0.00 ctr=0.00 tmp=0.00 same=0.00"
+    return (
+        f"prior={score_details.get('prior', 0.0):.2f} "
+        f"conf={score_details.get('conf', 0.0):.2f} "
+        f"area={score_details.get('area', 0.0):.2f} "
+        f"ctr={score_details.get('center', 0.0):.2f} "
+        f"tmp={score_details.get('temp', 0.0):.2f} "
+        f"same={score_details.get('same', 0.0):.2f}"
+    )
 
 
 class _FPS:
@@ -315,7 +336,13 @@ def main():
                         help="DDS topic name to publish to.")
     parser.add_argument("--target-class", action="append", dest="target_classes",
                         help="Target class label(s). Can be repeated or comma-separated.")
+    parser.add_argument("--use-all-classes-as-candidates", action="store_true",
+                        help="Score every YOLO class as a candidate instead of only target-class labels.")
+    parser.add_argument("--other-class-score", type=float, default=0.15,
+                        help="Base class prior for non-target labels when using all classes as candidates.")
     parser.add_argument("--conf-threshold", type=float, default=DEFAULT_CONF_THRESHOLD)
+    parser.add_argument("--max-det", type=int, default=30,
+                        help="Maximum number of YOLO detections to consider each frame.")
     parser.add_argument("--depth-bias-y", type=float, default=DEPTH_BIAS_Y,
                         help="Sample depth at bbox y = y1 + bias * (y2 - y1).")
     parser.add_argument("--coast-frames", type=int, default=COAST_FRAMES)
@@ -374,9 +401,14 @@ def main():
     infer_kw = {} if is_trt else dict(device=device, half=True)
 
     target_ids_by_name = _resolve_target_ids(model.names, target_names)
-    target_ids = set(target_ids_by_name.values())
-    id_to_name = {class_id: name for name, class_id in target_ids_by_name.items()}
     print(f"[INFO] Resolved target classes: {target_ids_by_name}")
+    target_selector = TargetSelector(
+        preferred_class_names=target_names,
+        use_all_classes_as_candidates=args.use_all_classes_as_candidates,
+        other_class_score=args.other_class_score,
+    )
+    selector_mode = "all YOLO classes" if args.use_all_classes_as_candidates else "target classes only"
+    print(f"[INFO] Target selector mode: {selector_mode}")
 
     dummy = np.zeros((args.imgsz, args.imgsz, 3), dtype=np.uint8)
     print("[INFO] YOLO warming up...")
@@ -414,7 +446,10 @@ def main():
         center_ema = None
         last_bbox = None
         last_cls_id = INVALID_CLASS_ID
+        last_cls_name = "target"
         last_conf = 0.0
+        last_score = 0.0
+        last_score_details = {}
         miss_count = 0
         yolo_fps = _FPS()
 
@@ -440,41 +475,63 @@ def main():
             sx = orig_w / args.imgsz
             sy = orig_h / args.imgsz
 
-            results = model(color_small, conf=args.conf_threshold, verbose=False, **infer_kw)
-            best_box = None
-            best_conf = 0.0
-            best_cls_id = INVALID_CLASS_ID
+            results = model(
+                color_small,
+                conf=args.conf_threshold,
+                max_det=args.max_det,
+                verbose=False,
+                **infer_kw,
+            )
+            selector_candidates = []
 
             for result in results:
                 for box in result.boxes:
                     cls_id = int(box.cls[0])
-                    if cls_id not in target_ids:
-                        continue
                     conf = float(box.conf[0])
-                    if conf > best_conf:
-                        best_box = box
-                        best_conf = conf
-                        best_cls_id = cls_id
+                    x1s, y1s, x2s, y2s = box.xyxy[0]
+                    selector_candidates.append(
+                        DetectionCandidate(
+                            class_id=cls_id,
+                            class_name=str(model.names[cls_id]),
+                            confidence=conf,
+                            bbox_xyxy=(
+                                int(x1s * sx),
+                                int(y1s * sy),
+                                int(x2s * sx),
+                                int(y2s * sy),
+                            ),
+                        )
+                    )
 
-            if best_box is not None:
+            selected_candidate, ranked_candidates = target_selector.select(
+                selector_candidates,
+                image_shape=(orig_h, orig_w),
+            )
+
+            if selected_candidate is not None:
                 miss_count = 0
-                x1s, y1s, x2s, y2s = best_box.xyxy[0]
-                last_bbox = (
-                    int(x1s * sx), int(y1s * sy),
-                    int(x2s * sx), int(y2s * sy),
-                )
-                last_cls_id = best_cls_id
-                last_conf = best_conf
+                last_bbox = selected_candidate.bbox_xyxy
+                last_cls_id = selected_candidate.class_id
+                last_cls_name = selected_candidate.class_name
+                last_conf = selected_candidate.confidence
+                last_score = selected_candidate.score
+                last_score_details = selected_candidate.score_details
             else:
                 miss_count += 1
+                if miss_count > args.coast_frames:
+                    target_selector.reset()
 
             published = False
             published_valid = False
             p_cam_arr = None
             depth_m = 0.0
             depth_surface = 0.0
-            target_name = id_to_name.get(last_cls_id, "target")
+            target_name = last_cls_name
             pelvis_xyz = (0.0, 0.0, 0.0)
+            selector_summary = " | ".join(
+                f"{cand.class_name}:{cand.score:.2f}" for cand in ranked_candidates[:3]
+            ) if ranked_candidates else "none"
+            selected_score_details_txt = _format_score_details(last_score_details)
 
             if last_bbox is not None and miss_count <= args.coast_frames:
                 x1, y1, x2, y2 = last_bbox
@@ -516,7 +573,7 @@ def main():
                         chest_rpy=chest_rpy,
                     )
                     pelvis_xyz = (float(p_base[0]), float(p_base[1]), float(p_base[2]))
-                    published_valid = best_box is not None
+                    published_valid = selected_candidate is not None
                     dds.publish(
                         *pelvis_xyz,
                         valid=published_valid,
@@ -528,8 +585,9 @@ def main():
                     status = target_name.upper() if published_valid else "COAST"
                     print(
                         f"\r[{status}] pelvis=({pelvis_xyz[0]:+.3f}, {pelvis_xyz[1]:+.3f}, {pelvis_xyz[2]:+.3f}) "
-                        f"depth={depth_surface:.2f}m conf={last_conf:.2f} "
-                        f"cls={target_name} yolo={yolo_fps.fps:4.1f}fps",
+                        f"depth={depth_surface:.2f}m conf={last_conf:.2f} score={last_score:.2f} "
+                        f"cls={target_name} top={selector_summary} "
+                        f"detail=[{selected_score_details_txt}] yolo={yolo_fps.fps:4.1f}fps",
                         end="",
                         flush=True,
                     )
@@ -552,15 +610,27 @@ def main():
 
             if disp_queue is not None:
                 vis = color.copy()
+                for cand in ranked_candidates[:SELECTOR_DRAW_TOPK]:
+                    x1c, y1c, x2c, y2c = cand.bbox_xyxy
+                    alt_color = (255, 160, 0)
+                    cv2.rectangle(vis, (x1c, y1c), (x2c, y2c), alt_color, 1)
+                    alt_label = (
+                        f"{cand.class_name} {cand.confidence:.2f} s={cand.score:.2f} "
+                        f"p={cand.score_details.get('prior', 0.0):.2f} "
+                        f"c={cand.score_details.get('conf', 0.0):.2f} "
+                        f"t={cand.score_details.get('temp', 0.0):.2f}"
+                    )
+                    cv2.putText(vis, alt_label, (x1c, max(40, y1c - 6)),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.45, alt_color, 1)
                 if last_bbox is not None and miss_count <= args.coast_frames:
                     x1, y1, x2, y2 = last_bbox
-                    color_box = (0, 255, 0) if best_box is not None else (0, 165, 255)
+                    color_box = (0, 255, 0) if selected_candidate is not None else (0, 165, 255)
                     cx = (x1 + x2) // 2
                     cy = int(y1 + args.depth_bias_y * (y2 - y1))
                     cv2.rectangle(vis, (x1, y1), (x2, y2), color_box, 2)
                     cv2.circle(vis, (cx, cy), 4, color_box, -1)
                     label = (
-                        f"{target_name} {last_conf:.2f}" if best_box is not None
+                        f"{target_name} {last_conf:.2f} s={last_score:.2f}" if selected_candidate is not None
                         else f"coast {miss_count}/{args.coast_frames}"
                     )
                     cv2.putText(vis, label, (x1, max(24, y1 - 8)),
@@ -574,10 +644,16 @@ def main():
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 0), 2)
                 fps_txt = f"YOLO {yolo_fps.fps:.1f} fps"
                 cls_txt = f"targets: {', '.join(target_names)}"
+                selector_txt = f"selector: {selector_mode}"
+                score_txt = f"selected: {target_name} s={last_score:.2f}"
+                score_detail_txt = _format_score_details(last_score_details)
                 extr_txt = f"xyz={tuple(round(v, 3) for v in chest_xyz)}"
                 cv2.putText(vis, fps_txt, (10, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2)
                 cv2.putText(vis, cls_txt, (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 2)
-                cv2.putText(vis, extr_txt, (10, 76), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+                cv2.putText(vis, selector_txt, (10, 76), cv2.FONT_HERSHEY_SIMPLEX, 0.50, (255, 255, 255), 1)
+                cv2.putText(vis, score_txt, (10, 96), cv2.FONT_HERSHEY_SIMPLEX, 0.50, (255, 255, 255), 1)
+                cv2.putText(vis, score_detail_txt, (10, 116), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
+                cv2.putText(vis, extr_txt, (10, 136), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
                 _, jpg_buf = cv2.imencode(".jpg", vis, [cv2.IMWRITE_JPEG_QUALITY, 60])
                 with mjpeg_lock:
                     mjpeg_frame[0] = jpg_buf.tobytes()

@@ -7,6 +7,8 @@
 #   bash onboard/perception/camera/run_target.sh
 #   bash onboard/perception/camera/run_target.sh --show
 #   bash onboard/perception/camera/run_target.sh --target-class bottle
+#   bash onboard/perception/camera/run_target.sh --target-class bottle --target-class cup
+#   bash onboard/perception/camera/run_target.sh --use-all-classes-as-candidates
 #   bash onboard/perception/camera/run_target.sh --camera-serial 123456789
 #   bash onboard/perception/camera/run_target.sh --chest-xyz 0.13 0.0 0.06
 # ============================================================

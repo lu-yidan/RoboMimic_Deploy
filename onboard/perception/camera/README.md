@@ -140,11 +140,30 @@ bash onboard/perception/camera/run_apriltag_target.sh --tag-id 0 --tag-size 0.08
 bash onboard/perception/camera/run_apriltag_target.sh --tag-id 5 --tag-id 8 --tag-size 0.10
 ```
 
+多标签共享同一个目标点：
+
+```bash
+# 例子：tag 5 在公共目标点左侧 20 cm，tag 8 在右侧 20 cm
+bash onboard/perception/camera/run_apriltag_target.sh \
+    --tag-id 5 --tag-id 8 --tag-size 0.10 \
+    --tag-offset 5 0.20 0.00 0.00 \
+    --tag-offset 8 -0.20 0.00 0.00
+```
+
 说明：
 - `--tag-size` 单位是米，填写的是黑色方形 tag 本体边长，不是整张 A4 纸大小。
-- 当前实现将 `tag 中心` 作为目标点发布到 `rt/target_state`。
+- 默认情况下将 `tag 中心` 作为目标点发布到 `rt/target_state`。
+- 若提供 `--tag-offset TAG_ID DX DY DZ`，则改为发布该 tag 坐标系下的偏移目标点，适合把多个 tag 映射到同一个公共踢球目标。
+- `--tag-offset` 单位是米，原点在 tag 中心；`+X` 指向 tag 右边，`+Y` 指向 tag 上边，`+Z` 为 tag 平面法向。`+Z` 不等价于“离机器人更远”，它会随 tag 朝向一起旋转；对同一平面上的公共目标点，通常填 `DZ=0`。
 - 检测成功时，`class_id` 字段复用为 `tag_id`，便于下游和调试脚本继续沿用现有接口。
 - AprilTag 方案更适合贴了已知 tag 的受控目标；如果需要识别任意 `bottle`、`suitcase`，仍建议使用 YOLO 方案。
+
+输出语义：
+- 发布到 `rt/target_state` 的坐标已经完成 `RealSense optical -> chest body -> pelvis` 的变换；其中胸前外参默认使用 `camera_to_base.py` 里的 `_CHEST_XYZ / _CHEST_RPY`，也可以通过 `--chest-xyz / --chest-rpy` 覆盖。
+- 检测成功时发布 `pelvis` 系目标点，`valid=1`，`class_id=tag_id`，`confidence` 为当前 tag 置信度，`source=SOURCE_CHEST_CAMERA`。
+- 短时丢失目标但仍在 `--coast-frames` 范围内时，继续发布上一次 `pelvis` 坐标，但 `valid=0`，便于下游区分“沿用旧值”和“当前帧重新检测到”。
+- 超过 `--coast-frames` 后仍未检测到 tag，则发布 `(0, 0, 0)`、`valid=0`、`class_id=-1`、`confidence=0`。
+- `camera_to_base.py` 里的胸前外参当前仍是代码内置值，若后续要直接用于控制，建议先完成实测或标定。
 
 生成打印模板：
 

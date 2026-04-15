@@ -11,6 +11,10 @@ Usage:
     bash onboard/perception/camera/run_apriltag_target.sh --show
     bash onboard/perception/camera/run_apriltag_target.sh --tag-id 0 --tag-size 0.08
     bash onboard/perception/camera/run_apriltag_target.sh --tag-id 5 --tag-id 8
+    bash onboard/perception/camera/run_apriltag_target.sh \
+        --tag-id 5 --tag-id 8 --tag-size 0.10 \
+        --tag-offset 5 0.20 0.00 0.00 \
+        --tag-offset 8 -0.20 0.00 0.00
 """
 
 from __future__ import annotations
@@ -99,6 +103,23 @@ def _parse_tag_ids(raw_values):
     if not parsed:
         raise ValueError("At least one valid --tag-id is required.")
     return parsed
+
+
+def _parse_tag_offsets(raw_values):
+    offsets = {}
+    if not raw_values:
+        return offsets
+    for raw in raw_values:
+        if len(raw) != 4:
+            raise ValueError("--tag-offset expects: TAG_ID DX DY DZ")
+        tag_id = int(raw[0])
+        if tag_id in offsets:
+            raise ValueError(f"Duplicate --tag-offset for tag id {tag_id}.")
+        offsets[tag_id] = np.array(
+            [float(raw[1]), float(raw[2]), float(raw[3])],
+            dtype=np.float32,
+        )
+    return offsets
 
 
 def _get_apriltag_dictionary(tag_family):
@@ -313,32 +334,107 @@ def _detection_confidence(area_px, image_shape):
     return max(0.05, min(1.0, 5.0 * math.sqrt(max(0.0, area_norm))))
 
 
+def _resolve_target_point_optical(detection, tag_offsets):
+    if detection["tvec"] is None:
+        return None, False
+
+    target_optical = np.asarray(detection["tvec"], dtype=np.float32).reshape(3)
+    offset_tag = tag_offsets.get(detection["tag_id"])
+    if offset_tag is None:
+        return target_optical, False
+
+    rot_optical_from_tag, _ = cv2.Rodrigues(
+        np.asarray(detection["rvec"], dtype=np.float32).reshape(3, 1)
+    )
+    return target_optical + rot_optical_from_tag @ offset_tag, True
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Chest D435 + AprilTag target detector -> rt/target_state"
     )
     parser.add_argument("--width", type=int, default=640)
     parser.add_argument("--height", type=int, default=480)
-    parser.add_argument("--camera-serial", default=None, help="RealSense serial for the chest camera.")
-    parser.add_argument("--list-cameras", action="store_true", help="Print connected RealSense serials and exit.")
-    parser.add_argument("--show", action="store_true", help="Stream annotated video via MJPEG on port 8080.")
-    parser.add_argument("--dds-topic", default="rt/target_state", help="DDS topic name to publish to.")
-    parser.add_argument("--tag-id", action="append", dest="tag_ids",
-                        help="AprilTag id(s) to track. Can be repeated or comma-separated.")
-    parser.add_argument("--tag-family", default="tag36h11", help="AprilTag family, e.g. tag36h11.")
-    parser.add_argument("--tag-size", type=float, default=0.08,
-                        help="Printed tag edge length in metres, excluding any white paper margin.")
+    parser.add_argument(
+        "--camera-serial",
+        default=None,
+        help="RealSense serial for the chest camera.",
+    )
+    parser.add_argument(
+        "--list-cameras",
+        action="store_true",
+        help="Print connected RealSense serials and exit.",
+    )
+    parser.add_argument(
+        "--show",
+        action="store_true",
+        help="Stream annotated video via MJPEG on port 8080.",
+    )
+    parser.add_argument(
+        "--dds-topic",
+        default="rt/target_state",
+        help="DDS topic name to publish to.",
+    )
+    parser.add_argument(
+        "--tag-id",
+        action="append",
+        dest="tag_ids",
+        help="AprilTag id(s) to track. Can be repeated or comma-separated.",
+    )
+    parser.add_argument(
+        "--tag-family",
+        default="tag36h11",
+        help="AprilTag family, e.g. tag36h11.",
+    )
+    parser.add_argument(
+        "--tag-size",
+        type=float,
+        default=0.08,
+        help="Printed tag edge length in metres, excluding any white paper margin.",
+    )
+    parser.add_argument(
+        "--tag-offset",
+        action="append",
+        nargs=4,
+        default=None,
+        metavar=("TAG_ID", "DX", "DY", "DZ"),
+        help=(
+            "Optional shared target offset in the tag frame (metres). Repeat per tag as: "
+            "--tag-offset TAG_ID DX DY DZ"
+        ),
+    )
     parser.add_argument("--coast-frames", type=int, default=COAST_FRAMES)
     parser.add_argument("--ema-alpha", type=float, default=EMA_ALPHA)
     parser.add_argument("--ema-gate", type=float, default=EMA_GATE)
-    parser.add_argument("--chest-xyz", type=float, nargs=3, default=None, metavar=("X", "Y", "Z"),
-                        help="Override chest camera translation in waist_pitch frame (metres).")
-    parser.add_argument("--chest-rpy", type=float, nargs=3, default=None, metavar=("ROLL", "PITCH", "YAW"),
-                        help="Override chest camera rotation in radians.")
+    parser.add_argument(
+        "--chest-xyz",
+        type=float,
+        nargs=3,
+        default=None,
+        metavar=("X", "Y", "Z"),
+        help="Override chest camera translation in waist_pitch frame (metres).",
+    )
+    parser.add_argument(
+        "--chest-rpy",
+        type=float,
+        nargs=3,
+        default=None,
+        metavar=("ROLL", "PITCH", "YAW"),
+        help="Override chest camera rotation in radians.",
+    )
     args = parser.parse_args()
 
     target_tag_ids = _parse_tag_ids(args.tag_ids)
+    tag_offsets = _parse_tag_offsets(args.tag_offset)
     print(f"[INFO] Target AprilTag ids requested: {target_tag_ids}")
+    if tag_offsets:
+        print(
+            "[INFO] Tag-frame target offsets: "
+            + ", ".join(
+                f"id={tag_id}->{tuple(round(float(v), 4) for v in offset)}"
+                for tag_id, offset in sorted(tag_offsets.items())
+            )
+        )
 
     april_dict, family_name = _get_apriltag_dictionary(args.tag_family)
     detector_params = cv2.aruco.DetectorParameters()
@@ -424,13 +520,26 @@ def main():
                     detection["rvec"] = rvec
                     detection["tvec"] = tvec
                     detection["distance_m"] = float(np.linalg.norm(tvec))
+                    target_tvec, uses_offset = _resolve_target_point_optical(
+                        detection,
+                        tag_offsets,
+                    )
+                    detection["target_tvec"] = target_tvec
+                    detection["target_distance_m"] = float(np.linalg.norm(target_tvec))
+                    detection["uses_offset"] = uses_offset
+                else:
+                    detection["target_tvec"] = None
+                    detection["target_distance_m"] = 0.0
+                    detection["uses_offset"] = False
                 all_detections.append(detection)
-                if detection["tag_id"] in target_tag_ids and detection["tvec"] is not None:
+                if (
+                    detection["tag_id"] in target_tag_ids
+                    and detection["target_tvec"] is not None
+                ):
                     target_detections.append(detection)
 
             selected = _select_detection(target_detections, target_tag_ids)
             published = False
-            published_valid = False
             pelvis_xyz = last_pelvis_xyz if last_pelvis_xyz is not None else (0.0, 0.0, 0.0)
             tag_conf = 0.0
             tag_distance = 0.0
@@ -438,10 +547,11 @@ def main():
             if selected is not None:
                 miss_count = 0
                 last_detection = selected
-                # solvePnP returns the tag center in the RealSense optical frame:
-                # Z forward, X right, Y down. Convert it before using the robot
-                # chest-camera extrinsics.
-                p_cam_arr = optical_to_body(selected["tvec"])
+                # solvePnP returns tag pose in the RealSense optical frame.
+                # By default we publish the tag center; when --tag-offset is set
+                # for the selected id, we shift to a shared target point defined
+                # in that tag's local frame before converting coordinates.
+                p_cam_arr = optical_to_body(selected["target_tvec"])
 
                 if center_ema is None:
                     center_ema = p_cam_arr.copy()
@@ -463,9 +573,8 @@ def main():
                 pelvis_xyz = (float(p_base[0]), float(p_base[1]), float(p_base[2]))
                 last_pelvis_xyz = pelvis_xyz
                 tag_conf = float(selected["confidence"])
-                tag_distance = float(selected["distance_m"])
+                tag_distance = float(selected["target_distance_m"])
                 published = True
-                published_valid = True
                 dds.publish(
                     *pelvis_xyz,
                     valid=True,
@@ -473,9 +582,10 @@ def main():
                     confidence=tag_conf,
                     source=SOURCE_CHEST_CAMERA,
                 )
+                target_mode = "offset" if selected["uses_offset"] else "center"
                 print(
                     f"\r[TAG {selected['tag_id']}] pelvis=({pelvis_xyz[0]:+.3f}, {pelvis_xyz[1]:+.3f}, {pelvis_xyz[2]:+.3f}) "
-                    f"dist={tag_distance:.2f}m conf={tag_conf:.2f} apriltag={fps.fps:4.1f}fps",
+                    f"dist={tag_distance:.2f}m mode={target_mode} conf={tag_conf:.2f} apriltag={fps.fps:4.1f}fps",
                     end="",
                     flush=True,
                 )
@@ -483,9 +593,8 @@ def main():
                 miss_count += 1
                 if last_detection is not None and last_pelvis_xyz is not None and miss_count <= args.coast_frames:
                     published = True
-                    published_valid = False
                     tag_conf = float(last_detection["confidence"])
-                    tag_distance = float(last_detection["distance_m"])
+                    tag_distance = float(last_detection["target_distance_m"])
                     dds.publish(
                         *last_pelvis_xyz,
                         valid=False,
@@ -558,10 +667,27 @@ def main():
                 ids_txt = f"target ids: {', '.join(str(tag_id) for tag_id in target_tag_ids)}"
                 fam_txt = f"family: {family_name} size={args.tag_size:.3f}m"
                 extr_txt = f"xyz={tuple(round(v, 3) for v in chest_xyz)}"
-                cv2.putText(vis, fps_txt, (10, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2)
-                cv2.putText(vis, ids_txt, (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 2)
-                cv2.putText(vis, fam_txt, (10, 76), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-                cv2.putText(vis, extr_txt, (10, 98), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+                cv2.putText(
+                    vis, fps_txt, (10, 24),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2,
+                )
+                cv2.putText(
+                    vis, ids_txt, (10, 50),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 2,
+                )
+                cv2.putText(
+                    vis, fam_txt, (10, 76),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1,
+                )
+                cv2.putText(
+                    vis, extr_txt, (10, 98),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1,
+                )
+                if tag_offsets:
+                    cv2.putText(
+                        vis, "target mode: per-tag offset", (10, 120),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1,
+                    )
                 if published and last_pelvis_xyz is not None:
                     info = (
                         f"pelvis ({pelvis_xyz[0]:+.2f}, {pelvis_xyz[1]:+.2f}, {pelvis_xyz[2]:+.2f})m "

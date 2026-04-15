@@ -126,6 +126,8 @@ class LocoMode(FSMState):
             return FSMStateName.SKILL_BEYONDMIMIC_MJ
         elif(self.state_cmd.skill_cmd == FSMCommand.CMD_STANDUP_MJ):    # StandUpMJ, L1+D-pad UP
             return FSMStateName.SKILL_STANDUP_MJ
+        elif(self.state_cmd.skill_cmd == FSMCommand.CMD_PINOCCHIO_1_6_MJ):  # Pinocchio1.6MJ, L1+D-pad RIGHT
+            return FSMStateName.SKILL_PINOCCHIO_1_6_MJ
         elif(self.state_cmd.skill_cmd == FSMCommand.CMD_SCORE):         # Score, R1+D-pad RIGHT
             return FSMStateName.SKILL_SCORE
         elif(self.state_cmd.skill_cmd == FSMCommand.STAND_UP):      # L1+X → HOST 爬起控制器

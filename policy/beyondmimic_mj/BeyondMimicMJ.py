@@ -34,6 +34,18 @@ from common.utils import FSMStateName, FSMCommand, progress_bar
 NPZ_ANCHOR_IDX = 15
 
 
+def _resolve_model_path(current_dir: str, configured_path: str) -> str:
+    """Resolve asset paths from config.
+
+    Relative paths are loaded from `policy/beyondmimic_mj/model`, while absolute
+    paths are used directly so local experiments can point at exported mjlab
+    artifacts without copying them into this repo.
+    """
+    if os.path.isabs(configured_path):
+        return configured_path
+    return os.path.join(current_dir, "model", configured_path)
+
+
 # ---------------------------------------------------------------------------
 # Math helpers  (quaternion convention: [w, x, y, z])
 # ---------------------------------------------------------------------------
@@ -129,8 +141,8 @@ class BeyondMimicMJ(FSMState):
         with open(config_path, "r") as f:
             cfg = yaml.load(f, Loader=yaml.FullLoader)
 
-        onnx_path        = os.path.join(current_dir, "model", cfg["onnx_path"])
-        motion_path      = os.path.join(current_dir, "model", cfg["motion_path"])
+        onnx_path        = _resolve_model_path(current_dir, cfg["onnx_path"])
+        motion_path      = _resolve_model_path(current_dir, cfg["motion_path"])
         self.control_dt  = float(cfg["control_dt"])   # needed before motion slicing
 
         # ---- Load motion from NPZ (all arrays in MuJoCo DFS order) ----
@@ -366,5 +378,8 @@ class BeyondMimicMJ(FSMState):
         elif cmd == FSMCommand.CMD_STANDUP_MJ:
             self.state_cmd.skill_cmd = FSMCommand.INVALID
             return FSMStateName.SKILL_STANDUP_MJ
+        elif cmd == FSMCommand.CMD_PINOCCHIO_1_6_MJ:
+            self.state_cmd.skill_cmd = FSMCommand.INVALID
+            return FSMStateName.SKILL_PINOCCHIO_1_6_MJ
         else:
             return self.name

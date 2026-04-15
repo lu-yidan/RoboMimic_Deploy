@@ -76,6 +76,9 @@ class FixedPose(FSMState):
         elif(self.state_cmd.skill_cmd == FSMCommand.CMD_STANDUP_MJ):     # L1+Up → StandUpMJ
             self.state_cmd.skill_cmd = FSMCommand.INVALID
             return FSMStateName.SKILL_STANDUP_MJ
+        elif(self.state_cmd.skill_cmd == FSMCommand.CMD_PINOCCHIO_1_6_MJ):  # L1+Right → Pinocchio1.6MJ
+            self.state_cmd.skill_cmd = FSMCommand.INVALID
+            return FSMStateName.SKILL_PINOCCHIO_1_6_MJ
         elif(self.state_cmd.skill_cmd == FSMCommand.CMD_AMP):            # R2+A → AMP
             self.state_cmd.skill_cmd = FSMCommand.INVALID
             return FSMStateName.SKILL_AMP

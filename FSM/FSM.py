@@ -50,6 +50,12 @@ class FSM:
         self.standup_mj_policy = BeyondMimicMJ(state_cmd, policy_output,
                                                "standup_mj.yaml",
                                                FSMStateName.SKILL_STANDUP_MJ)
+        self.pinocchio_1_6_mj_policy = BeyondMimicMJ(
+            state_cmd,
+            policy_output,
+            "g1_result_pinocchio_1_6_mj.yaml",
+            FSMStateName.SKILL_PINOCCHIO_1_6_MJ,
+        )
         self.score_policy = Score(state_cmd, policy_output)
         self.amp_policy = Amp(state_cmd, policy_output)
 
@@ -125,6 +131,8 @@ class FSM:
             self.cur_policy = self.standup_mj_policy
         elif((policy_name == FSMStateName.SKILL_AMP)):
             self.cur_policy = self.amp_policy
+        elif((policy_name == FSMStateName.SKILL_PINOCCHIO_1_6_MJ)):
+            self.cur_policy = self.pinocchio_1_6_mj_policy
         else:
             pass
             

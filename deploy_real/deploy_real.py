@@ -146,6 +146,8 @@ class Controller:
                 self.state_cmd.skill_cmd = FSMCommand.CMD_BEYONDMIMIC_MJ
             elif self.remote_controller.is_button_pressed(KeyMap.up) and self.remote_controller.is_button_pressed(KeyMap.L1):    # StandUpMJ, L1+Up
                 self.state_cmd.skill_cmd = FSMCommand.CMD_STANDUP_MJ
+            elif self.remote_controller.is_button_pressed(KeyMap.right) and self.remote_controller.is_button_pressed(KeyMap.L1): # Pinocchio1.6MJ, L1+Right
+                self.state_cmd.skill_cmd = FSMCommand.CMD_PINOCCHIO_1_6_MJ
             elif self.remote_controller.is_button_pressed(KeyMap.A) and self.remote_controller.is_button_pressed(KeyMap.R2):    # AMP, R2+A
                 self.state_cmd.skill_cmd = FSMCommand.CMD_AMP
             elif self.remote_controller.is_button_pressed(KeyMap.up) and self.remote_controller.is_button_pressed(KeyMap.R2):   # AMP fast mode, R2+Up

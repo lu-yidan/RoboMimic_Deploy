@@ -222,6 +222,8 @@ def main(cfg: DictConfig):
                     state_cmd.skill_cmd = FSMCommand.CMD_BEYONDMIMIC_MJ
                 elif hat_just_pressed(0, 1) and joystick.is_button_pressed(JoystickButton.L1):                          # StandUpMJ, L1+D-pad UP
                     state_cmd.skill_cmd = FSMCommand.CMD_STANDUP_MJ
+                elif hat_just_pressed(1, 0) and joystick.is_button_pressed(JoystickButton.L1):                          # Pinocchio1.6MJ, L1+D-pad RIGHT
+                    state_cmd.skill_cmd = FSMCommand.CMD_PINOCCHIO_1_6_MJ
                 elif joystick.is_button_released(JoystickButton.A) and joystick.get_axis_value(5) > 0.5:               # AMP, R2+A
                     state_cmd.skill_cmd = FSMCommand.CMD_AMP
                 elif hat_just_pressed(0, 1) and joystick.get_axis_value(5) > 0.5:                                      # AMP fast mode, R2+D-pad UP

@@ -149,9 +149,15 @@ bash onboard/perception/camera/run_apriltag_target.sh --tag-id 5 --tag-id 8 --ta
 生成打印模板：
 
 ```bash
+# 默认生成 PDF，适合直接打印
 conda run -n robomimic --no-capture-output \
     python onboard/perception/camera/debug/generate_apriltag_template.py \
     --family tag36h11 --tag-id 0 --tag-size-mm 80
+
+# 如需同时保留一份 PNG 预览图，额外加 --also-png
+conda run -n robomimic --no-capture-output \
+    python onboard/perception/camera/debug/generate_apriltag_template.py \
+    --family tag36h11 --tag-id 0 --tag-size-mm 80 --also-png
 ```
 
 打印建议：

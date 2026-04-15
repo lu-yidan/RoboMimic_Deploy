@@ -4,10 +4,18 @@ By default the script writes a PDF for reliable physical sizing. PNG output is
 still available when an image preview is useful.
 
 Examples:
-    python onboard/perception/camera/debug/generate_apriltag_template.py
-    python onboard/perception/camera/debug/generate_apriltag_template.py --tag-id 5 --tag-size-mm 80
-    python onboard/perception/camera/debug/generate_apriltag_template.py --family tag25h9 --tag-id 3
-    python onboard/perception/camera/debug/generate_apriltag_template.py --also-png
+    # Default parameters: --family tag36h11 --tag-id 0 --tag-size-mm 80
+    # Output: apriltag_tag36h11_id0_80mm_a4.pdf
+    python onboard/perception/camera/debug/generate_apriltag_template.py \
+        --family tag36h11 --tag-id 0 --tag-size-mm 80
+    python onboard/perception/camera/debug/generate_apriltag_template.py \
+        --family tag36h11 --tag-id 5 --tag-size-mm 80
+    python onboard/perception/camera/debug/generate_apriltag_template.py \
+        --family tag25h9 --tag-id 3 --tag-size-mm 80
+
+    # Optional: also write a PNG preview with embedded DPI metadata.
+    python onboard/perception/camera/debug/generate_apriltag_template.py \
+        --family tag36h11 --tag-id 0 --tag-size-mm 80 --also-png
 """
 
 from __future__ import annotations

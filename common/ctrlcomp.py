@@ -29,7 +29,12 @@ class StateAndCmd:
         self.ball_vel_w    = np.zeros(3, dtype=np.float32)
         self.ball_pos_b    = np.zeros(3, dtype=np.float32)  # real robot only
         self.ball_valid    = False                           # real robot only
-        # note: target_pos_w lives in Score.__init__ (loaded from score.yaml), not here
+        # target state for Score controller
+        # Real robot: target_pos_b / target_valid come from rt/target_state DDS.
+        self.target_pos_b  = np.zeros(3, dtype=np.float32)
+        self.target_valid  = False
+        self.target_class_id = -1
+        self.target_confidence = 0.0
         # joy cmd
         self.vel_cmd = np.zeros(3)
         self.skill_cmd = FSMCommand.INVALID
@@ -55,6 +60,8 @@ class PolicyOutput:
         self._kps     = np.zeros(num_joints, dtype=np.float32)
         self._kds     = np.zeros(num_joints, dtype=np.float32)
         self.ghost_qpos = None   # np.ndarray (7+n_joints,) or None
+        self.debug_target_pos_b = np.zeros(3, dtype=np.float32)
+        self.debug_target_source = np.array([0.0], dtype=np.float32)
         # Optional debug spheres drawn in MuJoCo viewer.
         # List of dicts: {"pos": (3,) world-frame, "radius": float, "rgba": (4,) float}
         # Set to None to skip rendering. Cleared to None by FSM between policy activations.

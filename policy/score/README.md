@@ -28,7 +28,10 @@
 | 键 | 说明 |
 |----|------|
 | `use_body_frame_ball` | **`false`**：仿真。球在 MuJoCo 世界系，由 `deploy_mujoco` 写入 `ball_pos_w`，策略内部变换到骨盆体坐标。<br>**`true`**：真机。球由 DDS `ball_pos_b`（骨盆体系，米）提供，无世界系里程时与训练里「体坐标球」一致。 |
-| `target_pos` | 世界系目标点 `[x,y,z]`（米）。真机在 `enter()` 时换算到进入时刻骨盆体系并随航向更新；仿真下变换到当前骨盆体系作为 `target_pos_b`。 |
+| `target_source` | `fixed` 或 `apriltag`。`fixed` 使用配置里的 `target_pos`；`apriltag` 在真机上读取 `rt/target_state`。 |
+| `target_pos` | 固定目标位置 `[x,y,z]`（米）。仿真下解释为世界系目标点；真机下解释为 `enter()` 时刻记录的 pelvis/body-frame 目标偏移，并随航向更新。 |
+| `target_hold_on_loss_with_imu` | 当 `target_source=apriltag` 且 tag 丢失时，保留最近一次可见目标在 yaw/world 缓存中的方向，再根据当前 IMU yaw 换回 pelvis 体系，继续瞄准。 |
+| `target_use_fixed_fallback` | 当 `target_source=apriltag` 但还没有看到过有效 tag，或关闭 IMU 保持时，是否退回到固定 `target_pos`。 |
 
 ---
 

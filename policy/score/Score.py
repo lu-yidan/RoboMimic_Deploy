@@ -135,6 +135,15 @@ def _quat_apply_inverse(q, v):
 # ---------------------------------------------------------------------------
 
 class Score(FSMState):
+    TARGET_SOURCE_TO_CODE = {
+        "none": 0.0,
+        "fixed": 1.0,
+        "fixed_fallback": 2.0,
+        "apriltag": 3.0,
+        "imu_hold": 4.0,
+        "fixed_sim": 5.0,
+    }
+
     def __init__(self, state_cmd: StateAndCmd, policy_output: PolicyOutput):
         super().__init__()
         self.state_cmd    = state_cmd
@@ -187,6 +196,14 @@ class Score(FSMState):
         self.ball_as_anchor_pos     = bool(cfg.get("ball_as_anchor_pos",     False))
         self.ball_facing_anchor_ori = bool(cfg.get("ball_facing_anchor_ori", False))
         self.target_pos_w     = np.array(cfg["target_pos"],        dtype=np.float32)  # world frame
+        self.target_source    = str(cfg.get("target_source", "fixed")).strip().lower()
+        if self.target_source not in {"fixed", "apriltag"}:
+            raise ValueError(
+                f"Unsupported target_source '{self.target_source}'. "
+                "Choose one of: ['fixed', 'apriltag']"
+            )
+        self.target_hold_on_loss_with_imu = bool(cfg.get("target_hold_on_loss_with_imu", True))
+        self.target_use_fixed_fallback = bool(cfg.get("target_use_fixed_fallback", True))
         # True on real robot: ball_pos is already in pelvis body frame (from DDS sensor).
         # False in simulation: ball_pos is in world frame and needs coordinate transform.
         self.use_body_frame_ball = bool(cfg.get("use_body_frame_ball", False))
@@ -241,6 +258,12 @@ class Score(FSMState):
         self._burst_need_ball_clear = False
         self._prev_ball_pos_b_for_trigger = None
         self._ball_vel_b_est = np.zeros(3, dtype=np.float32)
+        self._entry_yaw_mat = np.eye(3, dtype=np.float64)
+        self._target_world_yaw_vec = None
+        self._debug_target_pos_w = np.zeros(3, dtype=np.float32)
+        self._debug_ball_pos_b = np.zeros(3, dtype=np.float32)
+        self._debug_target_pos_b = np.zeros(3, dtype=np.float32)
+        self._target_debug_source = "fixed"
 
         # History buffers (oldest → newest, HISTORY_LEN frames each)
         self._ang_vel_buf   = deque([np.zeros(3,  dtype=np.float32)] * HISTORY_LEN, maxlen=HISTORY_LEN)
@@ -260,7 +283,7 @@ class Score(FSMState):
         print(
             f"[Score config] runtime={self.runtime_mode} "
             f"anchor={self.anchor_mode} anchor_ori={self.anchor_ori_mode} "
-            f"motion={self.motion_mode}"
+            f"motion={self.motion_mode} target={self.target_source}"
         )
         if self._adapt_play_motion_deprecated:
             print("[Score config] `adapt_play_motion` is deprecated and ignored.")
@@ -304,6 +327,11 @@ class Score(FSMState):
             ).astype(np.float32)
         else:
             self.target_pos_b_entry = np.zeros(3, dtype=np.float32)
+        self._target_world_yaw_vec = None
+        self._debug_target_pos_w = np.zeros(3, dtype=np.float32)
+        self._debug_ball_pos_b = np.zeros(3, dtype=np.float32)
+        self._debug_target_pos_b = np.zeros(3, dtype=np.float32)
+        self._target_debug_source = "fixed"
 
         # ---- Warm-up interpolation targets ----
         self._entry_q     = self.state_cmd.q.copy()
@@ -541,8 +569,14 @@ class Score(FSMState):
             ball_pos_b = ball_b_effective
             pelvis_quat = self.state_cmd.pelvis_quat_w.astype(np.float64)
             current_yaw_mat = _quat_to_matrix(_yaw_quat(pelvis_quat))
-            target_world = self._entry_yaw_mat @ self.target_pos_b_entry.astype(np.float64)
-            target_pos_b = np.clip(current_yaw_mat.T @ target_world, -8.0, 8.0).astype(np.float32)
+            if self.target_source == "apriltag":
+                target_pos_b = self._get_real_target_from_apriltag(current_yaw_mat)
+            else:
+                target_pos_b = self._get_real_fixed_target_pos_b(current_yaw_mat)
+            self._debug_target_pos_w = (
+                self.state_cmd.pelvis_pos_w.astype(np.float64)
+                + current_yaw_mat @ target_pos_b.astype(np.float64)
+            ).astype(np.float32)
             return ball_pos_b, target_pos_b
 
         robot_pelvis_pos_w = self.state_cmd.pelvis_pos_w.astype(np.float64)
@@ -551,7 +585,38 @@ class Score(FSMState):
         target_rel_w = self.target_pos_w.astype(np.float64) - robot_pelvis_pos_w
         ball_pos_b = np.clip(R_pelvis.T @ ball_rel_w, -8.0, 8.0).astype(np.float32)
         target_pos_b = np.clip(R_pelvis.T @ target_rel_w, -8.0, 8.0).astype(np.float32)
+        self._debug_target_pos_w = self.target_pos_w.astype(np.float32)
+        self._target_debug_source = "fixed_sim"
         return ball_pos_b, target_pos_b
+
+    def _get_real_fixed_target_pos_b(self, current_yaw_mat: np.ndarray) -> np.ndarray:
+        """Rotate the configured fixed target offset with pelvis yaw."""
+        target_world = self._entry_yaw_mat @ self.target_pos_b_entry.astype(np.float64)
+        self._target_debug_source = "fixed"
+        return np.clip(current_yaw_mat.T @ target_world, -8.0, 8.0).astype(np.float32)
+
+    def _get_real_target_from_apriltag(self, current_yaw_mat: np.ndarray) -> np.ndarray:
+        """Use live target_state when valid; otherwise keep aiming with IMU yaw."""
+        if self.state_cmd.target_valid:
+            target_pos_b = np.clip(self.state_cmd.target_pos_b, -8.0, 8.0).astype(np.float32)
+            self._target_world_yaw_vec = current_yaw_mat @ target_pos_b.astype(np.float64)
+            self._target_debug_source = "apriltag"
+            return target_pos_b
+
+        if self.target_hold_on_loss_with_imu and self._target_world_yaw_vec is not None:
+            self._target_debug_source = "imu_hold"
+            return np.clip(
+                current_yaw_mat.T @ self._target_world_yaw_vec,
+                -8.0,
+                8.0,
+            ).astype(np.float32)
+
+        if self.target_use_fixed_fallback:
+            self._target_debug_source = "fixed_fallback"
+            return self._get_real_fixed_target_pos_b(current_yaw_mat)
+
+        self._target_debug_source = "none"
+        return np.zeros(3, dtype=np.float32)
 
     def _get_trigger_ball_state_b(self):
         """Return `(ball_pos_b, ball_vel_b, anchor_xy)` for trigger gating."""
@@ -609,6 +674,11 @@ class Score(FSMState):
 
         return min_dist2 < radius * radius
 
+    @staticmethod
+    def _fmt_vec3(vec: np.ndarray) -> str:
+        vec = np.asarray(vec, dtype=np.float32).reshape(3)
+        return f"({vec[0]:+.2f},{vec[1]:+.2f},{vec[2]:+.2f})"
+
 
     def _build_obs(self) -> np.ndarray:
         """547-dim obs:
@@ -657,6 +727,8 @@ class Score(FSMState):
 
         # ---- Ball and target in pelvis body frame (training uses root/pelvis, not torso) ----
         ball_pos_b, target_pos_b = self._compute_ball_target_obs_b(ball_b_effective)
+        self._debug_ball_pos_b = ball_pos_b.copy()
+        self._debug_target_pos_b = target_pos_b.copy()
 
         # ---- Update history buffers ----
         self._ang_vel_buf.append(self.state_cmd.root_ang_vel_b.copy())
@@ -741,15 +813,22 @@ class Score(FSMState):
             print(f"  anchor_ori_6d : {obs[61:67]}")
             print(f"  ball_pos_b    : {obs[529:532]}")   # newest frame of ball_hist   [517:532]
             print(f"  target_pos_b  : {obs[544:547]}")   # newest frame of target_hist [532:547]
+            print(f"  target_src    : {self._target_debug_source}")
             print(f"  actions_il    : min={actions_il.min():.3f}  max={actions_il.max():.3f}")
 
         self.policy_output.actions = target_q
         self.policy_output.kps     = self.kps
         self.policy_output.kds     = self.kds
+        self.policy_output.debug_target_pos_b = self._debug_target_pos_b.copy()
+        self.policy_output.debug_target_source[:] = self.TARGET_SOURCE_TO_CODE.get(
+            self._target_debug_source, 0.0
+        )
 
         # ---- Visualization: anchor sphere + line from torso to anchor + target square ----
-        target_marker_pos = np.array([self.target_pos_w[0], self.target_pos_w[1], 0.15],
-                                     dtype=np.float64)
+        target_marker_pos = np.array(
+            [self._debug_target_pos_w[0], self._debug_target_pos_w[1], 0.15],
+            dtype=np.float64,
+        )
         viz = [
             {"pos": self._debug_anchor_pos_w.copy(), "radius": 0.06,
              "rgba": np.array([1.0, 0.5, 0.0, 0.9], dtype=np.float32)},
@@ -786,8 +865,12 @@ class Score(FSMState):
         else:
             bar_total = self.motion_total_steps * self.control_dt
             bar_prog = capped * self.control_dt
-        print(progress_bar(bar_prog, bar_total),
-              end="", flush=True)
+        status_line = progress_bar(bar_prog, bar_total)
+        status_line += f" ball_b={self._fmt_vec3(self._debug_ball_pos_b)}"
+        status_line += f" target_b={self._fmt_vec3(self._debug_target_pos_b)}"
+        if self.runtime_mode == "real":
+            status_line += f" target_src={self._target_debug_source}"
+        print(status_line, end="", flush=True)
 
     # ------------------------------------------------------------------
 
@@ -828,6 +911,8 @@ class Score(FSMState):
         self.last_action_il = np.zeros(29, dtype=np.float32)
         self.policy_output.ghost_qpos  = None
         self.policy_output.viz_spheres = None
+        self.policy_output.debug_target_pos_b[:] = 0.0
+        self.policy_output.debug_target_source[:] = 0.0
         print()
 
     def checkChange(self):

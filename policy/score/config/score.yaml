@@ -42,8 +42,24 @@ ball_as_anchor_pos: true
 # Overrides the default reference-motion orientation.
 ball_facing_anchor_ori: false
 
-# Simulation: world-frame target position [x, y, z]
-# Real robot: entry时刻记录的 pelvis/body-frame target offset
+# Target source:
+# - fixed:    use `target_pos`
+# - apriltag: use rt/target_state (AprilTag / target detector) on real robot
+target_source: apriltag
+
+# If target_source=apriltag and the tag is lost:
+# - true:  keep the last seen target direction in a yaw/world cache and
+#          rotate it back into the current pelvis frame using IMU yaw
+# - false: do not hold with IMU
+target_hold_on_loss_with_imu: true
+
+# If target_source=apriltag but no valid target has been seen yet (or IMU hold is disabled),
+# fall back to the configured fixed target_pos.
+target_use_fixed_fallback: true
+
+# Fixed target:
+# - Simulation: world-frame target position [x, y, z]
+# - Real robot: entry时刻记录的 pelvis/body-frame target offset
 target_pos: [5.0, 0.0, 0.0]
 
 # Ball-trigger gate: hold at frame 0 until the ball enters the circle.

@@ -34,6 +34,9 @@ Ball markers (ball_pos_b transformed to world):
     Red    — ball_valid
     Orange — not valid but ball_pos_b ≠ 0 (e.g. coast)
     Blue   — sim ground truth (ball_pos_w) when present
+Target markers:
+    Magenta — target actually used by Score (debug_target_pos_b → world)
+    Purple  — raw target sensor/state (target_pos_b → world) when it differs
 """
 
 import sys
@@ -78,6 +81,12 @@ def _add_sphere(scn, pos, radius: float, rgba) -> None:
         np.asarray(rgba,  dtype=np.float32),
     )
     scn.ngeom += 1
+
+
+def _field_or_default(data: dict, name: str, shape, dtype=np.float32):
+    if name in data:
+        return data[name]
+    return np.zeros(shape, dtype=dtype)
 
 
 def make_camera(pos, direction, distance: float = 3.0) -> mujoco.MjvCamera:
@@ -161,6 +170,9 @@ def main() -> None:
               f"({frame_start*dt:.1f}s – {frame_end*dt:.1f}s)")
 
     has_ball_gt = bool(np.any(np.abs(data["ball_pos_w"]) > 1e-6))
+    target_pos_b_log = _field_or_default(data, "target_pos_b", (T, 3))
+    target_valid_log = _field_or_default(data, "target_valid", (T,))
+    debug_target_pos_b_log = _field_or_default(data, "debug_target_pos_b", (T, 3))
 
     # ---- Resolve XML -------------------------------------------------------
     xml_path = args.xml or meta.get("xml_path") or os.path.join(
@@ -238,6 +250,26 @@ def main() -> None:
         if has_ball_gt:
             _add_sphere(renderer.scene, data["ball_pos_w"][fi],
                         radius=0.11, rgba=[0.2, 0.4, 1.0, 0.6])
+
+        # Magenta sphere: target actually used by Score in pelvis body frame → world.
+        debug_target_pos_b = debug_target_pos_b_log[fi].astype(np.float64)
+        debug_target_norm = float(np.linalg.norm(debug_target_pos_b))
+        if debug_target_norm > 1e-3:
+            debug_target_w = (
+                data["pelvis_pos_w"][fi].astype(np.float64) + R_pelvis @ debug_target_pos_b
+            )
+            _add_sphere(renderer.scene, debug_target_w,
+                        radius=0.08, rgba=[1.0, 0.1, 0.9, 0.90])
+
+        # Purple sphere: raw target state / sensor value from log, when available.
+        target_pos_b = target_pos_b_log[fi].astype(np.float64)
+        target_pos_norm = float(np.linalg.norm(target_pos_b))
+        if target_valid_log[fi] > 0.5 and target_pos_norm > 1e-3:
+            target_sensor_w = (
+                data["pelvis_pos_w"][fi].astype(np.float64) + R_pelvis @ target_pos_b
+            )
+            _add_sphere(renderer.scene, target_sensor_w,
+                        radius=0.05, rgba=[0.65, 0.2, 1.0, 0.70])
 
         # RGB → BGR for OpenCV
         pixels = renderer.render()

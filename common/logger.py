@@ -12,10 +12,13 @@ class Logger:
     Each call to log() writes one fixed-size float32 record and immediately
     flushes, so no data is lost if the process crashes.
 
-    Record layout (103 × float32 = 412 bytes per frame):
+    Record layout (114 × float32 = 456 bytes per frame):
         step(1), time_s(1), q(29), dq(29),
         pelvis_pos_w(3), pelvis_quat_wxyz(4),
         ball_pos_b(3), ball_pos_w(3), ball_valid(1),
+        target_pos_b(3), target_valid(1),
+        vel_cmd(3),
+        debug_target_pos_b(3), debug_target_source(1),
         actions(29)
 
     Files written:
@@ -33,9 +36,14 @@ class Logger:
         ("ball_pos_b",   3),
         ("ball_pos_w",   3),
         ("ball_valid",   1),
+        ("target_pos_b", 3),
+        ("target_valid", 1),
+        ("vel_cmd",      3),
+        ("debug_target_pos_b", 3),
+        ("debug_target_source", 1),
         ("actions",     29),
     ]
-    RECORD_DIM: int = sum(n for _, n in FIELDS)  # 103
+    RECORD_DIM: int = sum(n for _, n in FIELDS)  # 114
 
     def __init__(self, log_dir: str, tag: str = "score",
                  extra_meta: Optional[dict] = None) -> None:
@@ -88,6 +96,11 @@ class Logger:
         put(state_cmd.ball_pos_b,          3)
         put(state_cmd.ball_pos_w,          3)
         put([float(state_cmd.ball_valid)], 1)
+        put(state_cmd.target_pos_b,        3)
+        put([float(state_cmd.target_valid)], 1)
+        put(state_cmd.vel_cmd,             3)
+        put(policy_output.debug_target_pos_b, 3)
+        put(policy_output.debug_target_source, 1)
         put(policy_output.actions,        29)
 
         self._file.write(r.tobytes())

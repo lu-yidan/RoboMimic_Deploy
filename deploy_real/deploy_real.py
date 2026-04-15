@@ -27,6 +27,7 @@ from common.logger import Logger
 from common.rotation_helper import get_gravity_orientation_real, transform_imu_data, transform_pelvis_to_torso_complete
 from common.remote_controller import RemoteController, KeyMap
 from common.ball_state_dds import BallStateSubscriber
+from common.target_state_dds import TargetStateSubscriber
 from config import Config
 
 
@@ -69,6 +70,8 @@ class Controller:
         # Ball state subscriber (DDS, from on-robot ball_detector_service)
         self.ball_sub = BallStateSubscriber(domain_id=0)
         self.ball_sub.start()
+        self.target_sub = TargetStateSubscriber(domain_id=0)
+        self.target_sub.start()
 
         self.running = True
         self.counter_over_time = 0
@@ -187,6 +190,13 @@ class Controller:
             ball = self.ball_sub.latest()
             self.state_cmd.ball_pos_b = np.array([ball.x, ball.y, ball.z], dtype=np.float32)
             self.state_cmd.ball_valid  = bool(ball.valid)
+
+            # Target state from DDS (pelvis body frame, from AprilTag / target detector)
+            target = self.target_sub.latest()
+            self.state_cmd.target_pos_b = np.array([target.x, target.y, target.z], dtype=np.float32)
+            self.state_cmd.target_valid = bool(target.valid)
+            self.state_cmd.target_class_id = int(target.class_id)
+            self.state_cmd.target_confidence = float(target.confidence)
             
             self.FSM_controller.run()
             policy_output_action = self.policy_output.actions.copy()
@@ -243,6 +253,8 @@ if __name__ == "__main__":
         except KeyboardInterrupt:
             break
     
+    controller.ball_sub.stop()
+    controller.target_sub.stop()
     if controller._logger is not None:
         controller._logger.close()
     create_damping_cmd(controller.low_cmd)

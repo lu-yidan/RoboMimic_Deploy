@@ -9,6 +9,8 @@
 - **绿色半透明机器人**：还原每帧的关节姿态
 - **红色球**：机器人传感器感知的球位置（`ball_pos_b` 变换到世界系）
 - **蓝色球**：MuJoCo 仿真 ground truth（仅仿真录制时有效）
+- **品红色目标球**：`Score` 实际使用的目标（`debug_target_pos_b` 变换到世界系）
+- **紫色小球**：原始 `target_pos_b` 传感器/检测值
 
 主要用途：在真实机器人上录制，然后在 MuJoCo 里回放，直观验证球位置感知是否准确。
 
@@ -48,7 +50,7 @@ logs/
   20260318_153012_score.json   元信息（字段定义、帧数、控制频率等）
 ```
 
-每帧为 103 个 float32（412 bytes），字段如下：
+每帧为 114 个 float32（456 bytes），字段如下：
 
 | 字段 | 维度 | 说明 |
 |---|---|---|
@@ -61,6 +63,11 @@ logs/
 | `ball_pos_b` | 3 | 球相对 pelvis body frame（传感器值） |
 | `ball_pos_w` | 3 | 球世界坐标（仿真 ground truth，real 上为零） |
 | `ball_valid` | 1 | 球感知是否有效（0 / 1） |
+| `target_pos_b` | 3 | 原始 target 相对 pelvis body frame（来自 `rt/target_state`） |
+| `target_valid` | 1 | target 感知是否有效（0 / 1） |
+| `vel_cmd` | 3 | 速度命令 |
+| `debug_target_pos_b` | 3 | `Score` 实际使用的 target，相对 pelvis body frame |
+| `debug_target_source` | 1 | 目标来源编码：0=`none`, 1=`fixed`, 2=`fixed_fallback`, 3=`apriltag`, 4=`imu_hold`, 5=`fixed_sim` |
 | `actions` | 29 | policy 输出动作 |
 
 ---
@@ -97,6 +104,9 @@ data = Logger.load("logs/20260318_153012_score.bin")
 
 data["q"]          # (T, 29) 关节位置
 data["ball_pos_b"] # (T, 3)  球 body frame 位置
+data["target_pos_b"] # (T, 3) 原始 target body frame 位置
+data["debug_target_pos_b"] # (T, 3) Score 实际使用的 target
+data["vel_cmd"]    # (T, 3) 速度命令
 data["ball_valid"] # (T,)    感知有效性
 data["_meta"]      # dict    元信息
 ```

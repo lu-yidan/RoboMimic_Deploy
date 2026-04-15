@@ -34,11 +34,14 @@ onboard/perception/camera/
 ├── ball_detector.py        ← 单相机球检测：D435 + YOLO → DDS
 ├── ball_detector_dual.py   ← 双相机球检测：2×D435 + 共享 YOLO → DDS
 ├── target_detector.py      ← 胸前相机 target 检测：D435 + YOLO → rt/target_state
+├── apriltag_detector.py    ← 胸前相机 AprilTag 检测：D435 + tag pose → rt/target_state
 ├── camera_to_base.py       ← 坐标变换：相机系 → pelvis 系（含胸部占位外参）
 ├── run.sh                  ← 单相机球检测启动脚本（含 TRT 路径、GPU 解锁）
 ├── run_dual.sh             ← 双相机球检测启动脚本
 ├── run_target.sh           ← 胸前相机 target 检测启动脚本
+├── run_apriltag_target.sh  ← 胸前相机 AprilTag 检测启动脚本
 ├── debug/
+│   ├── generate_apriltag_template.py ← 生成可打印的 A4 AprilTag 模板
 │   ├── target_state_echo.py      ← 调试：打印 rt/target_state 最新值
 │   └── target_extrinsics_eval.py ← 调试：统计 target 位姿均值/方差，辅助外参标定
 ├── README.md               ← 本文档
@@ -114,6 +117,48 @@ python onboard/perception/camera/debug/target_extrinsics_eval.py
 说明：
 - `target_detector.py` 与球检测逻辑分离，方便后续更换胸前相机角度、位置或目标类别。
 - `debug/` 下脚本仅用于联调、观察和外参校准，不参与正式感知链路。
+
+---
+
+### 2.1c 胸前相机 AprilTag 检测
+
+在项目根目录执行：
+
+```bash
+bash onboard/perception/camera/run_apriltag_target.sh --tag-id 0 --tag-size 0.08
+```
+
+带网页预览：
+
+```bash
+bash onboard/perception/camera/run_apriltag_target.sh --tag-id 0 --tag-size 0.08 --show
+```
+
+多标签候选：
+
+```bash
+bash onboard/perception/camera/run_apriltag_target.sh --tag-id 5 --tag-id 8 --tag-size 0.10
+```
+
+说明：
+- `--tag-size` 单位是米，填写的是黑色方形 tag 本体边长，不是整张 A4 纸大小。
+- 当前实现将 `tag 中心` 作为目标点发布到 `rt/target_state`。
+- 检测成功时，`class_id` 字段复用为 `tag_id`，便于下游和调试脚本继续沿用现有接口。
+- AprilTag 方案更适合贴了已知 tag 的受控目标；如果需要识别任意 `bottle`、`suitcase`，仍建议使用 YOLO 方案。
+
+生成打印模板：
+
+```bash
+conda run -n robomimic --no-capture-output \
+    python onboard/perception/camera/debug/generate_apriltag_template.py \
+    --family tag36h11 --tag-id 0 --tag-size-mm 80
+```
+
+打印建议：
+- 首选 `tag36h11`
+- 起步尺寸建议 `80 mm` 或 `100 mm`
+- 打印时选择 `100%` 缩放，禁止 `fit to page`
+- 打印后最好贴到硬纸板上，避免纸张弯曲带来的姿态抖动
 
 ---
 

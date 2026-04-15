@@ -157,7 +157,10 @@ conda run -n robomimic --no-capture-output \
 打印建议：
 - 首选 `tag36h11`
 - 起步尺寸建议 `80 mm` 或 `100 mm`
-- 打印时选择 `100%` 缩放，禁止 `fit to page`
+- 脚本现在默认输出 `PDF`；如需留一份预览图，可额外加 `--also-png`
+- 若显式输出 `PNG`，脚本也会写入 `DPI` 元数据；但最终打印仍优先直接使用生成的 `PDF`
+- 打印时选择 `100%` / `actual size`，禁止 `fit to page` / `shrink to printable area`
+- 用尺子实测黑色外框边长；检测代码里的 `--tag-size` 应填写这个黑框边长
 - 打印后最好贴到硬纸板上，避免纸张弯曲带来的姿态抖动
 
 ---

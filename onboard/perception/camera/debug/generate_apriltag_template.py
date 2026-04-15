@@ -1,9 +1,13 @@
-"""Generate printable AprilTag templates on an A4 page.
+"""Generate print-ready AprilTag templates on an A4 page.
+
+By default the script writes a PDF for reliable physical sizing. PNG output is
+still available when an image preview is useful.
 
 Examples:
     python onboard/perception/camera/debug/generate_apriltag_template.py
     python onboard/perception/camera/debug/generate_apriltag_template.py --tag-id 5 --tag-size-mm 80
     python onboard/perception/camera/debug/generate_apriltag_template.py --family tag25h9 --tag-id 3
+    python onboard/perception/camera/debug/generate_apriltag_template.py --also-png
 """
 
 from __future__ import annotations
@@ -13,6 +17,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+from PIL import Image
 
 
 FAMILY_TO_DICT = {
@@ -49,6 +54,27 @@ def _draw_text_center(page: np.ndarray, text: str, y: int, scale: float, thickne
     return y + h + baseline
 
 
+def _save_page(page: np.ndarray, output_path: Path, dpi: int) -> None:
+    pil_image = Image.fromarray(cv2.cvtColor(page, cv2.COLOR_BGR2RGB))
+    suffix = output_path.suffix.lower()
+
+    if suffix == ".png":
+        # Embed DPI metadata so print dialogs have an explicit physical size hint.
+        pil_image.save(output_path, dpi=(dpi, dpi))
+        return
+
+    if suffix == ".pdf":
+        pil_image.save(output_path, resolution=float(dpi))
+        return
+
+    raise ValueError(f"Unsupported output format '{suffix}'. Use .png or .pdf.")
+
+
+def _default_output_path(script_path: Path, family: str, tag_id: int, tag_size_mm: float) -> Path:
+    output_name = f"apriltag_{family}_id{tag_id}_{int(round(tag_size_mm))}mm_a4.pdf"
+    return script_path.resolve().parent / output_name
+
+
 def main():
     parser = argparse.ArgumentParser(description="Generate a printable A4 AprilTag template.")
     parser.add_argument("--family", default="tag36h11", help="AprilTag family, e.g. tag36h11.")
@@ -57,7 +83,21 @@ def main():
                         help="Tag edge length in millimetres. This is the black square size.")
     parser.add_argument("--dpi", type=int, default=300, help="Output DPI.")
     parser.add_argument("--margin-mm", type=float, default=15.0, help="Minimum page margin in millimetres.")
-    parser.add_argument("--output", default=None, help="Output PNG path.")
+    parser.add_argument(
+        "--output",
+        default=None,
+        help="Output .pdf or .png path. Defaults to a sibling PDF for reliable printing.",
+    )
+    parser.add_argument(
+        "--also-pdf",
+        action="store_true",
+        help="Also write a sibling PDF with the same physical page size.",
+    )
+    parser.add_argument(
+        "--also-png",
+        action="store_true",
+        help="Also write a sibling PNG with embedded DPI metadata.",
+    )
     args = parser.parse_args()
 
     family = str(args.family).strip().lower()
@@ -113,15 +153,21 @@ def main():
     if args.output:
         output_path = Path(args.output)
     else:
-        output_name = f"apriltag_{family}_id{args.tag_id}_{int(round(args.tag_size_mm))}mm_a4.png"
-        output_path = Path(__file__).resolve().parent / output_name
+        output_path = _default_output_path(Path(__file__), family, args.tag_id, args.tag_size_mm)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    ok = cv2.imwrite(str(output_path), page)
-    if not ok:
-        raise RuntimeError(f"Failed to write image to {output_path}")
-
+    _save_page(page, output_path, dpi)
     print(f"[INFO] Wrote printable template to: {output_path}")
+
+    if args.also_pdf and output_path.suffix.lower() != ".pdf":
+        pdf_path = output_path.with_suffix(".pdf")
+        _save_page(page, pdf_path, dpi)
+        print(f"[INFO] Wrote printable PDF to: {pdf_path}")
+
+    if args.also_png and output_path.suffix.lower() != ".png":
+        png_path = output_path.with_suffix(".png")
+        _save_page(page, png_path, dpi)
+        print(f"[INFO] Wrote preview PNG to: {png_path}")
 
 
 if __name__ == "__main__":

@@ -1,13 +1,22 @@
 #!/usr/bin/env bash
 # ============================================================
 # 启动 chest camera apriltag_detector（含 GPU/Jetson 解锁）
-# 默认目标 tag id：0
+# 默认使用 4-tag 板：
+#   tag 0 -> target offset = (+14cm, +10cm, 0)
+#   tag 1 -> target offset = (+14cm, -10cm, 0)
+#   tag 2 -> target offset = (-14cm, -10cm, 0)
+#   tag 3 -> target offset = (-14cm, +10cm, 0)
 #
 # 用法：
-#   bash onboard/perception/camera/run_apriltag_target.sh
+#   只检测 tag 0：
+#   bash onboard/perception/camera/run_apriltag_target.sh --tag-id 0 --tag-size 0.08 --show
+#
+#   使用默认 4-tag 板（0/1/2/3）并融合估计主目标点：
 #   bash onboard/perception/camera/run_apriltag_target.sh --show
-#   bash onboard/perception/camera/run_apriltag_target.sh --tag-id 5 --tag-size 0.08
-#   bash onboard/perception/camera/run_apriltag_target.sh --tag-id 5 --tag-id 8
+#   bash onboard/perception/camera/run_apriltag_target.sh --tag-size 0.08 --show
+#   bash onboard/perception/camera/run_apriltag_target.sh --tag-size 0.10
+#
+#   如需覆盖默认 4-tag 板配置，可显式传入你自己的 --tag-id / --tag-offset：
 #   bash onboard/perception/camera/run_apriltag_target.sh \
 #       --tag-id 5 --tag-id 8 --tag-size 0.10 \
 #       --tag-offset 5 0.20 0.00 0.00 \
@@ -20,9 +29,6 @@
 #       +Y = tag 上边
 #       +Z = 垂直纸面向外
 #
-#   上面的例子里：
-#     tag 5 在公共目标点左侧 20 cm，所以目标点在 tag 5 的右边 -> DX = +0.20
-#     tag 8 在公共目标点右侧 20 cm，所以目标点在 tag 8 的左边 -> DX = -0.20
 # ============================================================
 set -e
 cd "$(dirname "$0")/../../.."
@@ -37,5 +43,36 @@ export PYTHONPATH=/usr/lib/python3.8/dist-packages:${PYTHONPATH:-}
 source /opt/ros/foxy/setup.bash
 source ~/yixuan/yichao-deploy/ws_livox/install/setup.sh 2>/dev/null || true
 
-conda run -n robomimic --no-capture-output \
-    python -u onboard/perception/camera/apriltag_detector.py "$@"
+use_default_board_layout=1
+for arg in "$@"; do
+    case "$arg" in
+        --tag-id|--tag-id=*|--tag-offset|--tag-offset=*)
+            use_default_board_layout=0
+            break
+            ;;
+    esac
+done
+
+default_board_args=(
+    --tag-id 0
+    --tag-id 1
+    --tag-id 2
+    --tag-id 3
+    --tag-offset 0 0.14 0.10 0.00
+    --tag-offset 1 0.14 -0.10 0.00
+    --tag-offset 2 -0.14 -0.10 0.00
+    --tag-offset 3 -0.14 0.10 0.00
+)
+
+cmd=(
+    conda run -n robomimic --no-capture-output
+    python -u onboard/perception/camera/apriltag_detector.py
+)
+
+if [[ "$use_default_board_layout" -eq 1 ]]; then
+    echo "[run_apriltag_target.sh] Using default 4-tag board layout (ids 0/1/2/3, offsets in metres)."
+    cmd+=("${default_board_args[@]}")
+fi
+
+cmd+=("$@")
+"${cmd[@]}"

@@ -10,7 +10,7 @@ Usage:
     bash onboard/perception/camera/run_apriltag_target.sh
     bash onboard/perception/camera/run_apriltag_target.sh --show
     bash onboard/perception/camera/run_apriltag_target.sh --tag-id 0 --tag-size 0.08
-    bash onboard/perception/camera/run_apriltag_target.sh --tag-id 5 --tag-id 8
+    bash onboard/perception/camera/run_apriltag_target.sh --tag-size 0.08 --show
     bash onboard/perception/camera/run_apriltag_target.sh \
         --tag-id 5 --tag-id 8 --tag-size 0.10 \
         --tag-offset 5 0.20 0.00 0.00 \
@@ -349,6 +349,24 @@ def _resolve_target_point_optical(detection, tag_offsets):
     return target_optical + rot_optical_from_tag @ offset_tag, True
 
 
+def _fuse_target_points_optical(detections):
+    if not detections:
+        return None, 0
+
+    weights = []
+    points = []
+    for det in detections:
+        # Larger tags are usually more reliable, so use image area as the
+        # dominant fusion weight while keeping a small floor for single-tag use.
+        weights.append(max(1.0, float(det["area"])))
+        points.append(np.asarray(det["target_tvec"], dtype=np.float32).reshape(3))
+
+    weights_arr = np.asarray(weights, dtype=np.float32)
+    points_arr = np.stack(points, axis=0)
+    fused = (weights_arr[:, None] * points_arr).sum(axis=0) / weights_arr.sum()
+    return fused, len(detections)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Chest D435 + AprilTag target detector -> rt/target_state"
@@ -538,20 +556,22 @@ def main():
                 ):
                     target_detections.append(detection)
 
-            selected = _select_detection(target_detections, target_tag_ids)
+            representative = _select_detection(target_detections, target_tag_ids)
+            fused_target_tvec, fused_count = _fuse_target_points_optical(target_detections)
             published = False
             pelvis_xyz = last_pelvis_xyz if last_pelvis_xyz is not None else (0.0, 0.0, 0.0)
             tag_conf = 0.0
             tag_distance = 0.0
+            fused_tag_ids = []
+            overlay_mode_txt = "mode: waiting"
 
-            if selected is not None:
+            if representative is not None and fused_target_tvec is not None:
                 miss_count = 0
-                last_detection = selected
-                # solvePnP returns tag pose in the RealSense optical frame.
-                # By default we publish the tag center; when --tag-offset is set
-                # for the selected id, we shift to a shared target point defined
-                # in that tag's local frame before converting coordinates.
-                p_cam_arr = optical_to_body(selected["target_tvec"])
+                last_detection = representative
+                fused_tag_ids = [det["tag_id"] for det in target_detections]
+                # Each visible tag proposes the same shared target point in the
+                # optical frame. Fuse all visible proposals, then convert once.
+                p_cam_arr = optical_to_body(fused_target_tvec)
 
                 if center_ema is None:
                     center_ema = p_cam_arr.copy()
@@ -572,20 +592,25 @@ def main():
                 )
                 pelvis_xyz = (float(p_base[0]), float(p_base[1]), float(p_base[2]))
                 last_pelvis_xyz = pelvis_xyz
-                tag_conf = float(selected["confidence"])
-                tag_distance = float(selected["target_distance_m"])
+                tag_conf = float(max(det["confidence"] for det in target_detections))
+                tag_distance = float(np.linalg.norm(fused_target_tvec))
                 published = True
                 dds.publish(
                     *pelvis_xyz,
                     valid=True,
-                    class_id=selected["tag_id"],
+                    class_id=representative["tag_id"],
                     confidence=tag_conf,
                     source=SOURCE_CHEST_CAMERA,
                 )
-                target_mode = "offset" if selected["uses_offset"] else "center"
+                target_mode = "fused" if fused_count > 1 else ("offset" if representative["uses_offset"] else "center")
+                contributors = ",".join(str(tag_id) for tag_id in fused_tag_ids)
+                if fused_count > 1:
+                    overlay_mode_txt = f"mode: fused tags {contributors}"
+                else:
+                    overlay_mode_txt = f"mode: single tag {representative['tag_id']} ({target_mode})"
                 print(
-                    f"\r[TAG {selected['tag_id']}] pelvis=({pelvis_xyz[0]:+.3f}, {pelvis_xyz[1]:+.3f}, {pelvis_xyz[2]:+.3f}) "
-                    f"dist={tag_distance:.2f}m mode={target_mode} conf={tag_conf:.2f} apriltag={fps.fps:4.1f}fps",
+                    f"\r[TAG {representative['tag_id']}] pelvis=({pelvis_xyz[0]:+.3f}, {pelvis_xyz[1]:+.3f}, {pelvis_xyz[2]:+.3f}) "
+                    f"dist={tag_distance:.2f}m mode={target_mode} tags={contributors} conf={tag_conf:.2f} apriltag={fps.fps:4.1f}fps",
                     end="",
                     flush=True,
                 )
@@ -595,6 +620,7 @@ def main():
                     published = True
                     tag_conf = float(last_detection["confidence"])
                     tag_distance = float(last_detection["target_distance_m"])
+                    overlay_mode_txt = f"mode: coast from tag {last_detection['tag_id']}"
                     dds.publish(
                         *last_pelvis_xyz,
                         valid=False,
@@ -612,6 +638,7 @@ def main():
                     center_ema = None
                     last_detection = None
                     last_pelvis_xyz = None
+                    overlay_mode_txt = "mode: no visible target tags"
                     dds.publish(
                         0.0,
                         0.0,
@@ -632,8 +659,8 @@ def main():
                 for det in all_detections:
                     corners = det["corners"].astype(np.int32)
                     is_target = det["tag_id"] in target_tag_ids
-                    is_selected = selected is not None and det["tag_id"] == selected["tag_id"] and np.allclose(
-                        det["center_xy"], selected["center_xy"]
+                    is_selected = representative is not None and det["tag_id"] == representative["tag_id"] and np.allclose(
+                        det["center_xy"], representative["center_xy"]
                     )
                     color_box = (0, 255, 0) if is_selected else ((255, 160, 0) if is_target else (160, 160, 160))
                     cv2.polylines(vis, [corners], True, color_box, 2)
@@ -650,7 +677,7 @@ def main():
                         2,
                     )
 
-                if selected is None and last_detection is not None and miss_count <= args.coast_frames:
+                if representative is None and last_detection is not None and miss_count <= args.coast_frames:
                     coast_corners = last_detection["corners"].astype(np.int32)
                     cv2.polylines(vis, [coast_corners], True, (0, 165, 255), 2)
                     cv2.putText(
@@ -688,6 +715,15 @@ def main():
                         vis, "target mode: per-tag offset", (10, 120),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1,
                     )
+                cv2.putText(
+                    vis,
+                    overlay_mode_txt,
+                    (10, 142),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    (255, 255, 255),
+                    1,
+                )
                 if published and last_pelvis_xyz is not None:
                     info = (
                         f"pelvis ({pelvis_xyz[0]:+.2f}, {pelvis_xyz[1]:+.2f}, {pelvis_xyz[2]:+.2f})m "

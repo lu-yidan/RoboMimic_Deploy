@@ -1,5 +1,5 @@
-onnx_path: "/home/ydlu/workspace/mjlab/logs/rsl_rl/g1_tracking/2026-04-15_21-48-08_g1_result_pinocchio_1_6_tracking/2026-04-15_21-48-08_g1_result_pinocchio_1_6_tracking.onnx"
-motion_path: "/home/ydlu/workspace/mjlab/artifacts/sonic/g1_result_pinocchio_1.6_motion.npz"
+onnx_path: "g1_result_pinocchio_1_6_tracking.onnx"
+motion_path: "g1_result_pinocchio_1.6_motion.npz"
 
 control_dt:      0.02
 warmup_steps:    10

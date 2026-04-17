@@ -2,10 +2,10 @@
 # ============================================================
 # 启动 chest camera apriltag_detector（含 GPU/Jetson 解锁）
 # 默认使用 4-tag 板：
-#   tag 0 -> target offset = (+14cm, +10cm, 0)
-#   tag 1 -> target offset = (+14cm, -10cm, 0)
-#   tag 2 -> target offset = (-14cm, -10cm, 0)
-#   tag 3 -> target offset = (-14cm, +10cm, 0)
+#   tag 0 -> target offset = (+10cm, +17.5cm, 0)
+#   tag 1 -> target offset = (+10cm, -17.5cm, 0)
+#   tag 2 -> target offset = (-10cm, -17.5cm, 0)
+#   tag 3 -> target offset = (-10cm, +17.5cm, 0)
 #
 # 用法：
 #   只检测 tag 0：
@@ -58,10 +58,10 @@ default_board_args=(
     --tag-id 1
     --tag-id 2
     --tag-id 3
-    --tag-offset 0 0.14 0.10 0.00
-    --tag-offset 1 0.14 -0.10 0.00
-    --tag-offset 2 -0.14 -0.10 0.00
-    --tag-offset 3 -0.14 0.10 0.00
+    --tag-offset 0 0.10 0.175 0.00
+    --tag-offset 1 0.10 -0.175 0.00
+    --tag-offset 2 -0.10 -0.175 0.00
+    --tag-offset 3 -0.10 0.175 0.00
 )
 
 cmd=(

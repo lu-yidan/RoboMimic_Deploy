@@ -9,8 +9,8 @@ Publishes via DDS:
 Usage:
     bash onboard/perception/camera/run_apriltag_target.sh
     bash onboard/perception/camera/run_apriltag_target.sh --show
-    bash onboard/perception/camera/run_apriltag_target.sh --tag-id 0 --tag-size 0.08
-    bash onboard/perception/camera/run_apriltag_target.sh --tag-size 0.08 --show
+    bash onboard/perception/camera/run_apriltag_target.sh --tag-id 0 --tag-size 0.12
+    bash onboard/perception/camera/run_apriltag_target.sh --tag-size 0.12 --show
     bash onboard/perception/camera/run_apriltag_target.sh \
         --tag-id 5 --tag-id 8 --tag-size 0.10 \
         --tag-offset 5 0.20 0.00 0.00 \
@@ -407,7 +407,7 @@ def main():
     parser.add_argument(
         "--tag-size",
         type=float,
-        default=0.08,
+        default=0.12,
         help="Printed tag edge length in metres, excluding any white paper margin.",
     )
     parser.add_argument(

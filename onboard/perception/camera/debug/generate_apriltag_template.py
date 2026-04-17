@@ -4,18 +4,18 @@ By default the script writes a PDF for reliable physical sizing. PNG output is
 still available when an image preview is useful.
 
 Examples:
-    # Default parameters: --family tag36h11 --tag-id 0 --tag-size-mm 80
-    # Output: apriltag_tag36h11_id0_80mm_a4.pdf
+    # Default parameters: --family tag36h11 --tag-id 0 --tag-size-mm 120
+    # Output: apriltag_tag36h11_id0_120mm_a4.pdf
     python onboard/perception/camera/debug/generate_apriltag_template.py \
-        --family tag36h11 --tag-id 0 --tag-size-mm 80
+        --family tag36h11 --tag-id 0 --tag-size-mm 120
     python onboard/perception/camera/debug/generate_apriltag_template.py \
-        --family tag36h11 --tag-id 5 --tag-size-mm 80
+        --family tag36h11 --tag-id 5 --tag-size-mm 120
     python onboard/perception/camera/debug/generate_apriltag_template.py \
-        --family tag25h9 --tag-id 3 --tag-size-mm 80
+        --family tag25h9 --tag-id 3 --tag-size-mm 120
 
     # Optional: also write a PNG preview with embedded DPI metadata.
     python onboard/perception/camera/debug/generate_apriltag_template.py \
-        --family tag36h11 --tag-id 0 --tag-size-mm 80 --also-png
+        --family tag36h11 --tag-id 0 --tag-size-mm 120 --also-png
 """
 
 from __future__ import annotations
@@ -87,7 +87,7 @@ def main():
     parser = argparse.ArgumentParser(description="Generate a printable A4 AprilTag template.")
     parser.add_argument("--family", default="tag36h11", help="AprilTag family, e.g. tag36h11.")
     parser.add_argument("--tag-id", type=int, default=0, help="AprilTag id to print.")
-    parser.add_argument("--tag-size-mm", type=float, default=80.0,
+    parser.add_argument("--tag-size-mm", type=float, default=120.0,
                         help="Tag edge length in millimetres. This is the black square size.")
     parser.add_argument("--dpi", type=int, default=300, help="Output DPI.")
     parser.add_argument("--margin-mm", type=float, default=15.0, help="Minimum page margin in millimetres.")

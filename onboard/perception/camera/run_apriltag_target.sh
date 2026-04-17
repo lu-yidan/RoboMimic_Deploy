@@ -9,11 +9,11 @@
 #
 # 用法：
 #   只检测 tag 0：
-#   bash onboard/perception/camera/run_apriltag_target.sh --tag-id 0 --tag-size 0.08 --show
+#   bash onboard/perception/camera/run_apriltag_target.sh --tag-id 0 --tag-size 0.12 --show
 #
 #   使用默认 4-tag 板（0/1/2/3）并融合估计主目标点：
 #   bash onboard/perception/camera/run_apriltag_target.sh --show
-#   bash onboard/perception/camera/run_apriltag_target.sh --tag-size 0.08 --show
+#   bash onboard/perception/camera/run_apriltag_target.sh --tag-size 0.12 --show
 #   bash onboard/perception/camera/run_apriltag_target.sh --tag-size 0.10
 #
 #   如需覆盖默认 4-tag 板配置，可显式传入你自己的 --tag-id / --tag-offset：

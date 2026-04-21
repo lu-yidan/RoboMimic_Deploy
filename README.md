@@ -149,6 +149,24 @@ python deploy_real/deploy_real.py
 4. Subsequent operations are largely the same as in simulation.
 5. **Score policy (R1+D-pad RIGHT) — additional real-robot steps**: The Score policy depends on onboard LiDAR for real-time ball detection. The perception service must be started before running `deploy_real.py`, publishing ball state via DDS topic `rt/ball_state`. Do **not** activate the Score policy on the real robot without the perception service running.
 
+6. If you are deploying on an onboard Orin/G1 computer, prefer the bridge-based deployment flow under `bridge/` instead of running `deploy_real.py` directly. See:
+   - `bridge/README.md`
+   - `bridge/VALIDATION.md`
+
+   Python prototype:
+   ```bash
+   python bridge/python/deploy_bridge_py.py
+   python bridge/python/deploy_policy.py
+   ```
+
+   C++ bridge flow:
+   ```bash
+   cmake -S bridge -B bridge/build
+   cmake --build bridge/build -j2
+   BRIDGE_NETWORK_INTERFACE=eth0 bridge/build/cpp_bridge_main
+   python bridge/python/deploy_policy.py
+   ```
+
 ---
 ## Important Notes
 ### 1. Framework Compatibility Notice
@@ -158,6 +176,7 @@ The current framework does not natively support deployment on G1 robots equipped
 - Implement a dual-node ROS architecture:
   - **C++ Node**: Handles data transmission between robot and controller
   - **Python Node**: Dedicated to policy inference
+- This repository now includes a minimal bridge prototype under `bridge/` that can serve as a reference implementation for that split.
 
 ### 2. Mimic Policy Reliability Warning
 The Mimic policy does not guarantee 100% success rate, particularly on slippery/sandy surfaces. In case of robot instability:

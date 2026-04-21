@@ -167,6 +167,24 @@ python deploy_real/deploy_real.py
 
 5. **Score踢球策略（R1+D-pad DOWN）真机部署额外步骤**：Score策略依赖机载雷达对球的实时感知，需在运行deploy_real之前启动感知服务，并通过DDS topic `rt/ball_state` 发布球的位置信息。在不具备感知服务的情况下，请勿在真机上启动Score策略。
 
+6. 如果机器人搭载的是 Orin/G1 机载平台，建议优先使用 `bridge/` 目录下的桥接部署方案，而不是直接运行 `deploy_real.py`。桥接方案说明见：
+   - `bridge/README_zh.md`
+   - `bridge/VALIDATION.md`
+
+   过渡验证版：
+   ```bash
+   python bridge/python/deploy_bridge_py.py
+   python bridge/python/deploy_policy.py
+   ```
+
+   C++ bridge 版：
+   ```bash
+   cmake -S bridge -B bridge/build
+   cmake --build bridge/build -j2
+   BRIDGE_NETWORK_INTERFACE=eth0 bridge/build/cpp_bridge_main
+   python bridge/python/deploy_policy.py
+   ```
+
 ---
 ## 注意事项
 ### 1. 框架兼容性说明
@@ -176,6 +194,7 @@ python deploy_real/deploy_real.py
 - 基于ROS构建双节点架构：
   - **C++节点**：负责机器人与遥控器之间的数据收发
   - **Python节点**：专用于策略推理
+- 本仓库已提供一个最小桥接原型，集中在 `bridge/` 目录下，可作为上述拆分方案的参考实现。
 
 ### 2. Mimic策略可靠性警告
 Mimic策略不保证100%成功率，特别是在湿滑/沙地等复杂地面上。若出现机器人失控情况：

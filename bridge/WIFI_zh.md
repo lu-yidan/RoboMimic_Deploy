@@ -7,7 +7,50 @@
 - 如何验证主机与 G1 是否已经处于同一个可互访的无线网络
 - 在 bridge 架构下，哪些流量该走 `wlan0`，哪些仍然应该走 `eth0`
 
-## 1. 先理解两条网络链路
+## 1. 最短命令清单
+
+### 在 G1 上连接手机热点
+
+```bash
+sudo nmcli device wifi connect "Xiaomi_14" password "<热点密码>" ifname wlan0
+ip addr show wlan0
+```
+
+### 在主机上 SSH 到 G1
+
+假设上一步看到 G1 的 `wlan0` 地址是 `10.79.215.11`：
+
+```bash
+ssh unitree@10.79.215.11
+```
+
+### 在 G1 上启动 bridge
+
+终端 1：
+
+```bash
+# cb
+cd /home/unitree/yixuan/yichao-deploy/RoboMimic_Deploy
+BRIDGE_NETWORK_INTERFACE=eth0 bridge/build/cpp_bridge_main
+```
+
+终端 2：
+
+```bash
+# pp
+cd /home/unitree/yixuan/yichao-deploy/RoboMimic_Deploy
+python bridge/python/deploy_policy.py
+```
+
+### 如果 C++ bridge 还没编译过
+
+```bash
+cd /home/unitree/yixuan/yichao-deploy/RoboMimic_Deploy
+cmake -S bridge -B bridge/build
+cmake --build bridge/build -j2
+```
+
+## 2. 先理解两条网络链路
 
 在当前 bridge 部署方案下，通常存在两条独立链路：
 
@@ -27,7 +70,7 @@ BRIDGE_NETWORK_INTERFACE=eth0 bridge/build/cpp_bridge_main
 
 不要轻易把 bridge 的控制网卡改成 `wlan0`。
 
-## 2. 查看当前活动连接
+## 3. 查看当前活动连接
 
 在 G1 上执行：
 
@@ -65,7 +108,7 @@ ip addr show eth0
 - `wlan0`：G1 当前无线地址
 - `eth0`：G1 与机器人底层控制器的有线地址（通常是 `192.168.123.x`）
 
-## 3. 扫描当前可见 Wi‑Fi
+## 4. 扫描当前可见 Wi‑Fi
 
 在 G1 上：
 
@@ -80,7 +123,7 @@ nmcli -f IN-USE,SSID,BSSID,SIGNAL,SECURITY device wifi list ifname wlan0
 - `SSID` 是热点名
 - `SECURITY` 可判断是否需要密码
 
-## 4. 快速连接到 Wi‑Fi.HK via HKU（无密码）
+## 5. 快速连接到 Wi‑Fi.HK via HKU（无密码）
 
 如果该网络允许直接接入：
 
@@ -95,7 +138,7 @@ nmcli connection show --active
 ip addr show wlan0
 ```
 
-## 5. 快速连接到 Xiaomi_14（手机热点）
+## 6. 快速连接到 Xiaomi_14（手机热点）
 
 先扫描确认 SSID 名称确实是 `Xiaomi_14`，然后：
 
@@ -115,7 +158,7 @@ nmcli connection show --active
 ip addr show wlan0
 ```
 
-## 6. 如果提示没有权限切换网络
+## 7. 如果提示没有权限切换网络
 
 例如：
 

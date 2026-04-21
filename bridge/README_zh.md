@@ -12,6 +12,7 @@
 - `python/deploy_bridge_py.py`: 过渡用 Python bridge 原型
 - `idl/policy_bridge.idl`: C/C++ bridge DDS schema
 - `VALIDATION.md`: 分阶段验证步骤
+- `WIFI_zh.md`: Wi‑Fi 排查与快速连接说明
 
 ## 运行方式
 

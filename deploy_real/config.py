@@ -21,4 +21,28 @@ class Config:
             self.log_dir     = log_cfg.get("log_dir", "logs")
             self.log_tag     = log_cfg.get("tag", "score")
             self.log_states  = log_cfg.get("states", ["SKILL_SCORE"])
+            self.bridge_domain_id = int(os.environ.get(
+                "BRIDGE_DOMAIN_ID",
+                config.get("bridge_domain_id", 0),
+            ))
+            self.bridge_state_topic = os.environ.get(
+                "BRIDGE_STATE_TOPIC",
+                config.get("bridge_state_topic", "rt/policy_bridge_state"),
+            )
+            self.bridge_cmd_topic = os.environ.get(
+                "BRIDGE_CMD_TOPIC",
+                config.get("bridge_cmd_topic", "rt/policy_bridge_cmd"),
+            )
+            self.bridge_state_stale_ms = int(os.environ.get(
+                "BRIDGE_STATE_STALE_MS",
+                config.get("bridge_state_stale_ms", 200),
+            ))
+            self.bridge_cmd_timeout_ms = int(os.environ.get(
+                "BRIDGE_CMD_TIMEOUT_MS",
+                config.get("bridge_cmd_timeout_ms", 100),
+            ))
+            self.bridge_loop_period_ms = int(os.environ.get(
+                "BRIDGE_LOOP_PERIOD_MS",
+                config.get("bridge_loop_period_ms", 2),
+            ))
             

@@ -1,5 +1,5 @@
-onnx_path:   "policy-obs-33.onnx"
-# onnx_path:   "policy-obs-aic.onnx"
+# onnx_path:   "policy-obs-33.onnx"
+onnx_path:   "policy-obs-aic.onnx"
 # onnx_path:   "policy-obs-325-uz8.onnx"
 # onnx_path:   "policy-stop.onnx"
 # onnx_path:   "policy-obs-410-vvj.onnx"
@@ -9,9 +9,12 @@ control_dt:      0.02     # 50 Hz control (sim: 2ms * 10 decimation)
 warmup_steps:    10       # interpolation steps from current pose to motion t=0
 clip_actions:    10.0     # PPO actions rarely exceed ±3; prevents runaway divergence
 
+motion_start_s:  2.5
+motion_end_s:   10.0
+
 # false = simulation (ball_pos from MuJoCo world frame)
 # true  = real robot (ball_pos from DDS, already in pelvis body frame)
-use_body_frame_ball: true
+use_body_frame_ball: false
 
 # When ball_valid is false and sensor ball is ~zero: use this pelvis-frame default for
 # soccer_pos_b history, ball_as_anchor_pos blend, and ball_facing_anchor_ori (not raw [0,0,0]).
@@ -35,7 +38,7 @@ zero_anchor_pos: false
 # If true, anchor_pos_b is set to the ball position expressed in the torso body frame,
 # instead of the reference-motion anchor position.
 # Has no effect when zero_anchor_pos is true (zero_anchor_pos takes priority).
-ball_as_anchor_pos: true
+ball_as_anchor_pos: false
 
 # If true, anchor_ori_6d is computed so its +X axis always points toward the ball
 # (world-frame direction from torso to ball, with Z = ref-anchor height - torso height).
@@ -67,7 +70,7 @@ target_pos: [5.0, 0.0, 0.0]
 # [trigger_frame, trigger_play_end_frame], then return to frame 0 and wait
 # (ball must leave the trigger zone once before the next trigger).
 # If `trigger_play_end_frame` is omitted, plays from `trigger_frame` to clip end (one-shot).
-wait_for_ball:   true
+wait_for_ball:   false
 trigger_radius:  0.2    # metres
 trigger_horizon: 0.4    # look-ahead seconds
 trigger_frame:            250   # first motion frame on trigger (loaded clip indices)

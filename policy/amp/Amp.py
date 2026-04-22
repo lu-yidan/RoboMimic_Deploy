@@ -189,6 +189,9 @@ class Amp(FSMState):
         if cmd == FSMCommand.PASSIVE:
             self.state_cmd.skill_cmd = FSMCommand.INVALID
             return FSMStateName.PASSIVE
+        if cmd == FSMCommand.CMD_SCORE:
+            self.state_cmd.skill_cmd = FSMCommand.INVALID
+            return FSMStateName.SKILL_SCORE
         if cmd == FSMCommand.LOCO:            # R1+A → back to LocoMode
             self.state_cmd.skill_cmd = FSMCommand.INVALID
             return FSMStateName.LOCOMODE

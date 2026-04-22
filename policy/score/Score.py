@@ -920,6 +920,9 @@ class Score(FSMState):
         if cmd == FSMCommand.LOCO:
             self.state_cmd.skill_cmd = FSMCommand.INVALID
             return FSMStateName.LOCOMODE
+        elif cmd == FSMCommand.CMD_AMP:
+            self.state_cmd.skill_cmd = FSMCommand.INVALID
+            return FSMStateName.SKILL_AMP
         elif cmd == FSMCommand.PASSIVE:
             self.state_cmd.skill_cmd = FSMCommand.INVALID
             return FSMStateName.PASSIVE

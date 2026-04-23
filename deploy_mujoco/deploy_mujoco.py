@@ -148,6 +148,100 @@ def main(cfg: DictConfig):
     policy_output = PolicyOutput(num_joints)
     FSM_controller = FSM(state_cmd, policy_output)
 
+    # PHP parkour: bind the MjModel so the policy can build its joint→actuator map.
+    if hasattr(FSM_controller, "php_parkour_policy"):
+        FSM_controller.php_parkour_policy.bind_model(m)
+
+    # PHP parkour: offscreen depth renderer for the chin-mounted camera.
+    # Created lazily on first request to avoid GL init when PHP is never used.
+    # Uses the XML-defined <camera name="php_depth"> attached to torso_link,
+    # so the view rolls with the body (which MjvCamera free mode couldn't do).
+    php_depth_ctx = {"renderer": None, "fixed_cam_id": -1}
+    def _php_init_depth():
+        if php_depth_ctx["renderer"] is not None:
+            return
+        if not hasattr(FSM_controller, "php_parkour_policy"):
+            return
+        php = FSM_controller.php_parkour_policy
+        dcfg = php.depth_cfg
+        cam_id = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_CAMERA, "php_depth")
+        if cam_id < 0:
+            print("[PHP] XML <camera name='php_depth'> not found; depth disabled")
+            return
+        try:
+            renderer = mujoco.Renderer(m, int(dcfg["height"]), int(dcfg["width"]))
+        except Exception as e:
+            print(f"[PHP] could not create mujoco.Renderer ({e}); "
+                  f"set MUJOCO_GL=egl for headless or glfw/osmesa; depth disabled")
+            return
+        php_depth_ctx["renderer"] = renderer
+        php_depth_ctx["fixed_cam_id"] = int(cam_id)
+
+    def _php_render_depth():
+        if php_depth_ctx["renderer"] is None:
+            _php_init_depth()
+        if php_depth_ctx["renderer"] is None:
+            state_cmd.depth_image = None
+            return
+        php = FSM_controller.php_parkour_policy
+        dcfg = php.depth_cfg
+        near = float(dcfg["near"])
+        far = float(dcfg["far"])
+        # Override the model's global near/zfar so the depth buffer has the
+        # same range as the browser's Three.js camera (near=0.3, far=3.0).
+        # With terrain, the default extent-relative znear/zfar give a 3 km
+        # zfar, which destroys depth precision in the 1-3 m range we care
+        # about. Restored after the render so viewer/main cam aren't affected.
+        extent = float(m.stat.extent) or 1.0
+        saved_znear = float(m.vis.map.znear)
+        saved_zfar  = float(m.vis.map.zfar)
+        m.vis.map.znear = near / extent
+        m.vis.map.zfar  = far  / extent
+        try:
+            php_depth_ctx["renderer"].update_scene(
+                d, camera=php_depth_ctx["fixed_cam_id"])
+            php_depth_ctx["renderer"].enable_depth_rendering()
+            depth = php_depth_ctx["renderer"].render()
+            php_depth_ctx["renderer"].disable_depth_rendering()
+            state_cmd.depth_image = np.clip(depth, near, far).astype(np.float32)
+        except Exception as e:
+            print(f"[PHP] depth render failed ({e}); feeding None this tick")
+            state_cmd.depth_image = None
+        finally:
+            m.vis.map.znear = saved_znear
+            m.vis.map.zfar  = saved_zfar
+
+        # Throttled depth stats so user can verify scene is visible.
+        if state_cmd.depth_image is not None:
+            php_depth_ctx.setdefault("dbg_counter", 0)
+            php_depth_ctx["dbg_counter"] += 1
+            if php_depth_ctx["dbg_counter"] % 50 == 0:  # every ~1 s at 50 Hz
+                dimg = state_cmd.depth_image
+                cy, cx = dimg.shape[0] // 2, dimg.shape[1] // 2
+                print(f"[PHP depth] min={dimg.min():.2f} "
+                      f"max={dimg.max():.2f} mean={dimg.mean():.2f} "
+                      f"center={dimg[cy, cx]:.2f} "
+                      f"(expect min≈0.3, max≈3.0 when obstacle ahead)")
+
+        # Optional on-screen preview of the raw depth image so the user can
+        # see what the policy sees. Matches the small inset in the PHP demo.
+        if state_cmd.depth_image is not None:
+            try:
+                import cv2
+                dimg = state_cmd.depth_image
+                near = float(dcfg["near"])
+                far = float(dcfg["far"])
+                norm = np.clip((dimg - near) / max(far - near, 1e-6), 0.0, 1.0)
+                vis = (norm * 255.0).astype(np.uint8)
+                scale = int(os.environ.get("PHP_DEPTH_PREVIEW_SCALE", "4"))
+                if scale != 1:
+                    vis = cv2.resize(vis, (vis.shape[1]*scale, vis.shape[0]*scale),
+                                     interpolation=cv2.INTER_NEAREST)
+                cv2.imshow("PHP depth", vis)
+                cv2.waitKey(1)
+            except Exception:
+                pass
+
     log_cfg = cfg.get("logging", {})
     logger = None
     log_states = set()
@@ -177,9 +271,12 @@ def main(cfg: DictConfig):
                 hat_just_pressed = lambda hx, hy: (hat == (hx, hy) and prev_hat != (hx, hy))
                 r2_pressed = joystick.get_axis_value(5) > 0.5
                 r2_just_pressed = r2_pressed and not prev_r2_pressed
-                if joystick.is_button_released(JoystickButton.L3):                                                    # Ghost toggle, L3
+                if joystick.is_button_released(JoystickButton.Y):                                                     # Ghost toggle, Y
                     ghost_flags[0] = not ghost_flags[0]
                     print(f"[Ghost] {'ON' if ghost_flags[0] else 'OFF'}")
+                if joystick.is_button_released(JoystickButton.L3):                                                    # PHP high/low speed toggle, L3
+                    state_cmd.php_high_speed = not state_cmd.php_high_speed
+                    print(f"[PHP] speed={'HIGH' if state_cmd.php_high_speed else 'LOW'}")
                 if joystick.is_button_released(JoystickButton.X) and joystick.is_button_pressed(JoystickButton.R1):   # Ball reset, R1+X
                     if _reset_ball_state(
                         m, d, ball_body_id,
@@ -213,6 +310,8 @@ def main(cfg: DictConfig):
                     state_cmd.skill_cmd = FSMCommand.CMD_BEYONDMIMIC_MJ
                 elif hat_just_pressed(0, 1):                                                                      # StandUpMJ, D-pad UP
                     state_cmd.skill_cmd = FSMCommand.CMD_STANDUP_MJ
+                elif hat_just_pressed(-1, 0):                                                                     # PHP Parkour, D-pad LEFT
+                    state_cmd.skill_cmd = FSMCommand.CMD_PHP_PARKOUR
                 elif r2_just_pressed:                                                                             # Pinocchio1.6MJ, R2
                     state_cmd.skill_cmd = FSMCommand.CMD_PINOCCHIO_1_6_MJ
 
@@ -223,10 +322,15 @@ def main(cfg: DictConfig):
                 state_cmd.vel_cmd[2] = -joystick.get_axis_value(3)
                 
                 step_start = time.time()
-                
-                tau = pd_control(policy_output_action, d.qpos[7:7+num_joints], kps, np.zeros_like(kps), d.qvel[6:6+num_joints], kds)
-                tau = np.clip(tau, -tau_limit, tau_limit)
-                d.ctrl[:] = tau
+
+                if getattr(policy_output, "direct_torque", False):
+                    # PHP parkour (and any other direct-torque policy) writes
+                    # actuator-indexed torques straight into policy_output.actions.
+                    d.ctrl[:] = np.clip(policy_output_action, -tau_limit, tau_limit)
+                else:
+                    tau = pd_control(policy_output_action, d.qpos[7:7+num_joints], kps, np.zeros_like(kps), d.qvel[6:6+num_joints], kds)
+                    tau = np.clip(tau, -tau_limit, tau_limit)
+                    d.ctrl[:] = tau
                 mujoco.mj_step(m, d)
                 FSM_controller.sim_counter += 1
                 if FSM_controller.sim_counter % control_decimation == 0:
@@ -251,6 +355,14 @@ def main(cfg: DictConfig):
                     state_cmd.torso_quat_w = d.xquat[torso_body_id].astype(np.float32)  # [w,x,y,z]
                     state_cmd.pelvis_pos_w  = d.qpos[0:3].astype(np.float32)
                     state_cmd.pelvis_quat_w = d.qpos[3:7].astype(np.float32)  # [w,x,y,z]
+
+                    # PHP parkour: render depth when the PHP policy is active.
+                    if (hasattr(FSM_controller, "php_parkour_policy") and
+                            FSM_controller.cur_policy is
+                            FSM_controller.php_parkour_policy):
+                        _php_render_depth()
+                    else:
+                        state_cmd.depth_image = None
 
                     # Ball state (only valid when scene_with_ball.xml is loaded).
                     # Throttled to ball_sensor_hz to simulate real-sensor update rate.

@@ -122,6 +122,8 @@ class LocoMode(FSMState):
             return FSMStateName.SKILL_SCORE
         elif(self.state_cmd.skill_cmd == FSMCommand.CMD_AMP):
             return FSMStateName.SKILL_AMP
+        elif(self.state_cmd.skill_cmd == FSMCommand.CMD_PHP_PARKOUR):
+            return FSMStateName.SKILL_PHP_PARKOUR
         elif(self.state_cmd.skill_cmd == FSMCommand.POS_RESET):
             return FSMStateName.FIXEDPOSE
         elif(self.state_cmd.skill_cmd == FSMCommand.PASSIVE):

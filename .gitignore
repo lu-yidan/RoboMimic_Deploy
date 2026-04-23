@@ -44,3 +44,11 @@ Thumbs.db
 *.pt
 *.onnx
 *.engine
+
+# Browser-side PHP parkour traces dropped here for local diffing.
+web-record/
+
+# PHP parkour mesh duplicates (same robot meshes as g1_description/meshes/).
+# The XML resolves meshdir="./meshes/g1" relative to itself; populate locally
+# from the shared g1_description/meshes/ rather than tracking 124MB twice.
+g1_description/php_parkour/meshes/

@@ -82,6 +82,9 @@ class FixedPose(FSMState):
         elif(self.state_cmd.skill_cmd == FSMCommand.CMD_SCORE):
             self.state_cmd.skill_cmd = FSMCommand.INVALID
             return FSMStateName.SKILL_SCORE
+        elif(self.state_cmd.skill_cmd == FSMCommand.CMD_PHP_PARKOUR):
+            self.state_cmd.skill_cmd = FSMCommand.INVALID
+            return FSMStateName.SKILL_PHP_PARKOUR
         else:
             self.state_cmd.skill_cmd = FSMCommand.INVALID
             return FSMStateName.FIXEDPOSE

@@ -1,0 +1,25 @@
+# PHP Parkour MuJoCo config.
+# Loads the terrain scene from the PHP project with the G1 robot.
+# tau_limit is in ACTUATOR ORDER (not joint order) because the PHP XML
+# groups actuators differently (see g1_with_terrain.xml <actuator> block).
+
+xml_path: "g1_description/php_parkour/g1_with_terrain.xml"
+simulation_dt: 0.002
+control_decimation: 10
+ghost_enabled: false
+ghost_rgba: [0.2, 0.9, 0.4, 0.2]
+
+# Actuator/joint-declaration order: L-leg, R-leg, waist, L-arm, R-arm.
+# Matches g1_liao.xml so RoboMimic's other policies work on this scene too.
+tau_limit: [88, 139, 88, 139, 50, 50,
+            88, 139, 88, 139, 50, 50,
+            88, 50, 50,
+            25, 25, 25, 25, 25, 5, 5,
+            25, 25, 25, 25, 25, 5, 5
+           ]
+
+logging:
+  enabled: false
+  log_dir: "logs"
+  tag:     "php_parkour"
+  states:  ["SKILL_PHP_PARKOUR"]

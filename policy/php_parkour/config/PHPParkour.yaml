@@ -1,0 +1,57 @@
+# PHP (Perceptive Humanoid Parkour) policy config.
+# Values that are NOT embedded in policy.onnx metadata.
+# Metadata-driven values (joint_names, observation_names, action_scale,
+# default_joint_pos, joint_stiffness, joint_damping) are read at load time
+# from the ONNX model.
+
+policy_path: "policy.onnx"          # under policy/php_parkour/model/
+depth_backbone_path: "depth_backbone.onnx"
+
+# Control timing (matches PHP: 500Hz physics / 50Hz control)
+control_dt: 0.02                    # seconds
+
+# Depth camera — D435i-like (from PHP main.js)
+depth:
+  width: 106
+  height: 60
+  horizontal_fov_deg: 58.4
+  near: 0.3
+  far: 3.0
+  # Anchor body (first match wins). All fall back to pelvis.
+  anchor_candidates: ["torso_link", "waist_roll_link", "pelvis"]
+  # Mount offset in anchor-body-local MuJoCo frame (meters)
+  offset_xyz: [0.01, 0.01, 0.44]
+  # Base yaw so body-forward (+x) → camera-forward, then RPY tilt.
+  # Composition: qz(base_yaw_deg) ∘ qx(roll_deg) ∘ qy(pitch_deg) ∘ qz(yaw_deg)
+  base_yaw_deg: -90.0
+  roll_deg: 1.0
+  pitch_deg: 27.0
+  yaw_deg: 1.0
+
+# Depth preprocessing (exact match to PHP policyController.js)
+depth_pre:
+  crop: { top: 2, left: 4, right: 4, bottom: 0 }
+  resize: { width: 87, height: 58 }
+  clip_min: 0.3
+  clip_max: 3.0
+  # Policy uses a 7-step delay queue on the 32-dim depth latent.
+  latency_steps: 7
+
+# Keyboard → joystick one-hot mapping
+# Mirrors PHP's W/A/D + high/low speed. Dead zone on stick.
+command:
+  stick_deadzone: 0.30
+  # stick axes are provided via state_cmd.vel_cmd already
+  # (deploy_mujoco writes vel_cmd[0] = forward, vel_cmd[1] = left,
+  #  vel_cmd[2] = right-stick X used as yaw elsewhere)
+  default_high_speed: true
+  # If true: W (forward) from LEFT stick Y, A/D from RIGHT stick X.
+  # If false (browser parity): W + A/D both from LEFT stick.
+  side_from_right_stick: true
+
+# Diagnostic: dump one JSONL line per 50 Hz tick. Paired with a matching
+# browser-side dump, letting us diff obs/depth/action frame-by-frame to find
+# where PHP behavior diverges between the two environments.
+trace:
+  enabled: true                       # flip to true to capture a session
+  path: "logs/php_parkour_trace_mujoco.jsonl" # relative → PROJECT_ROOT; overwritten on each enter()

@@ -40,6 +40,12 @@ class StateAndCmd:
         self.skill_cmd = FSMCommand.INVALID
         # skill change cmd
 
+        # PHP parkour: depth image from offscreen renderer, (H, W) float meters,
+        # set each control tick by deploy_mujoco; None when not rendered.
+        self.depth_image = None
+        # PHP parkour: high/low speed mode toggle (default high, matches PHP JS).
+        self.php_high_speed = True
+
 class PolicyOutput:
     """Shared output buffer written by the active FSM policy each control step.
 
@@ -65,6 +71,10 @@ class PolicyOutput:
         # List of dicts: {"pos": (3,) world-frame, "radius": float, "rgba": (4,) float}
         # Set to None to skip rendering. Cleared to None by FSM between policy activations.
         self.viz_spheres = None
+        # When True, deploy_mujoco writes `actions` directly to MjData.ctrl
+        # (after tau_limit clipping) and skips the outer PD. The policy is
+        # responsible for emitting torques in actuator-index order. Set per-step.
+        self.direct_torque = False
 
     # ------------------------------------------------------------------
     # Property accessors: getters return the internal buffer directly so

@@ -97,32 +97,18 @@ class PolicyRuntime:
 
         if self.remote_controller.is_button_pressed(KeyMap.start):
             self.state_cmd.skill_cmd = FSMCommand.POS_RESET
-        elif self.remote_controller.is_button_pressed(KeyMap.X) and self.remote_controller.is_button_pressed(KeyMap.L1):
-            self.state_cmd.skill_cmd = FSMCommand.STAND_UP
-        elif self.remote_controller.is_button_pressed(KeyMap.A) and self.remote_controller.is_button_pressed(KeyMap.R1):
+        elif self.remote_controller.is_button_pressed(KeyMap.B):
             self.state_cmd.skill_cmd = FSMCommand.LOCO
-        elif self.remote_controller.is_button_pressed(KeyMap.X) and self.remote_controller.is_button_pressed(KeyMap.R1):
-            self.state_cmd.skill_cmd = FSMCommand.SKILL_1
-        elif self.remote_controller.is_button_pressed(KeyMap.Y) and self.remote_controller.is_button_pressed(KeyMap.R1):
-            self.state_cmd.skill_cmd = FSMCommand.SKILL_2
-        elif self.remote_controller.is_button_pressed(KeyMap.A) and self.remote_controller.is_button_pressed(KeyMap.L1):
-            self.state_cmd.skill_cmd = FSMCommand.SKILL_5
-        elif self.remote_controller.is_button_pressed(KeyMap.B) and self.remote_controller.is_button_pressed(KeyMap.L1):
-            self.state_cmd.skill_cmd = FSMCommand.SKILL_6
-        elif self.remote_controller.is_button_pressed(KeyMap.right) and self.remote_controller.is_button_pressed(KeyMap.R1):
-            self.state_cmd.skill_cmd = FSMCommand.CMD_SCORE
-        elif self.remote_controller.is_button_pressed(KeyMap.down) and self.remote_controller.is_button_pressed(KeyMap.L1):
-            self.state_cmd.skill_cmd = FSMCommand.CMD_BEYONDMIMIC_MJ
-        elif self.remote_controller.is_button_pressed(KeyMap.up) and self.remote_controller.is_button_pressed(KeyMap.L1):
-            self.state_cmd.skill_cmd = FSMCommand.CMD_STANDUP_MJ
-        elif self.remote_controller.is_button_pressed(KeyMap.right) and self.remote_controller.is_button_pressed(KeyMap.L1):
-            self.state_cmd.skill_cmd = FSMCommand.CMD_PINOCCHIO_1_6_MJ
-        elif self.remote_controller.is_button_pressed(KeyMap.A) and self.remote_controller.is_button_pressed(KeyMap.R2):
+        elif self.remote_controller.is_button_pressed(KeyMap.A):
             self.state_cmd.skill_cmd = FSMCommand.CMD_AMP
-        elif self.remote_controller.is_button_pressed(KeyMap.up) and self.remote_controller.is_button_pressed(KeyMap.R2):
-            self.state_cmd.skill_cmd = FSMCommand.CMD_AMP_FAST
-        elif self.remote_controller.is_button_pressed(KeyMap.down) and self.remote_controller.is_button_pressed(KeyMap.R2):
-            self.state_cmd.skill_cmd = FSMCommand.CMD_AMP_SLOW
+        elif self.remote_controller.is_button_pressed(KeyMap.R1):
+            self.state_cmd.skill_cmd = FSMCommand.CMD_SCORE
+        elif self.remote_controller.is_button_pressed(KeyMap.down):
+            self.state_cmd.skill_cmd = FSMCommand.CMD_BEYONDMIMIC_MJ
+        elif self.remote_controller.is_button_pressed(KeyMap.up):
+            self.state_cmd.skill_cmd = FSMCommand.CMD_STANDUP_MJ
+        elif self.remote_controller.is_button_pressed(KeyMap.R2):
+            self.state_cmd.skill_cmd = FSMCommand.CMD_PINOCCHIO_1_6_MJ
 
         self.state_cmd.vel_cmd[0] = self.remote_controller.ly
         self.state_cmd.vel_cmd[1] = -self.remote_controller.lx

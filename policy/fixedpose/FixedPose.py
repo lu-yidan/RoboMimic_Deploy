@@ -64,24 +64,24 @@ class FixedPose(FSMState):
         if(self.state_cmd.skill_cmd == FSMCommand.LOCO):
             self.state_cmd.skill_cmd = FSMCommand.INVALID
             return FSMStateName.LOCOMODE
-        elif(self.state_cmd.skill_cmd == FSMCommand.STAND_UP):   # L1+X → HOST 爬起控制器
-            self.state_cmd.skill_cmd = FSMCommand.INVALID
-            return FSMStateName.STANDMODE
         elif(self.state_cmd.skill_cmd == FSMCommand.PASSIVE):
             self.state_cmd.skill_cmd = FSMCommand.INVALID
             return FSMStateName.PASSIVE
-        elif(self.state_cmd.skill_cmd == FSMCommand.CMD_BEYONDMIMIC_MJ):  # L1+Down → FallGetUpMJ
+        elif(self.state_cmd.skill_cmd == FSMCommand.CMD_BEYONDMIMIC_MJ):
             self.state_cmd.skill_cmd = FSMCommand.INVALID
             return FSMStateName.SKILL_BEYONDMIMIC_MJ
-        elif(self.state_cmd.skill_cmd == FSMCommand.CMD_STANDUP_MJ):     # L1+Up → StandUpMJ
+        elif(self.state_cmd.skill_cmd == FSMCommand.CMD_STANDUP_MJ):
             self.state_cmd.skill_cmd = FSMCommand.INVALID
             return FSMStateName.SKILL_STANDUP_MJ
-        elif(self.state_cmd.skill_cmd == FSMCommand.CMD_PINOCCHIO_1_6_MJ):  # L1+Right → Pinocchio1.6MJ
+        elif(self.state_cmd.skill_cmd == FSMCommand.CMD_PINOCCHIO_1_6_MJ):
             self.state_cmd.skill_cmd = FSMCommand.INVALID
             return FSMStateName.SKILL_PINOCCHIO_1_6_MJ
-        elif(self.state_cmd.skill_cmd == FSMCommand.CMD_AMP):            # R2+A → AMP
+        elif(self.state_cmd.skill_cmd == FSMCommand.CMD_AMP):
             self.state_cmd.skill_cmd = FSMCommand.INVALID
             return FSMStateName.SKILL_AMP
+        elif(self.state_cmd.skill_cmd == FSMCommand.CMD_SCORE):
+            self.state_cmd.skill_cmd = FSMCommand.INVALID
+            return FSMStateName.SKILL_SCORE
         else:
             self.state_cmd.skill_cmd = FSMCommand.INVALID
             return FSMStateName.FIXEDPOSE

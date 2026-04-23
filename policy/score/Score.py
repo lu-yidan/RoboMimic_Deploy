@@ -439,6 +439,15 @@ class Score(FSMState):
             ).astype(np.float32)
         return ball_b_effective
 
+    def _translated_anchor_world_pos(self, aligned_anchor_pos_w: np.ndarray) -> np.ndarray:
+        """Shift sim anchor so motion t=0 starts at the Score entry torso pose."""
+        if self.runtime_mode != "sim":
+            return aligned_anchor_pos_w
+        return (
+            self._entry_torso_pos_w
+            + (aligned_anchor_pos_w - self._ref_anchor_world_origin)
+        )
+
     def _compute_anchor_pos_b(
         self,
         ball_b_effective,
@@ -477,20 +486,21 @@ class Score(FSMState):
                 anchor_pos_b[2] = aligned_anchor_pos_w[2] - torso_pos_w[2]
                 return anchor_pos_b.astype(np.float32)
 
+            translated_anchor_pos_w = self._translated_anchor_world_pos(aligned_anchor_pos_w)
             R_pelvis = _quat_to_matrix(self.state_cmd.pelvis_quat_w.astype(np.float64))
             ball_rel_w = (
                 self.state_cmd.ball_pos_w.astype(np.float64)
                 - self.state_cmd.pelvis_pos_w.astype(np.float64)
             )
             anchor_pos_b_ref = (
-                R_torso_w.T @ (aligned_anchor_pos_w - torso_pos_w)
+                R_torso_w.T @ (translated_anchor_pos_w - torso_pos_w)
             ).astype(np.float32)
             anchor_cmd_xy = (R_pelvis.T @ ball_rel_w)[:2]
             norm_xy = float(np.linalg.norm(anchor_cmd_xy))
             if norm_xy > 1e-6:
                 anchor_pos_b_ball = 0.2 * (anchor_cmd_xy / norm_xy)
                 return np.concatenate(
-                    [anchor_pos_b_ball, [aligned_anchor_pos_w[2] - torso_pos_w[2]]]
+                    [anchor_pos_b_ball, [translated_anchor_pos_w[2] - torso_pos_w[2]]]
                 ).astype(np.float32)
             return anchor_pos_b_ref
 
@@ -499,7 +509,8 @@ class Score(FSMState):
             robot_disp_w  = torso_pos_w - self._entry_torso_pos_w
             return (R_torso_w.T @ (anchor_disp_w - robot_disp_w)).astype(np.float32)
 
-        return (R_torso_w.T @ (aligned_anchor_pos_w - torso_pos_w)).astype(np.float32)
+        translated_anchor_pos_w = self._translated_anchor_world_pos(aligned_anchor_pos_w)
+        return (R_torso_w.T @ (translated_anchor_pos_w - torso_pos_w)).astype(np.float32)
 
     def _compute_anchor_ori_6d(
         self,
@@ -536,8 +547,9 @@ class Score(FSMState):
 
             ball_pos_w_f64 = self.state_cmd.ball_pos_w.astype(np.float64)
             pelvis_pos_w = self.state_cmd.pelvis_pos_w.astype(np.float64)
+            translated_anchor_pos_w = self._translated_anchor_world_pos(aligned_anchor_pos_w)
             to_ball_w = ball_pos_w_f64 - pelvis_pos_w
-            to_ball_w[2] = aligned_anchor_pos_w[2] - pelvis_pos_w[2]
+            to_ball_w[2] = translated_anchor_pos_w[2] - pelvis_pos_w[2]
             norm = np.linalg.norm(to_ball_w)
             if norm < 1e-6:
                 to_ball_dir = np.array([1.0, 0.0, 0.0])
@@ -706,12 +718,13 @@ class Score(FSMState):
         init_world_quat      = _matrix_to_quat(self._init_to_world)
         ref_anchor_pos_w     = self.motion_body_pos[t, NPZ_ANCHOR_IDX].astype(np.float64)
         aligned_anchor_pos_w = self._init_to_world @ ref_anchor_pos_w
+        anchor_world_pos_w = self._translated_anchor_world_pos(aligned_anchor_pos_w)
         anchor_pos_b = self._compute_anchor_pos_b(
             ball_b_effective, torso_pos_w, R_torso_w, aligned_anchor_pos_w
         )
 
         # Cache for visualization (world-frame anchor position).
-        self._debug_anchor_pos_w = (torso_pos_w + R_torso_w @ anchor_pos_b.astype(np.float64)).astype(np.float32)
+        self._debug_anchor_pos_w = anchor_world_pos_w.astype(np.float32)
         self._debug_torso_pos_w  = torso_pos_w.astype(np.float32)
 
         # ---- motion_anchor_ori_b (relative to torso orientation, in torso body frame) ----
@@ -923,6 +936,15 @@ class Score(FSMState):
         elif cmd == FSMCommand.CMD_AMP:
             self.state_cmd.skill_cmd = FSMCommand.INVALID
             return FSMStateName.SKILL_AMP
+        elif cmd == FSMCommand.CMD_BEYONDMIMIC_MJ:
+            self.state_cmd.skill_cmd = FSMCommand.INVALID
+            return FSMStateName.SKILL_BEYONDMIMIC_MJ
+        elif cmd == FSMCommand.CMD_STANDUP_MJ:
+            self.state_cmd.skill_cmd = FSMCommand.INVALID
+            return FSMStateName.SKILL_STANDUP_MJ
+        elif cmd == FSMCommand.CMD_PINOCCHIO_1_6_MJ:
+            self.state_cmd.skill_cmd = FSMCommand.INVALID
+            return FSMStateName.SKILL_PINOCCHIO_1_6_MJ
         elif cmd == FSMCommand.PASSIVE:
             self.state_cmd.skill_cmd = FSMCommand.INVALID
             return FSMStateName.PASSIVE

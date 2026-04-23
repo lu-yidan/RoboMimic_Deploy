@@ -381,5 +381,11 @@ class BeyondMimicMJ(FSMState):
         elif cmd == FSMCommand.CMD_PINOCCHIO_1_6_MJ:
             self.state_cmd.skill_cmd = FSMCommand.INVALID
             return FSMStateName.SKILL_PINOCCHIO_1_6_MJ
+        elif cmd == FSMCommand.CMD_AMP:
+            self.state_cmd.skill_cmd = FSMCommand.INVALID
+            return FSMStateName.SKILL_AMP
+        elif cmd == FSMCommand.CMD_SCORE:
+            self.state_cmd.skill_cmd = FSMCommand.INVALID
+            return FSMStateName.SKILL_SCORE
         else:
             return self.name

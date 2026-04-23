@@ -48,7 +48,7 @@ class Amp(FSMState):
         self._range_slow = [cr["lin_vel_x"],  cr["lin_vel_y"],  cr["ang_vel_z"]]
         self._range_fast = [cr_fast["lin_vel_x"], cr_fast["lin_vel_y"], cr_fast["ang_vel_z"]]
         self._cmd_smooth  = float(cfg["cmd_smooth"])
-        self._high_speed  = False
+        self._high_speed  = True
 
         # ── Safety ───────────────────────────────────────────────────────
         self._tilt_thresh = float(cfg["safe_tilt_threshold"])
@@ -134,7 +134,7 @@ class Amp(FSMState):
     # ── FSMState interface ────────────────────────────────────────────────────
 
     def enter(self):
-        self._high_speed     = False
+        self._high_speed     = True
         self._last_action[:] = 0.0
         self._cmd_smooth_val[:] = 0.0
         # Fill history with current state (4 calls, mirroring C++ _init_buffers)
@@ -170,18 +170,6 @@ class Amp(FSMState):
     def checkChange(self) -> FSMStateName:
         cmd = self.state_cmd.skill_cmd
 
-        # Speed mode toggles (stay in AMP, just flip flag)
-        if cmd == FSMCommand.CMD_AMP_FAST:
-            self._high_speed = True
-            self.state_cmd.skill_cmd = FSMCommand.INVALID
-            print("[AMP] → fast mode")
-            return FSMStateName.SKILL_AMP
-        if cmd == FSMCommand.CMD_AMP_SLOW:
-            self._high_speed = False
-            self.state_cmd.skill_cmd = FSMCommand.INVALID
-            print("[AMP] → slow mode")
-            return FSMStateName.SKILL_AMP
-
         # State transitions
         if cmd == FSMCommand.POS_RESET:       # START
             self.state_cmd.skill_cmd = FSMCommand.INVALID
@@ -192,7 +180,16 @@ class Amp(FSMState):
         if cmd == FSMCommand.CMD_SCORE:
             self.state_cmd.skill_cmd = FSMCommand.INVALID
             return FSMStateName.SKILL_SCORE
-        if cmd == FSMCommand.LOCO:            # R1+A → back to LocoMode
+        if cmd == FSMCommand.CMD_BEYONDMIMIC_MJ:
+            self.state_cmd.skill_cmd = FSMCommand.INVALID
+            return FSMStateName.SKILL_BEYONDMIMIC_MJ
+        if cmd == FSMCommand.CMD_STANDUP_MJ:
+            self.state_cmd.skill_cmd = FSMCommand.INVALID
+            return FSMStateName.SKILL_STANDUP_MJ
+        if cmd == FSMCommand.CMD_PINOCCHIO_1_6_MJ:
+            self.state_cmd.skill_cmd = FSMCommand.INVALID
+            return FSMStateName.SKILL_PINOCCHIO_1_6_MJ
+        if cmd == FSMCommand.LOCO:            # B -> back to LocoMode
             self.state_cmd.skill_cmd = FSMCommand.INVALID
             return FSMStateName.LOCOMODE
 

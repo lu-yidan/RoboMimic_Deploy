@@ -90,22 +90,15 @@ python deploy_mujoco/deploy_mujoco.py --config-name mujoco_score
 ## 2. Policy Descriptions
 | Mode Name           | Trigger Keys      | Description                                                                              |
 |---------------------|-------------------|------------------------------------------------------------------------------------------|
-| **PassiveMode**     | L1 release+R1     | Damping protection mode                                                                  |
+| **PassiveMode**     | L1                | Damping protection mode                                                                  |
 | **FixedPose**       | Start             | Position control reset to default joint values                                           |
-| **LocoMode**        | R1+A              | Stable walking control mode                                                              |
-| **HOST**            | L1+X              | Fall recovery (get-up) controller                                                        |
-| **Dance**           | R1+X              | Charleston dance routine                                                                 |
-| **KungFu**          | R1+Y              | Martial arts movement                                                                    |
-| **KungFu2**         | L1+Y              | Another martial arts movement                                                            |
-| **Kick**            | R1+B              | Kicking movement                                                                         |
-| **ASAP**            | L1+A              | ASAP locomotion policy                                                                   |
-| **BeyondMimic**     | L1+B              | BeyondMimic imitation policy (supports multi-clip NPZ switching)                         |
-| **BeyondMimicMJ**   | L1+D-pad DOWN     | Fall-and-get-up imitation policy (MuJoCo-trained, with reference motion tracking)       |
-| **StandUpMJ**       | L1+D-pad UP       | Stand-up imitation policy (MuJoCo-trained, with reference motion tracking)              |
-| **Score**           | R1+D-pad RIGHT    | Ball-kicking/scoring policy (547-dim obs, 5-frame history, requires onboard LiDAR)      |
-| **AMP**             | R2+A              | AMP locomotion policy; R2+D-pad UP → fast mode, R2+D-pad DOWN → slow mode              |
-| **SkillCast**       | —                 | Lower body + waist stabilization; upper limbs moved to specific angles (before Mimic)   |
-| **SkillCooldown**   | —                 | Lower body + waist balancing; upper limbs reset to default angles (after Mimic)         |
+| **LocoMode**        | B                 | Stable walking control mode                                                              |
+| **AMP**             | A                 | AMP locomotion policy (enters run mode by default)                                      |
+| **Score**           | R1                | Ball-kicking/scoring policy (547-dim obs, 5-frame history, requires onboard LiDAR)      |
+| **BeyondMimicMJ**   | D-pad DOWN        | Fall-and-get-up imitation policy (MuJoCo-trained, with reference motion tracking)       |
+| **StandUpMJ**       | D-pad UP          | Stand-up imitation policy (MuJoCo-trained, with reference motion tracking)              |
+| **Pinocchio1.6MJ**  | R2                | MuJoCo imitation policy backed by `g1_result_pinocchio_1_6_mj.yaml`                     |
+| **BeyondMimic**     | —                 | Still kept in the repo, but not bound to a default controller shortcut                  |
 
 
 ---
@@ -116,25 +109,18 @@ python deploy_mujoco/deploy_mujoco.py --config-name mujoco_score
 python deploy_mujoco/deploy_mujoco.py
 ```
 3. Press the **Start** button to enter position control mode.
-4. Hold **R1 + A** to enter **LocoMode**, then press BACKSPACE in the simulation to make the robot stand. Afterward, use the joystick to control walking.
-5. Hold **R1 + X** to enter **Dance** mode—the robot will perform the Charleston. In this mode:
-    - Press **Select** at any time to switch to damping protection mode.
-    - Hold **R1 + A** to return to walking mode (not recommended).
-    - Press **Start** to return to position control mode.
-6. The terminal will display a progress bar for the dance. After completion, press **R1 + A** to return to normal walking mode.
-7. In LocoMode, pressing **R1 + Y** triggers the KungFu martial arts movement — **use only in simulation**.
-8. In LocoMode, pressing **L1 + Y** triggers the KungFu2 martial arts movement — **use only in simulation**.
-9. In LocoMode, pressing **R1 + B** triggers the Kick movement — **use only in simulation**.
-10. In LocoMode, pressing **L1 + A** enters the ASAP locomotion policy — **use only in simulation**.
-11. In LocoMode, pressing **L1 + B** enters the BeyondMimic imitation policy (supports multi-clip NPZ switching) — **use only in simulation**.
-12. In LocoMode or FixedPose, pressing **L1 + D-pad DOWN** enters the BeyondMimicMJ fall-and-get-up policy (MuJoCo-trained) — **use only in simulation**.
-13. In LocoMode or FixedPose, pressing **L1 + D-pad UP** enters the StandUpMJ stand-up policy (MuJoCo-trained) — **use only in simulation**. BeyondMimicMJ and StandUpMJ can switch directly between each other.
-14. In LocoMode, pressing **R1 + D-pad RIGHT** enters the Score ball-kicking policy. Use `--config-name mujoco_score` to load the scene with the ball — **use only in simulation**.
-15. In FixedPose or LocoMode, pressing **L1 + X** enters the HOST fall-recovery (get-up) controller — **use only in simulation**.
-16. In **FixedPose or LocoMode**, pressing **R2 + A** enters the **AMP** locomotion policy. While in AMP:
-    - **R2 + D-pad UP** switches to fast mode (higher speed range).
-    - **R2 + D-pad DOWN** switches back to slow mode (default).
-    - Press **Start** to return to FixedPose, or **R1 + A** to return to LocoMode.
+4. Press **B** to enter **LocoMode**, then press BACKSPACE in the simulation to make the robot stand. Afterward, use the joystick to control walking.
+5. The simplified single-button policy map is:
+   - **A** -> AMP (run mode)
+   - **B** -> LocoMode
+   - **D-pad DOWN** -> BeyondMimicMJ
+   - **D-pad UP** -> StandUpMJ
+   - **R2** -> Pinocchio1.6MJ
+   - **R1** -> Score
+6. Use `--config-name mujoco_score` when entering **Score** so the simulation loads the ball scene.
+7. **BeyondMimicMJ / StandUpMJ / Pinocchio1.6MJ** can switch directly between each other with the same single-button bindings.
+8. Press **L1** at any time for damping protection, or **Start** to return to **FixedPose**.
+9. **BeyondMimic** is still present in the repository, but it is intentionally left without a default controller shortcut. Legacy policies such as Dance / Kick / KungFu / ASAP / HOST are removed from the default deploy switching path.
 
 ---
 ## 4. Real Robot Operation Instructions
@@ -146,8 +132,8 @@ python deploy_mujoco/deploy_mujoco.py
 python deploy_real/deploy_real.py
 ```
 3. Press the **Start** button to enter position control mode.
-4. Subsequent operations are largely the same as in simulation.
-5. **Score policy (R1+D-pad RIGHT) — additional real-robot steps**: The Score policy depends on onboard LiDAR for real-time ball detection. The perception service must be started before running `deploy_real.py`, publishing ball state via DDS topic `rt/ball_state`. Do **not** activate the Score policy on the real robot without the perception service running.
+4. The same simplified single-button mapping is used on the real robot: **A / B / D-pad DOWN / D-pad UP / R2 / R1**.
+5. **Score policy (R1) — additional real-robot steps**: The Score policy depends on onboard LiDAR for real-time ball detection. The perception service must be started before running `deploy_real.py`, publishing ball state via DDS topic `rt/ball_state`. Do **not** activate the Score policy on the real robot without the perception service running.
 
 6. If you are deploying on an onboard Orin/G1 computer, prefer the bridge-based deployment flow under `bridge/` instead of running `deploy_real.py` directly. See:
    - `bridge/README.md`
@@ -183,18 +169,16 @@ The Mimic policy does not guarantee 100% success rate, particularly on slippery/
 - Press `F1` to activate **PassiveMode** (damping protection)
 - Press `Select` to immediately terminate the control program
 
-### 3. Charleston Dance (R1+X) - Stable Policy Notes
-Currently the only verified stable policy on physical robots:
+### 3. Notes For The Retained Policies
+The default deploy entry points are now limited to `LocoMode / AMP / Score / BeyondMimicMJ / StandUpMJ / Pinocchio1.6MJ`.
 
 ⚠️ **Important Precautions**:
-- **Palm Removal Recommended**: The original training didn't account for palm collisions (author's G1 lacked palms)
-- **Initial/Final Stabilization**: Brief manual stabilization may be required when starting/ending the dance
-- **Post-Dance Transition**: While switching to **Locomotion/PositionControl/PassiveMode** is possible, we recommend:
-  - First transition to **PositionControl** or **PassiveMode**
-  - Provide manual stabilization during transition
+- **Palm Removal Recommended**: Some original training setups did not account for palm collisions (the author's G1 had no palms)
+- **Prefer Safe Transition Paths**: Before and after testing a retained policy, prefer returning to **FixedPose** or **PassiveMode**
+- **Use Human Supervision**: For first-time real-robot validation, keep the robot suspended and maintain manual supervision throughout
 
 ### 4. Other Movement Advisories
-All other movements are currently **not recommended** for physical robot deployment.
+Other historical policy implementations may still exist in the repository, but they are no longer bound to the default deploy shortcuts and are not recommended for direct real-robot use.
 
 ### 5. Strong Recommendation
 **Always** master operations in simulation before attempting physical robot deployment.

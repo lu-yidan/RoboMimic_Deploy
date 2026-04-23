@@ -96,22 +96,15 @@ python deploy_mujoco/deploy_mujoco.py --config-name mujoco_score
 
 | 模式名称            | 触发按键          | 描述                                                                 |
 |--------------------|------------------|----------------------------------------------------------------------|
-| **PassiveMode**    | L1 release+R1    | 阻尼保护模式                                                         |
+| **PassiveMode**    | L1               | 阻尼保护模式                                                         |
 | **FixedPose**      | Start            | 位控恢复至默认关节值                                                 |
-| **LocoMode**       | R1+A             | 用于稳定行走的控制模式                                               |
-| **Kick**           | R1+B             | 踢腿动作                                                             |
-| **Dance**          | R1+X             | 查尔斯顿舞蹈                                                         |
-| **KungFu**         | R1+Y             | 武术动作                                                             |
-| **ASAP**           | L1+A             | ASAP 运动策略                                                        |
-| **BeyondMimic**    | L1+B             | BeyondMimic 模仿动作（支持多套动作 NPZ 切换）                        |
-| **HOST**           | L1+X             | 摔倒爬起控制器                                                       |
-| **KungFu2**        | L1+Y             | 另一套武术动作                                                       |
-| **BeyondMimicMJ**  | L1+D-pad DOWN    | 摔倒爬起模仿策略（MuJoCo 训练版，含参考动作跟踪）                   |
-| **StandUpMJ**      | L1+D-pad UP      | 站起模仿策略（MuJoCo 训练版，含参考动作跟踪）                       |
-| **Score**          | R1+D-pad RIGHT   | 踢球得分策略（547维obs，5帧历史，需配合机载雷达感知）               |
-| **AMP**            | R2+A             | AMP运动策略；R2+D-pad UP 切换快速模式，R2+D-pad DOWN 切换慢速模式  |
-| **SkillCast**      | —                | 下肢+腰部稳定站立，上肢位控至特定关节角，一般在执行Mimic策略前执行   |
-| **SkillCooldown**  | —                | 下肢+腰部持续平衡，上肢恢复至默认关节角，一般在执行Mimic策略后执行   |
+| **LocoMode**       | B                | 用于稳定行走的控制模式                                               |
+| **AMP**            | A                | AMP 运动策略（默认进入 run 模式）                                    |
+| **Score**          | R1               | 踢球得分策略（547维obs，5帧历史，需配合机载雷达感知）               |
+| **BeyondMimicMJ**  | D-pad DOWN       | 摔倒爬起模仿策略（MuJoCo 训练版，含参考动作跟踪）                   |
+| **StandUpMJ**      | D-pad UP         | 站起模仿策略（MuJoCo 训练版，含参考动作跟踪）                       |
+| **Pinocchio1.6MJ** | R2               | `g1_result_pinocchio_1_6_mj.yaml` 对应的 MuJoCo 模仿策略            |
+| **BeyondMimic**    | —                | 仍保留在仓库中，但当前默认不分配手柄按键                             |
 
 ---
 ## 3. 仿真操作说明
@@ -124,34 +117,21 @@ python deploy_mujoco/deploy_mujoco.py
 ```
 3. Start键进入位控模式
 
-4. 同时按住R1+A，进入LocoMode，并按下`BACKSPACE`在仿真中使机器人站立，之后能通过摇杆控制机器人行走
+4. 按 `B` 进入 LocoMode，并按下 `BACKSPACE` 在仿真中使机器人站立，之后即可通过摇杆控制机器人行走
 
-5. 同时按住R1+X，进入Dance，机器人开始跳查尔斯顿舞蹈，在该模式下，可以随时按下Select进入阻尼保护模式，也可以按住R1+A恢复行走模式（不推荐），或按Start进入位控模式（不推荐）
+5. 仿真中保留的单键切换如下：
+   - `A` -> AMP（run 模式）
+   - `B` -> LocoMode
+   - `D-pad DOWN` -> BeyondMimicMJ
+   - `D-pad UP` -> StandUpMJ
+   - `R2` -> Pinocchio1.6MJ
+   - `R1` -> Score
 
-6. 终端会显示舞蹈的进度条，结束后可按下R1+A恢复至正常行走模式
+6. `Score` 需使用 `--config-name mujoco_score` 加载含球的仿真场景；`BeyondMimicMJ / StandUpMJ / Pinocchio1.6MJ` 之间支持直接互切
 
-7. 在LocoMode模式下，按R1+Y让机器人表演武术动作，**只推荐在仿真中使用**
+7. 任意时刻可按 `L1` 进入阻尼保护模式，按 `Start` 返回 FixedPose
 
-8. 在LocoMode模式下，按L1+Y让机器人表演另一套武术动作，**只推荐在仿真中使用**
-
-9. 在LocoMode模式下，按R1+B让机器人表演踢腿动作，**只推荐在仿真中使用**
-
-10. 在LocoMode模式下，按L1+A进入ASAP运动策略，**只推荐在仿真中使用**
-
-11. 在LocoMode模式下，按L1+B进入BeyondMimic模仿动作策略（支持多套NPZ动作切换），**只推荐在仿真中使用**
-
-12. 在LocoMode或FixedPose模式下，按**L1+D-pad DOWN**进入BeyondMimicMJ摔倒爬起策略（MuJoCo训练版），**只推荐在仿真中使用**
-
-13. 在LocoMode或FixedPose模式下，按**L1+D-pad UP**进入StandUpMJ站起策略（MuJoCo训练版），**只推荐在仿真中使用**。BeyondMimicMJ与StandUpMJ之间可直接相互切换
-
-14. 在LocoMode模式下，按**R1+D-pad RIGHT**进入Score踢球策略，需使用 `--config-name mujoco_score` 加载含球的仿真场景，**只推荐在仿真中使用**
-
-15. 在FixedPose或LocoMode模式下，按L1+X进入HOST爬起控制器，可在机器人摔倒后使用，**只推荐在仿真中使用**
-
-16. 在 **FixedPose 或 LocoMode** 模式下，按 **R2+A** 进入 **AMP** 运动策略。进入后：
-    - **R2+D-pad UP** 切换至快速模式（更大速度范围）
-    - **R2+D-pad DOWN** 切换回慢速模式（默认）
-    - 按 **Start** 返回 FixedPose，或按 **R1+A** 返回 LocoMode
+8. `BeyondMimic` 仍保留在仓库中，但默认不再绑定手柄按键；`Dance / Kick / KungFu / ASAP / HOST` 等旧策略已从部署切换路径中移除
 
 ---
 ## 4. 真机操作说明
@@ -163,9 +143,9 @@ python deploy_real/deploy_real.py
 ```
 3. Start键进入位控模式
 
-4. 后续操作与仿真中基本一致
+4. 后续单键切换与仿真保持一致：`A / B / D-pad DOWN / D-pad UP / R2 / R1`
 
-5. **Score踢球策略（R1+D-pad DOWN）真机部署额外步骤**：Score策略依赖机载雷达对球的实时感知，需在运行deploy_real之前启动感知服务，并通过DDS topic `rt/ball_state` 发布球的位置信息。在不具备感知服务的情况下，请勿在真机上启动Score策略。
+5. **Score踢球策略（R1）真机部署额外步骤**：Score策略依赖机载雷达对球的实时感知，需在运行deploy_real之前启动感知服务，并通过DDS topic `rt/ball_state` 发布球的位置信息。在不具备感知服务的情况下，请勿在真机上启动Score策略。
 
 6. 如果机器人搭载的是 Orin/G1 机载平台，建议优先使用 `bridge/` 目录下的桥接部署方案，而不是直接运行 `deploy_real.py`。桥接方案说明见：
    - `bridge/README_zh.md`
@@ -201,18 +181,16 @@ Mimic策略不保证100%成功率，特别是在湿滑/沙地等复杂地面上�
 - 按下`F1`键激活**阻尼保护模式**(PassiveMode)
 - 按下`Select`键立即终止控制程序
 
-### 3. 查尔斯顿舞蹈(R1+X) - 稳定策略说明
-目前唯一在真机上验证稳定的策略：
+### 3. 当前保留策略的真机提示
+当前部署入口已简化为 `LocoMode / AMP / Score / BeyondMimicMJ / StandUpMJ / Pinocchio1.6MJ`。
 
 ⚠️ **重要注意事项**：
-- **建议拆除手掌**：原始训练未考虑手掌碰撞（作者的G1初始无手掌）
-- **起止稳定需求**：舞蹈开始/结束时可能需要短暂人工稳定
-- **舞蹈后过渡**：虽然可以切换至**行走模式/位控模式/阻尼模式**，但建议：
-  - 先切换至**位控模式**或**阻尼模式**
-  - 过渡期间需提供人工稳定
+- **建议拆除手掌**：部分策略的原始训练未考虑手掌碰撞（作者的G1初始无手掌）
+- **启动与切换阶段**：策略切换前后建议优先回到 **FixedPose** 或 **PassiveMode**
+- **人工保护**：首次在真机验证某个保留策略时，建议全程吊挂并保留人工保护
 
 ### 4. 其他动作建议
-其他所有动作目前均**不建议**在真机上部署。
+仓库中仍可能存在其他历史策略实现，但它们已不再绑定到默认部署按键，不建议在真机上直接启用。
 
 ### 5. 强烈建议
 **务必**先在仿真环境中熟练操作，再尝试真机部署。

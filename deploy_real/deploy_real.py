@@ -128,36 +128,18 @@ class Controller:
             # elif self.state_cmd.skill_cmd == FSMCommand.INVALID:
             if self.remote_controller.is_button_pressed(KeyMap.start):
                 self.state_cmd.skill_cmd = FSMCommand.POS_RESET
-            elif self.remote_controller.is_button_pressed(KeyMap.X) and self.remote_controller.is_button_pressed(KeyMap.L1):      # 摔倒爬起, L1+X
-                self.state_cmd.skill_cmd = FSMCommand.STAND_UP
-            elif self.remote_controller.is_button_pressed(KeyMap.A) and self.remote_controller.is_button_pressed(KeyMap.R1):
+            elif self.remote_controller.is_button_pressed(KeyMap.B):            # Loco, B
                 self.state_cmd.skill_cmd = FSMCommand.LOCO
-            elif self.remote_controller.is_button_pressed(KeyMap.X) and self.remote_controller.is_button_pressed(KeyMap.R1):
-                self.state_cmd.skill_cmd = FSMCommand.SKILL_1
-            elif self.remote_controller.is_button_pressed(KeyMap.Y) and self.remote_controller.is_button_pressed(KeyMap.R1):
-                self.state_cmd.skill_cmd = FSMCommand.SKILL_2
-            elif self.remote_controller.is_button_pressed(KeyMap.A) and self.remote_controller.is_button_pressed(KeyMap.L1):
-                self.state_cmd.skill_cmd = FSMCommand.SKILL_5
-            elif self.remote_controller.is_button_pressed(KeyMap.B) and self.remote_controller.is_button_pressed(KeyMap.L1):
-                self.state_cmd.skill_cmd = FSMCommand.SKILL_6
-            elif self.remote_controller.is_button_pressed(KeyMap.right) and self.remote_controller.is_button_pressed(KeyMap.R1): # Score, R1+Right
-                self.state_cmd.skill_cmd = FSMCommand.CMD_SCORE
-            elif self.remote_controller.is_button_pressed(KeyMap.down) and self.remote_controller.is_button_pressed(KeyMap.L1):  # FallGetUpMJ, L1+Down
-                self.state_cmd.skill_cmd = FSMCommand.CMD_BEYONDMIMIC_MJ
-            elif self.remote_controller.is_button_pressed(KeyMap.up) and self.remote_controller.is_button_pressed(KeyMap.L1):    # StandUpMJ, L1+Up
-                self.state_cmd.skill_cmd = FSMCommand.CMD_STANDUP_MJ
-            elif self.remote_controller.is_button_pressed(KeyMap.right) and self.remote_controller.is_button_pressed(KeyMap.L1): # Pinocchio1.6MJ, L1+Right
-                self.state_cmd.skill_cmd = FSMCommand.CMD_PINOCCHIO_1_6_MJ
-            elif self.remote_controller.is_button_pressed(KeyMap.A) and self.remote_controller.is_button_pressed(KeyMap.R2):    # AMP, R2+A
+            elif self.remote_controller.is_button_pressed(KeyMap.A):            # AMP, A
                 self.state_cmd.skill_cmd = FSMCommand.CMD_AMP
-            elif self.remote_controller.is_button_pressed(KeyMap.up) and self.remote_controller.is_button_pressed(KeyMap.R2):   # AMP fast mode, R2+Up
-                self.state_cmd.skill_cmd = FSMCommand.CMD_AMP_FAST
-            elif self.remote_controller.is_button_pressed(KeyMap.down) and self.remote_controller.is_button_pressed(KeyMap.R2): # AMP slow mode, R2+Down
-                self.state_cmd.skill_cmd = FSMCommand.CMD_AMP_SLOW
-            # if self.remote_controller.is_button_pressed(KeyMap.B) and self.remote_controller.is_button_pressed(KeyMap.R1):
-            #     self.state_cmd.skill_cmd = FSMCommand.SKILL_3
-            # if self.remote_controller.is_button_pressed(KeyMap.Y) and self.remote_controller.is_button_pressed(KeyMap.L1):
-            #     self.state_cmd.skill_cmd = FSMCommand.SKILL_4
+            elif self.remote_controller.is_button_pressed(KeyMap.R1):           # Score, R1
+                self.state_cmd.skill_cmd = FSMCommand.CMD_SCORE
+            elif self.remote_controller.is_button_pressed(KeyMap.down):         # BeyondMimicMJ, Down
+                self.state_cmd.skill_cmd = FSMCommand.CMD_BEYONDMIMIC_MJ
+            elif self.remote_controller.is_button_pressed(KeyMap.up):           # StandUpMJ, Up
+                self.state_cmd.skill_cmd = FSMCommand.CMD_STANDUP_MJ
+            elif self.remote_controller.is_button_pressed(KeyMap.R2):           # Pinocchio1.6MJ, R2
+                self.state_cmd.skill_cmd = FSMCommand.CMD_PINOCCHIO_1_6_MJ
             
             self.state_cmd.vel_cmd[0] =  self.remote_controller.ly              # 速度指令
             self.state_cmd.vel_cmd[1] =  self.remote_controller.lx * -1

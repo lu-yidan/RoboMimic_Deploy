@@ -322,6 +322,21 @@ class BeyondMimic(FSMState):
         if cmd == FSMCommand.LOCO:
             self.state_cmd.skill_cmd = FSMCommand.INVALID
             return FSMStateName.LOCOMODE
+        elif cmd == FSMCommand.CMD_AMP:
+            self.state_cmd.skill_cmd = FSMCommand.INVALID
+            return FSMStateName.SKILL_AMP
+        elif cmd == FSMCommand.CMD_SCORE:
+            self.state_cmd.skill_cmd = FSMCommand.INVALID
+            return FSMStateName.SKILL_SCORE
+        elif cmd == FSMCommand.CMD_BEYONDMIMIC_MJ:
+            self.state_cmd.skill_cmd = FSMCommand.INVALID
+            return FSMStateName.SKILL_BEYONDMIMIC_MJ
+        elif cmd == FSMCommand.CMD_STANDUP_MJ:
+            self.state_cmd.skill_cmd = FSMCommand.INVALID
+            return FSMStateName.SKILL_STANDUP_MJ
+        elif cmd == FSMCommand.CMD_PINOCCHIO_1_6_MJ:
+            self.state_cmd.skill_cmd = FSMCommand.INVALID
+            return FSMStateName.SKILL_PINOCCHIO_1_6_MJ
         elif cmd == FSMCommand.PASSIVE:
             self.state_cmd.skill_cmd = FSMCommand.INVALID
             return FSMStateName.PASSIVE

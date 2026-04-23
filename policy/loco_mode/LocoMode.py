@@ -110,31 +110,19 @@ class LocoMode(FSMState):
         pass
     
     def checkChange(self):
-        if(self.state_cmd.skill_cmd == FSMCommand.SKILL_1):
-            return FSMStateName.SKILL_Dance
-        elif(self.state_cmd.skill_cmd == FSMCommand.SKILL_2):
-            return FSMStateName.SKILL_KungFu
-        elif(self.state_cmd.skill_cmd == FSMCommand.SKILL_3):
-            return FSMStateName.SKILL_KICK
-        elif(self.state_cmd.skill_cmd == FSMCommand.SKILL_4):
-            return FSMStateName.SKILL_KungFu2
-        elif(self.state_cmd.skill_cmd == FSMCommand.SKILL_5):       # ASAP, L1+A
-            return FSMStateName.SKILL_ASAP
-        elif(self.state_cmd.skill_cmd == FSMCommand.SKILL_6):       # BeyondMimic, L1+B
+        if(self.state_cmd.skill_cmd == FSMCommand.SKILL_6):
             return FSMStateName.SKILL_BEYONDMIMIC
-        elif(self.state_cmd.skill_cmd == FSMCommand.CMD_BEYONDMIMIC_MJ):  # FallGetUpMJ, L1+D-pad DOWN
+        elif(self.state_cmd.skill_cmd == FSMCommand.CMD_BEYONDMIMIC_MJ):
             return FSMStateName.SKILL_BEYONDMIMIC_MJ
-        elif(self.state_cmd.skill_cmd == FSMCommand.CMD_STANDUP_MJ):    # StandUpMJ, L1+D-pad UP
+        elif(self.state_cmd.skill_cmd == FSMCommand.CMD_STANDUP_MJ):
             return FSMStateName.SKILL_STANDUP_MJ
-        elif(self.state_cmd.skill_cmd == FSMCommand.CMD_PINOCCHIO_1_6_MJ):  # Pinocchio1.6MJ, L1+D-pad RIGHT
+        elif(self.state_cmd.skill_cmd == FSMCommand.CMD_PINOCCHIO_1_6_MJ):
             return FSMStateName.SKILL_PINOCCHIO_1_6_MJ
-        elif(self.state_cmd.skill_cmd == FSMCommand.CMD_SCORE):         # Score, R1+D-pad RIGHT
+        elif(self.state_cmd.skill_cmd == FSMCommand.CMD_SCORE):
             return FSMStateName.SKILL_SCORE
-        elif(self.state_cmd.skill_cmd == FSMCommand.STAND_UP):      # L1+X → HOST 爬起控制器
-            return FSMStateName.STANDMODE
-        elif(self.state_cmd.skill_cmd == FSMCommand.CMD_AMP):           # AMP, R2+A
+        elif(self.state_cmd.skill_cmd == FSMCommand.CMD_AMP):
             return FSMStateName.SKILL_AMP
-        elif(self.state_cmd.skill_cmd == FSMCommand.POS_RESET):     # 回 FixedPose, START
+        elif(self.state_cmd.skill_cmd == FSMCommand.POS_RESET):
             return FSMStateName.FIXEDPOSE
         elif(self.state_cmd.skill_cmd == FSMCommand.PASSIVE):
             return FSMStateName.PASSIVE

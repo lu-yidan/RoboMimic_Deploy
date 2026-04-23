@@ -3,17 +3,9 @@ from common.path_config import PROJECT_ROOT
 from policy.passive.PassiveMode import PassiveMode
 from policy.fixedpose.FixedPose import FixedPose
 from policy.loco_mode.LocoMode import LocoMode
-from policy.kungfu.KungFu import KungFu
-from policy.dance.Dance import Dance
-from policy.asap.asap import ASAP
-from policy.host.host import HOST
 from policy.beyondmimic.BeyondMimic import BeyondMimic
 from policy.beyondmimic_mj.BeyondMimicMJ import BeyondMimicMJ
 from policy.score.Score import Score
-from policy.skill_cooldown.SkillCooldown import SkillCooldown
-from policy.skill_cast.SkillCast import SkillCast
-from policy.kick.Kick import Kick
-from policy.kungfu2.KungFu2 import KungFu2
 from policy.amp.Amp import Amp
 from FSM.FSMState import *
 import time
@@ -37,14 +29,6 @@ class FSM:
         self.passive_mode = PassiveMode(state_cmd, policy_output)       # 阻尼保护模式
         self.fixed_pose_1 = FixedPose(state_cmd, policy_output)         
         self.loco_policy = LocoMode(state_cmd, policy_output)
-        self.kungfu_policy = KungFu(state_cmd, policy_output)
-        self.dance_policy = Dance(state_cmd, policy_output)
-        self.skill_cooldown_policy = SkillCooldown(state_cmd, policy_output)
-        self.skill_cast_policy = SkillCast(state_cmd, policy_output)
-        self.kick_policy = Kick(state_cmd, policy_output)
-        self.kungfu2_policy = KungFu2(state_cmd, policy_output)
-        self.asap_policy = ASAP(state_cmd, policy_output)
-        self.host_policy = HOST(state_cmd, policy_output)
         self.beyondmimic_policy = BeyondMimic(state_cmd, policy_output)
         self.beyondmimic_mj_policy = BeyondMimicMJ(state_cmd, policy_output)
         self.standup_mj_policy = BeyondMimicMJ(state_cmd, policy_output,
@@ -105,22 +89,6 @@ class FSM:
             self.cur_policy = self.fixed_pose_1
         elif((policy_name == FSMStateName.LOCOMODE)):
             self.cur_policy = self.loco_policy
-        elif((policy_name == FSMStateName.SKILL_KungFu)):
-            self.cur_policy = self.kungfu_policy
-        elif((policy_name == FSMStateName.SKILL_Dance)):
-            self.cur_policy = self.dance_policy
-        elif((policy_name == FSMStateName.SKILL_COOLDOWN)):
-            self.cur_policy = self.skill_cooldown_policy
-        elif((policy_name == FSMStateName.SKILL_CAST)):
-            self.cur_policy = self.skill_cast_policy
-        elif((policy_name == FSMStateName.SKILL_KICK)):
-            self.cur_policy = self.kick_policy
-        elif((policy_name == FSMStateName.SKILL_KungFu2)):
-            self.cur_policy = self.kungfu2_policy
-        elif((policy_name == FSMStateName.SKILL_ASAP)):
-            self.cur_policy = self.asap_policy
-        elif((policy_name == FSMStateName.STANDMODE)):
-            self.cur_policy = self.host_policy
         elif((policy_name == FSMStateName.SKILL_BEYONDMIMIC)):
             self.cur_policy = self.beyondmimic_policy
         elif((policy_name == FSMStateName.SKILL_BEYONDMIMIC_MJ)):

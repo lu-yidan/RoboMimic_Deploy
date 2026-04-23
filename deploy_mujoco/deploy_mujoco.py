@@ -163,6 +163,7 @@ def main(cfg: DictConfig):
 
     joystick = JoyStick()
     prev_hat = (0, 0)
+    prev_r2_pressed = False
     Running = True
     with mujoco.viewer.launch_passive(m, d) as viewer:
         sim_start_time = time.time()
@@ -174,6 +175,8 @@ def main(cfg: DictConfig):
                 joystick.update()
                 hat = joystick.get_hat_direction()
                 hat_just_pressed = lambda hx, hy: (hat == (hx, hy) and prev_hat != (hx, hy))
+                r2_pressed = joystick.get_axis_value(5) > 0.5
+                r2_just_pressed = r2_pressed and not prev_r2_pressed
                 if joystick.is_button_released(JoystickButton.L3):                                                    # Ghost toggle, L3
                     ghost_flags[0] = not ghost_flags[0]
                     print(f"[Ghost] {'ON' if ghost_flags[0] else 'OFF'}")
@@ -191,47 +194,30 @@ def main(cfg: DictConfig):
                         print("[Ball] Reset requested, but no ball body exists in this scene.")
 
                 # PASSIVE: safety command — always overrides any pending command
-                if joystick.is_button_released(JoystickButton.L1) and joystick.is_button_pressed(JoystickButton.R1):  # 阻尼保护, L1 release + R1
+                if joystick.is_button_released(JoystickButton.L1):                                                    # 阻尼保护, L1
                     state_cmd.skill_cmd = FSMCommand.PASSIVE
 
                 # All other skill commands: latched — only accepted when FSM has cleared the previous one.
-                # This prevents a fast START → L1+Up sequence from overwriting POS_RESET before the FSM
+                # This prevents a fast START → policy switch sequence from overwriting POS_RESET before the FSM
                 # processes it, which would leave the current controller without a clean exit().
                 # elif state_cmd.skill_cmd == FSMCommand.INVALID:
                 if joystick.is_button_released(JoystickButton.START):                                              # 回 FixedPose, START
                     state_cmd.skill_cmd = FSMCommand.POS_RESET
-                elif joystick.is_button_released(JoystickButton.X) and joystick.is_button_pressed(JoystickButton.L1):   # 摔倒爬起, L1+X
-                    state_cmd.skill_cmd = FSMCommand.STAND_UP
-                elif joystick.is_button_released(JoystickButton.A) and joystick.is_button_pressed(JoystickButton.R1):   # Loco, R1+A
+                elif joystick.is_button_released(JoystickButton.B):                                                # Loco, B
                     state_cmd.skill_cmd = FSMCommand.LOCO
-                elif joystick.is_button_released(JoystickButton.R3):                                                    # Dance, R3
-                    state_cmd.skill_cmd = FSMCommand.SKILL_1
-                elif joystick.is_button_released(JoystickButton.Y) and joystick.is_button_pressed(JoystickButton.R1):   # KungFu, R1+Y
-                    state_cmd.skill_cmd = FSMCommand.SKILL_2
-                elif joystick.is_button_released(JoystickButton.B) and joystick.is_button_pressed(JoystickButton.R1):   # Kick, R1+B
-                    state_cmd.skill_cmd = FSMCommand.SKILL_3
-                elif joystick.is_button_released(JoystickButton.Y) and joystick.is_button_pressed(JoystickButton.L1):   # KungFu2, L1+Y
-                    state_cmd.skill_cmd = FSMCommand.SKILL_4
-                elif joystick.is_button_released(JoystickButton.A) and joystick.is_button_pressed(JoystickButton.L1):   # ASAP, L1+A
-                    state_cmd.skill_cmd = FSMCommand.SKILL_5
-                elif joystick.is_button_released(JoystickButton.B) and joystick.is_button_pressed(JoystickButton.L1):   # BeyondMimic, L1+B
-                    state_cmd.skill_cmd = FSMCommand.SKILL_6
-                elif hat_just_pressed(1, 0) and joystick.is_button_pressed(JoystickButton.R1):                          # Score, R1+D-pad RIGHT
-                    state_cmd.skill_cmd = FSMCommand.CMD_SCORE
-                elif hat_just_pressed(0, -1) and joystick.is_button_pressed(JoystickButton.L1):                         # FallGetUpMJ, L1+D-pad DOWN
-                    state_cmd.skill_cmd = FSMCommand.CMD_BEYONDMIMIC_MJ
-                elif hat_just_pressed(0, 1) and joystick.is_button_pressed(JoystickButton.L1):                          # StandUpMJ, L1+D-pad UP
-                    state_cmd.skill_cmd = FSMCommand.CMD_STANDUP_MJ
-                elif hat_just_pressed(1, 0) and joystick.is_button_pressed(JoystickButton.L1):                          # Pinocchio1.6MJ, L1+D-pad RIGHT
-                    state_cmd.skill_cmd = FSMCommand.CMD_PINOCCHIO_1_6_MJ
-                elif joystick.is_button_released(JoystickButton.A) and joystick.get_axis_value(5) > 0.5:               # AMP, R2+A
+                elif joystick.is_button_released(JoystickButton.A):                                                # AMP, A
                     state_cmd.skill_cmd = FSMCommand.CMD_AMP
-                elif hat_just_pressed(0, 1) and joystick.get_axis_value(5) > 0.5:                                      # AMP fast mode, R2+D-pad UP
-                    state_cmd.skill_cmd = FSMCommand.CMD_AMP_FAST
-                elif hat_just_pressed(0, -1) and joystick.get_axis_value(5) > 0.5:                                     # AMP slow mode, R2+D-pad DOWN
-                    state_cmd.skill_cmd = FSMCommand.CMD_AMP_SLOW
+                elif joystick.is_button_released(JoystickButton.R1):                                               # Score, R1
+                    state_cmd.skill_cmd = FSMCommand.CMD_SCORE
+                elif hat_just_pressed(0, -1):                                                                     # BeyondMimicMJ, D-pad DOWN
+                    state_cmd.skill_cmd = FSMCommand.CMD_BEYONDMIMIC_MJ
+                elif hat_just_pressed(0, 1):                                                                      # StandUpMJ, D-pad UP
+                    state_cmd.skill_cmd = FSMCommand.CMD_STANDUP_MJ
+                elif r2_just_pressed:                                                                             # Pinocchio1.6MJ, R2
+                    state_cmd.skill_cmd = FSMCommand.CMD_PINOCCHIO_1_6_MJ
 
                 prev_hat = hat
+                prev_r2_pressed = r2_pressed
                 state_cmd.vel_cmd[0] = -joystick.get_axis_value(1)
                 state_cmd.vel_cmd[1] = -joystick.get_axis_value(0)
                 state_cmd.vel_cmd[2] = -joystick.get_axis_value(3)

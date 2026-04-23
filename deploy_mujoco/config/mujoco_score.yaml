@@ -20,4 +20,4 @@ logging:
   enabled: true      # set true to record a score log
   log_dir: "logs"
   tag:     "score"
-  states:  ["SKILL_SCORE", "LOCOMODE", "SKILL_BEYONDMIMIC", "SKILL_BEYONDMIMIC_MJ", "SKILL_STANDUP_MJ"]  # FSM states to record
+  states:  ["SKILL_SCORE", "LOCOMODE", "SKILL_BEYONDMIMIC", "SKILL_BEYONDMIMIC_MJ", "SKILL_STANDUP_MJ", "SKILL_PINOCCHIO_1_6_MJ", "SKILL_AMP"]  # FSM states to record

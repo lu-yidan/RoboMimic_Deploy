@@ -8,15 +8,7 @@ class FSMStateName(Enum):
     INVALID = -1
     PASSIVE = 1
     FIXEDPOSE = 2
-    SKILL_COOLDOWN = 3
     LOCOMODE = 4
-    SKILL_CAST = 5
-    SKILL_KungFu = 6
-    SKILL_Dance = 7
-    SKILL_KICK = 8
-    SKILL_KungFu2 = 9
-    SKILL_ASAP = 10
-    STANDMODE = 11
     SKILL_BEYONDMIMIC = 12
     SKILL_BEYONDMIMIC_MJ = 13
     SKILL_SCORE = 14
@@ -30,19 +22,11 @@ class FSMCommand(Enum):
     POS_RESET = 1
     LOCO = 2
     PASSIVE = 4
-    SKILL_1 = 5
-    SKILL_2 = 6
-    SKILL_3 = 7
-    SKILL_4 = 8
-    SKILL_5 = 10
-    STAND_UP = 11
     SKILL_6 = 12
     CMD_BEYONDMIMIC_MJ = 13
     CMD_SCORE = 14
     CMD_STANDUP_MJ = 15
     CMD_AMP = 16
-    CMD_AMP_FAST = 17
-    CMD_AMP_SLOW = 18
     CMD_PINOCCHIO_1_6_MJ = 19
 
 

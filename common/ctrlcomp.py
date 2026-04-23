@@ -39,7 +39,6 @@ class StateAndCmd:
         self.vel_cmd = np.zeros(3)
         self.skill_cmd = FSMCommand.INVALID
         # skill change cmd
-        # self.skill_set = FSMCommand.SKILL_1
 
 class PolicyOutput:
     """Shared output buffer written by the active FSM policy each control step.

@@ -120,7 +120,7 @@ python deploy_mujoco/deploy_mujoco.py
 6. Use `--config-name mujoco_score` when entering **Score** so the simulation loads the ball scene.
 7. **BeyondMimicMJ / StandUpMJ / Pinocchio1.6MJ** can switch directly between each other with the same single-button bindings.
 8. Press **L1** at any time for damping protection, or **Start** to return to **FixedPose**.
-9. **BeyondMimic** is still present in the repository, but it is intentionally left without a default controller shortcut. Legacy policies such as Dance / Kick / KungFu / ASAP / HOST are removed from the default deploy switching path.
+9. **BeyondMimic** is still present in the repository, but it is intentionally left without a default controller shortcut. Unused legacy policies such as Dance / Kick / KungFu / ASAP / HOST have been deleted from the repository.
 
 ---
 ## 4. Real Robot Operation Instructions
@@ -178,7 +178,7 @@ The default deploy entry points are now limited to `LocoMode / AMP / Score / Bey
 - **Use Human Supervision**: For first-time real-robot validation, keep the robot suspended and maintain manual supervision throughout
 
 ### 4. Other Movement Advisories
-Other historical policy implementations may still exist in the repository, but they are no longer bound to the default deploy shortcuts and are not recommended for direct real-robot use.
+Only the retained deploy policies remain in the repository. Other historical policy implementations were removed to keep the deployment surface minimal.
 
 ### 5. Strong Recommendation
 **Always** master operations in simulation before attempting physical robot deployment.

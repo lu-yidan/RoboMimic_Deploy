@@ -45,6 +45,8 @@ class StateAndCmd:
         self.depth_image = None
         # PHP parkour: high/low speed mode toggle (default high, matches PHP JS).
         self.php_high_speed = True
+        # PHP parkour: browser demo auto-holds W near terrain boxes.
+        self.php_auto_forward = False
 
 class PolicyOutput:
     """Shared output buffer written by the active FSM policy each control step.

@@ -14,6 +14,7 @@ import json
 import os
 import time
 from collections import deque
+from datetime import datetime
 
 import numpy as np
 import onnxruntime as ort
@@ -80,6 +81,41 @@ def _bilinear_resize(img, out_h, out_w):
     return (v0 * (1 - wy) + v1 * wy).astype(np.float32)
 
 
+def _depth_summary(normalized_img, clip_min, clip_max):
+    """Summarize a normalized depth image for trace/debugging.
+
+    Includes band means so a vertical flip is visible in the trace, unlike
+    min/max/mean which are invariant to row reversal.
+    """
+    if normalized_img is None:
+        return None
+    img = np.asarray(normalized_img, dtype=np.float32)
+    if img.ndim != 2:
+        return None
+    h, w = img.shape
+    band_h = max(1, min(4, h // 4))
+    band_w = max(1, min(4, w // 4))
+    center_h0 = max(0, h // 2 - band_h // 2)
+    center_w0 = max(0, w // 2 - band_w // 2)
+    center = img[center_h0:center_h0 + band_h, center_w0:center_w0 + band_w]
+    scale = float(clip_max - clip_min)
+
+    def _denorm(v):
+        return float((float(v) + 0.5) * scale + clip_min)
+
+    return {
+        "shape": [int(h), int(w)],
+        "min": _denorm(img.min()),
+        "max": _denorm(img.max()),
+        "mean": _denorm(img.mean()),
+        "top_mean": _denorm(img[:band_h, :].mean()),
+        "bottom_mean": _denorm(img[-band_h:, :].mean()),
+        "left_mean": _denorm(img[:, :band_w].mean()),
+        "right_mean": _denorm(img[:, -band_w:].mean()),
+        "center_mean": _denorm(center.mean()),
+    }
+
+
 # -----------------------------------------------------------------------------
 # main class
 # -----------------------------------------------------------------------------
@@ -99,20 +135,32 @@ class PHPParkour(FSMState):
         self.control_dt = float(cfg.get("control_dt", 0.02))
         self.depth_cfg = cfg["depth"]
         self.depth_pre_cfg = cfg["depth_pre"]
+        self.depth_vertical_flip_input = bool(
+            self.depth_pre_cfg.get("vertical_flip_input", False))
         self.cmd_cfg = cfg.get("command", {})
-        self.stick_deadzone = float(self.cmd_cfg.get("stick_deadzone", 0.30))
+        self.auto_forward_cfg = cfg.get("auto_forward", {}) or {}
+        self.stick_deadzone_enter = float(
+            self.cmd_cfg.get("stick_deadzone_enter",
+                             self.cmd_cfg.get("stick_deadzone", 0.30)))
+        self.stick_deadzone_exit = float(
+            self.cmd_cfg.get("stick_deadzone_exit", 0.20))
+        if self.stick_deadzone_exit > self.stick_deadzone_enter:
+            self.stick_deadzone_exit = self.stick_deadzone_enter
         self.side_from_right_stick = bool(
             self.cmd_cfg.get("side_from_right_stick", False))
         self.trace_cfg = cfg.get("trace", {}) or {}
         self.trace_enabled = bool(self.trace_cfg.get("enabled", False))
         self.trace_path = str(self.trace_cfg.get(
             "path", "/tmp/php_parkour_trace.jsonl"))
+        self.trace_timestamped = bool(
+            self.trace_cfg.get("timestamped", True))
         # Resolve relative paths against the deploy project root so that hydra's
         # per-run cwd change doesn't scatter trace files into output/ dirs.
         if self.trace_path and not os.path.isabs(self.trace_path):
             self.trace_path = os.path.join(str(PROJECT_ROOT), self.trace_path)
         self._trace_fp = None
         self._trace_tick = 0
+        self._active_trace_path = None
 
         # --- ONNX sessions ---------------------------------------------------
         model_dir = os.path.join(here, "model")
@@ -164,6 +212,13 @@ class PHPParkour(FSMState):
         self.latest_target = self.default_joint_pos.copy()
         self.depth_latency = int(self.depth_pre_cfg.get("latency_steps", 7))
         self.depth_queue = deque(maxlen=self.depth_latency + 1)
+        # Browser trace logs stats from the cropped+resized depth input that is
+        # fed into the backbone (before the optional vertical flip), so keep the
+        # exact same intermediate around for cross-environment diffs.
+        self._last_processed_depth = None
+        self._last_processed_depth_size = None
+        self._last_backbone_input_depth = None
+        self._last_backbone_input_size = None
 
         # Model binding (populated by bind_model() via deploy loop).
         self.joint_info = None  # list of dicts per policy joint
@@ -181,6 +236,10 @@ class PHPParkour(FSMState):
         # Debug: print on cmd/speed change only so the log stays readable.
         self._last_cmd_idx = -1
         self._last_high_speed = None
+        self._last_auto_forward = None
+        self._fwd_active = False
+        self._left_active = False
+        self._right_active = False
         self._cmd_label = {0: "IDLE", 1: "W", 2: "W+A", 3: "A", 4: "W+D", 5: "D",
                            6: "W(HI)", 7: "W+A(HI)", 8: "A(HI)", 9: "W+D(HI)",
                            10: "D(HI)"}
@@ -278,6 +337,10 @@ class PHPParkour(FSMState):
         self.prev_action = np.zeros(n, dtype=np.float32)
         self.latest_target = self.default_joint_pos.copy()
         self._failed = False
+        self._last_processed_depth = None
+        self._last_processed_depth_size = None
+        self._last_backbone_input_depth = None
+        self._last_backbone_input_size = None
         # Precompute reordered (actuator-index) kp/kd that the outer 500 Hz
         # PD loop will use. Target is emitted fresh each policy tick.
         num = self.state_cmd.num_joints
@@ -294,23 +357,34 @@ class PHPParkour(FSMState):
         # Reset edge-trigger so the first cmd is logged immediately.
         self._last_cmd_idx = -1
         self._last_high_speed = None
+        self._last_auto_forward = None
+        self._fwd_active = False
+        self._left_active = False
+        self._right_active = False
         print(f"[PHP] enter  speed={'HIGH' if self.state_cmd.php_high_speed else 'LOW'}")
-        # Trace file: overwrite each enter() so a fresh session = fresh file.
         if self._trace_fp is not None:
             try: self._trace_fp.close()
             except Exception: pass
             self._trace_fp = None
         if self.trace_enabled:
             try:
-                parent = os.path.dirname(self.trace_path)
+                trace_path = self.trace_path
+                if self.trace_timestamped:
+                    stem, ext = os.path.splitext(trace_path)
+                    if not ext:
+                        ext = ".jsonl"
+                    ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+                    trace_path = f"{stem}_{ts}{ext}"
+                self._active_trace_path = trace_path
+                parent = os.path.dirname(trace_path)
                 if parent:
                     os.makedirs(parent, exist_ok=True)
-                self._trace_fp = open(self.trace_path, "w")
+                self._trace_fp = open(trace_path, "w")
                 self._trace_tick = 0
                 self._trace_t0 = time.time()
-                print(f"[PHP] trace -> {self.trace_path}")
+                print(f"[PHP] trace -> {trace_path}")
             except Exception as e:
-                print(f"[PHP] trace disabled: cannot open {self.trace_path}: {e}")
+                print(f"[PHP] trace disabled: cannot open {trace_path}: {e}")
                 self._trace_fp = None
 
     def run(self):
@@ -338,7 +412,9 @@ class PHPParkour(FSMState):
             try: self._trace_fp.close()
             except Exception: pass
             self._trace_fp = None
-            print(f"[PHP] trace closed ({self._trace_tick} ticks)")
+            print(f"[PHP] trace closed ({self._trace_tick} ticks) -> "
+                  f"{self._active_trace_path}")
+            self._active_trace_path = None
 
     def checkChange(self):
         cmd = self.state_cmd.skill_cmd
@@ -363,10 +439,15 @@ class PHPParkour(FSMState):
         latent = None
         if depth_img is not None:
             latent = self._run_depth_backbone(depth_img)
-        elif not self._warn_no_depth:
-            print("[PHP] no depth image available; feeding zeros to policy "
-                  "(deploy_mujoco did not set state_cmd.depth_image)")
-            self._warn_no_depth = True
+        else:
+            self._last_processed_depth = None
+            self._last_processed_depth_size = None
+            self._last_backbone_input_depth = None
+            self._last_backbone_input_size = None
+            if not self._warn_no_depth:
+                print("[PHP] no depth image available; feeding zeros to policy "
+                      "(deploy_mujoco did not set state_cmd.depth_image)")
+                self._warn_no_depth = True
 
         if latent is None or latent.shape[-1] != 32:
             latent = np.zeros(32, dtype=np.float32)
@@ -391,7 +472,7 @@ class PHPParkour(FSMState):
         # --- trace (before updating prev_action so "prev_action" below is
         #     what was actually fed to the policy this tick) -----------------
         if self._trace_fp is not None:
-            self._trace_write(obs, delayed, depth_img, action, cmd15)
+            self._trace_write(obs, delayed, action, cmd15)
 
         self.prev_action = action.copy()
         self.latest_target = (self.default_joint_pos
@@ -400,7 +481,7 @@ class PHPParkour(FSMState):
         self._emit_target()
 
     # ------------------------------------------------------------------
-    def _trace_write(self, obs, depth_latent, depth_img, action, cmd15):
+    def _trace_write(self, obs, depth_latent, action, cmd15):
         """Dump one JSONL line so we can diff PHP behaviour against the
         browser frame-by-frame. Fields are chosen to cover every input to
         the policy plus the output, so any divergence can be localized."""
@@ -420,8 +501,11 @@ class PHPParkour(FSMState):
                     k = n  # joint_pos / joint_vel / actions
                 slots[name] = obs[off:off + k].tolist()
                 off += k
-            dimg = (np.asarray(depth_img, dtype=np.float32)
-                    if depth_img is not None else None)
+            dimg = self._last_processed_depth
+            lo = float(self.depth_pre_cfg["clip_min"])
+            hi = float(self.depth_pre_cfg["clip_max"])
+            depth_stats = _depth_summary(dimg, lo, hi)
+            backbone_stats = _depth_summary(self._last_backbone_input_depth, lo, hi)
             rec = {
                 "tick": int(self._trace_tick),
                 "t_wall": float(time.time() - self._trace_t0),
@@ -432,11 +516,9 @@ class PHPParkour(FSMState):
                 "cmd15":     cmd15.tolist(),
                 "depth_latent": (depth_latent.tolist()
                                  if depth_latent is not None else None),
-                "depth_stats": ({"shape": list(dimg.shape),
-                                 "min": float(dimg.min()),
-                                 "max": float(dimg.max()),
-                                 "mean": float(dimg.mean())}
-                                if dimg is not None else None),
+                "depth_input_vflip": bool(self.depth_vertical_flip_input),
+                "depth_stats": depth_stats,
+                "depth_backbone_input_stats": backbone_stats,
                 "action":    action.tolist(),
             }
             self._trace_fp.write(json.dumps(rec, separators=(",", ":")) + "\n")
@@ -486,10 +568,8 @@ class PHPParkour(FSMState):
             side = float(self.state_cmd.vel_cmd[2])
         else:
             side = float(self.state_cmd.vel_cmd[1])
-        dz = self.stick_deadzone
-        is_w = fwd > dz
-        is_a = side > dz
-        is_d = side < -dz
+        auto_fwd = bool(getattr(self.state_cmd, "php_auto_forward", False))
+        is_w, is_a, is_d = self._latched_command_bits(fwd, side, auto_fwd)
         if is_w and is_a:
             base = 2
         elif is_w and is_d:
@@ -511,14 +591,51 @@ class PHPParkour(FSMState):
         # HIGH/LOW flag changes. Keeps the log readable while still letting
         # the user verify exactly what the policy is being commanded to do.
         hi = bool(self.state_cmd.php_high_speed)
-        if idx != self._last_cmd_idx or hi != self._last_high_speed:
+        if (idx != self._last_cmd_idx or hi != self._last_high_speed or
+                auto_fwd != self._last_auto_forward):
             label = self._cmd_label.get(idx, f"idx={idx}")
             print(f"[PHP] cmd={label}  one-hot={idx}  "
                   f"speed={'HIGH' if hi else 'LOW'}  "
-                  f"stick=(fwd={fwd:+.2f}, side={side:+.2f})")
+                  f"stick=(fwd={fwd:+.2f}, side={side:+.2f})  "
+                  f"auto_w={'ON' if auto_fwd else 'OFF'}")
             self._last_cmd_idx = idx
             self._last_high_speed = hi
+            self._last_auto_forward = auto_fwd
         return arr
+
+    def _latched_command_bits(self, fwd, side, auto_fwd):
+        """Apply analog-stick hysteresis before mapping to discrete commands."""
+        enter = self.stick_deadzone_enter
+        exit_ = self.stick_deadzone_exit
+
+        if auto_fwd:
+            fwd_active = True
+        elif self._fwd_active:
+            fwd_active = fwd > exit_
+        else:
+            fwd_active = fwd > enter
+
+        if self._left_active:
+            left_active = side > exit_
+        else:
+            left_active = side > enter
+
+        if self._right_active:
+            right_active = side < -exit_
+        else:
+            right_active = side < -enter
+
+        # If the stick overshoots directly across zero, keep only the stronger side.
+        if left_active and right_active:
+            if side >= 0.0:
+                right_active = False
+            else:
+                left_active = False
+
+        self._fwd_active = fwd_active
+        self._left_active = left_active
+        self._right_active = right_active
+        return fwd_active, left_active, right_active
 
     # ------------------------------------------------------------------
     def _build_observation(self, cmd15):
@@ -604,10 +721,19 @@ class PHPParkour(FSMState):
         lo = float(self.depth_pre_cfg["clip_min"])
         hi = float(self.depth_pre_cfg["clip_max"])
         normalized = (resized - lo) / (hi - lo) - 0.5
-        # Unlike the browser, mujoco.Renderer.render() already applies
-        # np.flipud internally (row 0 = top of view). Skipping the vflip
-        # the browser does on its OpenGL-ordered buffer.
-        tensor = normalized[np.newaxis, :, :].astype(np.float32, copy=True)
+        self._last_processed_depth = normalized.astype(np.float32, copy=True)
+        self._last_processed_depth_size = (out_h, out_w)
+        tensor_src = self._last_processed_depth
+        # Browser PHP flips the tensor because its WebGL depth buffer is read
+        # back bottom-up. MuJoCo's native renderer already returns row 0 = top,
+        # so keep the default unflipped and make the flip explicit/configurable
+        # for calibration work.
+        if self.depth_vertical_flip_input:
+            tensor_src = np.flipud(tensor_src)
+        self._last_backbone_input_depth = np.asarray(
+            tensor_src, dtype=np.float32).copy()
+        self._last_backbone_input_size = (out_h, out_w)
+        tensor = tensor_src[np.newaxis, :, :].astype(np.float32, copy=True)
 
         out = self.depth_session.run([self.depth_output_name],
                                      {self.depth_input_name: tensor})[0]

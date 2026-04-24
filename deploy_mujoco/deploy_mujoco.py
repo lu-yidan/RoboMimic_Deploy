@@ -6,11 +6,13 @@ from common.path_config import PROJECT_ROOT
 
 import copy
 import time
+from collections import deque
 import mujoco.viewer
 import mujoco
 import numpy as np
 import yaml
 import os
+from scipy.spatial.transform import Rotation
 from common.ctrlcomp import *
 from FSM.FSM import *
 from common.utils import get_gravity_orientation, FSMStateName
@@ -85,6 +87,41 @@ def pd_control(target_q, q, kp, target_dq, dq, kd):
     return (target_q - q) * kp + (target_dq - dq) * kd
 
 
+def _rot_to_wxyz(rot: Rotation):
+    q_xyzw = rot.as_quat()
+    return np.array([q_xyzw[3], q_xyzw[0], q_xyzw[1], q_xyzw[2]],
+                    dtype=np.float64)
+
+
+def _expected_php_camera_quat_wxyz(depth_cfg):
+    """Rebuild the source repo's depth-camera pose composition.
+
+    Source browser code builds:
+        qOffsetMj = Rz(yaw) * Ry(pitch) * Rx(roll)
+        qBaseMj   = Rz(base_yaw)
+        qSensorMj = qOffsetMj * qBaseMj
+
+    MuJoCo cameras look down their local -Z axis, so the XML camera stores
+    qSensorMj * Rx(+90 deg) to match the browser camera forward direction.
+    """
+    qx_roll = Rotation.from_euler("x", float(depth_cfg["roll_deg"]), degrees=True)
+    qy_pitch = Rotation.from_euler("y", float(depth_cfg["pitch_deg"]), degrees=True)
+    qz_yaw = Rotation.from_euler("z", float(depth_cfg["yaw_deg"]), degrees=True)
+    qz_base = Rotation.from_euler("z", float(depth_cfg["base_yaw_deg"]), degrees=True)
+    q_cam_fix = Rotation.from_euler("x", 90.0, degrees=True)
+    q_sensor = qz_yaw * qy_pitch * qx_roll * qz_base
+    return _rot_to_wxyz(q_sensor * q_cam_fix)
+
+
+def _quat_angle_error_deg(q_a_wxyz, q_b_wxyz):
+    qa = np.asarray(q_a_wxyz, dtype=np.float64)
+    qb = np.asarray(q_b_wxyz, dtype=np.float64)
+    qa /= max(np.linalg.norm(qa), 1e-12)
+    qb /= max(np.linalg.norm(qb), 1e-12)
+    dot = float(np.clip(abs(np.dot(qa, qb)), -1.0, 1.0))
+    return np.degrees(2.0 * np.arccos(dot))
+
+
 def _reset_ball_state(m, d, ball_body_id, pos_w, vel_w, quat_w=None, ang_vel_w=None):
     """Reset the free-joint ball pose/velocity in-place."""
     if ball_body_id < 0 or m.body_jntnum[ball_body_id] <= 0:
@@ -147,10 +184,52 @@ def main(cfg: DictConfig):
     state_cmd = StateAndCmd(num_joints)
     policy_output = PolicyOutput(num_joints)
     FSM_controller = FSM(state_cmd, policy_output)
+    php_initial_qpos = None
+    php_initial_qvel = None
 
     # PHP parkour: bind the MjModel so the policy can build its joint→actuator map.
     if hasattr(FSM_controller, "php_parkour_policy"):
         FSM_controller.php_parkour_policy.bind_model(m)
+        def _reset_php_robot_state():
+            """Reset robot to the browser-equivalent PHP initial state."""
+            nonlocal php_initial_qpos, php_initial_qvel
+            php = FSM_controller.php_parkour_policy
+            if len(php.default_joint_pos) != num_joints:
+                print("[PHP] skipped browser default-pose init: joint count mismatch")
+                return False
+            if php_initial_qpos is None or php_initial_qvel is None:
+                mujoco.mj_resetData(m, d)
+                seeded = 0
+                for i, info in enumerate(php.joint_info or []):
+                    qadr = info.get("qposadr", -1)
+                    if qadr is None or qadr < 0:
+                        continue
+                    d.qpos[qadr] = float(php.default_joint_pos[i])
+                    seeded += 1
+                d.qvel[:] = 0.0
+                d.ctrl[:] = 0.0
+                mujoco.mj_forward(m, d)
+                php_initial_qpos = d.qpos.copy()
+                php_initial_qvel = d.qvel.copy()
+                print(
+                    "[PHP] initialized MuJoCo terrain scene from browser "
+                    f"default pose ({seeded}/{len(php.default_joint_pos)} joints)"
+                )
+            else:
+                d.qpos[:] = php_initial_qpos
+                d.qvel[:] = php_initial_qvel
+                d.ctrl[:] = 0.0
+                if getattr(d, "act", None) is not None and len(d.act) > 0:
+                    d.act[:] = 0.0
+                mujoco.mj_forward(m, d)
+                print("[PHP] reset robot to browser-equivalent PHP initial state")
+            return True
+
+        # Seed and cache the browser-equivalent initial state once at startup.
+        if cfg.xml_path == "g1_description/php_parkour/g1_with_terrain.xml":
+            _reset_php_robot_state()
+    else:
+        _reset_php_robot_state = None
 
     # PHP parkour: offscreen depth renderer for the chin-mounted camera.
     # Created lazily on first request to avoid GL init when PHP is never used.
@@ -164,10 +243,39 @@ def main(cfg: DictConfig):
             return
         php = FSM_controller.php_parkour_policy
         dcfg = php.depth_cfg
+        delay_steps = int(dcfg.get("frame_delay_steps", 0))
         cam_id = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_CAMERA, "php_depth")
         if cam_id < 0:
             print("[PHP] XML <camera name='php_depth'> not found; depth disabled")
             return
+        cam_body_id = int(m.cam_bodyid[cam_id])
+        cam_body_name = (mujoco.mj_id2name(m, mujoco.mjtObj.mjOBJ_BODY, cam_body_id)
+                         if cam_body_id >= 0 else None)
+        xml_pos = np.asarray(m.cam_pos[cam_id], dtype=np.float64)
+        xml_quat = np.asarray(m.cam_quat[cam_id], dtype=np.float64)
+        xml_fovy = float(m.cam_fovy[cam_id])
+        expected_pos = np.asarray(dcfg["offset_xyz"], dtype=np.float64)
+        expected_quat = _expected_php_camera_quat_wxyz(dcfg)
+        expected_fovy = float(dcfg["horizontal_fov_deg"])
+        pos_err = float(np.max(np.abs(xml_pos - expected_pos)))
+        quat_err_deg = _quat_angle_error_deg(xml_quat, expected_quat)
+        fovy_err = abs(xml_fovy - expected_fovy)
+        print(
+            "[PHP camera] "
+            f"body={cam_body_name or cam_body_id} "
+            f"pos_err={pos_err:.6f}m "
+            f"quat_err={quat_err_deg:.3f}deg "
+            f"fovy_err={fovy_err:.3f}deg "
+            f"vflip_input={'ON' if php.depth_vertical_flip_input else 'OFF'} "
+            f"frame_delay={delay_steps}"
+        )
+        if cam_body_name not in ("torso_link",):
+            print(f"[PHP camera] warning: php_depth is attached to {cam_body_name}, expected torso_link")
+        if pos_err > 1e-4 or quat_err_deg > 0.5 or fovy_err > 1e-3:
+            print(
+                "[PHP camera] warning: XML php_depth camera diverges from the "
+                "browser/source pose encoded in PHPParkour.yaml"
+            )
         try:
             renderer = mujoco.Renderer(m, int(dcfg["height"]), int(dcfg["width"]))
         except Exception as e:
@@ -176,6 +284,8 @@ def main(cfg: DictConfig):
             return
         php_depth_ctx["renderer"] = renderer
         php_depth_ctx["fixed_cam_id"] = int(cam_id)
+        php_depth_ctx["delay_steps"] = delay_steps
+        php_depth_ctx["frame_queue"] = deque(maxlen=delay_steps + 1)
 
     def _php_render_depth():
         if php_depth_ctx["renderer"] is None:
@@ -203,7 +313,13 @@ def main(cfg: DictConfig):
             php_depth_ctx["renderer"].enable_depth_rendering()
             depth = php_depth_ctx["renderer"].render()
             php_depth_ctx["renderer"].disable_depth_rendering()
-            state_cmd.depth_image = np.clip(depth, near, far).astype(np.float32)
+            depth_now = np.clip(depth, near, far).astype(np.float32)
+            frame_queue = php_depth_ctx.get("frame_queue", None)
+            if frame_queue is None:
+                state_cmd.depth_image = depth_now
+            else:
+                frame_queue.append(depth_now.copy())
+                state_cmd.depth_image = frame_queue[0].copy()
         except Exception as e:
             print(f"[PHP] depth render failed ({e}); feeding None this tick")
             state_cmd.depth_image = None
@@ -311,7 +427,14 @@ def main(cfg: DictConfig):
                 elif hat_just_pressed(0, 1):                                                                      # StandUpMJ, D-pad UP
                     state_cmd.skill_cmd = FSMCommand.CMD_STANDUP_MJ
                 elif hat_just_pressed(-1, 0):                                                                     # PHP Parkour, D-pad LEFT
-                    state_cmd.skill_cmd = FSMCommand.CMD_PHP_PARKOUR
+                    if _reset_php_robot_state is not None:
+                        _reset_php_robot_state()
+                    if (hasattr(FSM_controller, "php_parkour_policy") and
+                            FSM_controller.cur_policy is
+                            FSM_controller.php_parkour_policy):
+                        FSM_controller.php_parkour_policy.enter()
+                    else:
+                        state_cmd.skill_cmd = FSMCommand.CMD_PHP_PARKOUR
                 elif r2_just_pressed:                                                                             # Pinocchio1.6MJ, R2
                     state_cmd.skill_cmd = FSMCommand.CMD_PINOCCHIO_1_6_MJ
 
@@ -323,25 +446,17 @@ def main(cfg: DictConfig):
                 
                 step_start = time.time()
 
-                if getattr(policy_output, "direct_torque", False):
-                    # PHP parkour (and any other direct-torque policy) writes
-                    # actuator-indexed torques straight into policy_output.actions.
-                    d.ctrl[:] = np.clip(policy_output_action, -tau_limit, tau_limit)
-                else:
-                    tau = pd_control(policy_output_action, d.qpos[7:7+num_joints], kps, np.zeros_like(kps), d.qvel[6:6+num_joints], kds)
-                    tau = np.clip(tau, -tau_limit, tau_limit)
-                    d.ctrl[:] = tau
-                mujoco.mj_step(m, d)
-                FSM_controller.sim_counter += 1
+                # Match the browser PHP loop: on each control tick, build the
+                # current observation / depth, run the policy, then apply the
+                # fresh output to the upcoming physics step.
                 if FSM_controller.sim_counter % control_decimation == 0:
-                    
                     qj = d.qpos[7:7+num_joints]
                     dqj = d.qvel[6:6+num_joints]
                     quat = d.qpos[3:7]
-                    
-                    omega = d.qvel[3:6] 
+
+                    omega = d.qvel[3:6]
                     gravity_orientation = get_gravity_orientation(quat)
-                    
+
                     state_cmd.q = qj.copy()
                     state_cmd.dq = dqj.copy()
                     state_cmd.gravity_ori = gravity_orientation.copy()
@@ -360,9 +475,25 @@ def main(cfg: DictConfig):
                     if (hasattr(FSM_controller, "php_parkour_policy") and
                             FSM_controller.cur_policy is
                             FSM_controller.php_parkour_policy):
+                        php = FSM_controller.php_parkour_policy
+                        af_cfg = php.auto_forward_cfg
+                        if bool(af_cfg.get("enabled", False)):
+                            pelvis_x = float(state_cmd.pelvis_pos_w[0])
+                            before = float(af_cfg.get("before_m", 1.5))
+                            after = float(af_cfg.get("after_m", 1.0))
+                            centers = af_cfg.get("box_centers_x", [])
+                            state_cmd.php_auto_forward = any(
+                                (float(cx) - before) <= pelvis_x <= (float(cx) + after)
+                                for cx in centers
+                            )
+                        else:
+                            state_cmd.php_auto_forward = False
                         _php_render_depth()
                     else:
                         state_cmd.depth_image = None
+                        state_cmd.php_auto_forward = False
+                        if "frame_queue" in php_depth_ctx:
+                            php_depth_ctx["frame_queue"].clear()
 
                     # Ball state (only valid when scene_with_ball.xml is loaded).
                     # Throttled to ball_sensor_hz to simulate real-sensor update rate.
@@ -383,6 +514,17 @@ def main(cfg: DictConfig):
                         t = log_step * mj_per_step_duration
                         logger.log(log_step, t, state_cmd, policy_output)
                         log_step += 1
+
+                if getattr(policy_output, "direct_torque", False):
+                    # PHP parkour (and any other direct-torque policy) writes
+                    # actuator-indexed torques straight into policy_output.actions.
+                    d.ctrl[:] = np.clip(policy_output_action, -tau_limit, tau_limit)
+                else:
+                    tau = pd_control(policy_output_action, d.qpos[7:7+num_joints], kps, np.zeros_like(kps), d.qvel[6:6+num_joints], kds)
+                    tau = np.clip(tau, -tau_limit, tau_limit)
+                    d.ctrl[:] = tau
+                mujoco.mj_step(m, d)
+                FSM_controller.sim_counter += 1
 
                 # ---- Ghost visualization ----
                 if ghost_flags[0] and policy_output.ghost_qpos is not None:

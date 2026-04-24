@@ -17,6 +17,8 @@ depth:
   horizontal_fov_deg: 58.4
   near: 0.3
   far: 3.0
+  # No extra frame delay in the native MuJoCo port unless explicitly testing it.
+  frame_delay_steps: 0
   # Anchor body (first match wins). All fall back to pelvis.
   anchor_candidates: ["torso_link", "waist_roll_link", "pelvis"]
   # Mount offset in anchor-body-local MuJoCo frame (meters)
@@ -34,24 +36,39 @@ depth_pre:
   resize: { width: 87, height: 58 }
   clip_min: 0.3
   clip_max: 3.0
+  # Browser PHP flips the cropped+resized tensor before the depth backbone
+  # because WebGL readback is bottom-up. MuJoCo's Renderer already returns a
+  # top-down image, so the native port keeps this off for browser parity.
+  vertical_flip_input: false
   # Policy uses a 7-step delay queue on the 32-dim depth latent.
   latency_steps: 7
 
 # Keyboard → joystick one-hot mapping
 # Mirrors PHP's W/A/D + high/low speed. Dead zone on stick.
 command:
+  # Enter/exit hysteresis for analog-stick -> discrete W/A/D commands.
   stick_deadzone: 0.30
+  stick_deadzone_exit: 0.20
   # stick axes are provided via state_cmd.vel_cmd already
   # (deploy_mujoco writes vel_cmd[0] = forward, vel_cmd[1] = left,
   #  vel_cmd[2] = right-stick X used as yaw elsewhere)
   default_high_speed: true
-  # If true: W (forward) from LEFT stick Y, A/D from RIGHT stick X.
-  # If false (browser parity): W + A/D both from LEFT stick.
-  side_from_right_stick: true
+  # Browser parity: W + A/D are derived from the LEFT stick only.
+  # Setting this true rebinds A/D to the right stick X axis.
+  side_from_right_stick: false
+
+# Browser demo keeps W pressed when the robot is close to the terrain boxes.
+# This avoids analog-stick chatter around the forward deadzone while stepping.
+auto_forward:
+  enabled: false
+  box_centers_x: [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60]
+  before_m: 1.5
+  after_m: 1.0
 
 # Diagnostic: dump one JSONL line per 50 Hz tick. Paired with a matching
 # browser-side dump, letting us diff obs/depth/action frame-by-frame to find
 # where PHP behavior diverges between the two environments.
 trace:
   enabled: true                       # flip to true to capture a session
-  path: "logs/php_parkour_trace_mujoco.jsonl" # relative → PROJECT_ROOT; overwritten on each enter()
+  path: "logs/php_parkour_trace_mujoco.jsonl" # relative → PROJECT_ROOT
+  timestamped: true                   # add YYYYMMDD_HHMMSS_us on each enter()

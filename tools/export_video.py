@@ -10,7 +10,7 @@ Examples:
       --width 640 --height 360 --frames 200
 
     # Full export at 1280×720
-    conda run -n robomimic python tools/export_video.py logs/20260329_221804_score.bin \
+    conda run -n robomimic python tools/export_video.py logs/20260424_195323_score.bin \
       --width 1280 --height 720
 logs/20260406_220340_score.bin
 Options:

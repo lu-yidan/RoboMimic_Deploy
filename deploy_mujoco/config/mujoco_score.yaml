@@ -4,9 +4,10 @@ control_decimation: 10
 ball_sensor_hz: 10   # simulated ball sensor update rate (10 Hz = every 5 control steps)
 ghost_enabled: true
 ghost_rgba: [0.2, 0.9, 0.4, 0.2]
-# Gamepad shortcut: release R3 to reset the ball to this state.
+# Gamepad shortcut: release X while holding R1 to reset the ball to this state (deploy_mujoco).
 ball_reset_pos_w: [3.0, 0.0, 0.115]
-ball_reset_vel_w: [-2.5, 0.0, 0.0]
+# World-frame linear velocity on R1+X ball reset (deploy_mujoco: release X while holding R1).
+ball_reset_vel_w: [-5.0, 0.0, 0.0]
 ball_reset_quat_w: [1.0, 0.0, 0.0, 0.0]
 ball_reset_ang_vel_w: [0.0, 0.0, 0.0]
 tau_limit: [88, 139, 88, 139, 50, 50,

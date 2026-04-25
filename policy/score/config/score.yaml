@@ -1,8 +1,9 @@
-onnx_path:   "policy-obs-33.onnx"
 # onnx_path:   "policy-obs-aic.onnx"
+onnx_path:   "policy-obs-a2c.onnx"
 # onnx_path:   "policy-obs-325-uz8.onnx"
-# onnx_path:   "policy-stop.onnx"
 # onnx_path:   "policy-obs-410-vvj.onnx"
+# onnx_path:   "policy-stop.onnx"
+# onnx_path:   "policy-obs-46-303.onnx"
 motion_path: "score_motion.npz"
 
 control_dt:      0.02     # 50 Hz control (sim: 2ms * 10 decimation)
@@ -11,7 +12,7 @@ clip_actions:    10.0     # PPO actions rarely exceed ±3; prevents runaway dive
 
 # false = simulation (ball_pos from MuJoCo world frame)
 # true  = real robot (ball_pos from DDS, already in pelvis body frame)
-use_body_frame_ball: true
+use_body_frame_ball: false
 
 # When ball_valid is false and sensor ball is ~zero: use this pelvis-frame default for
 # soccer_pos_b history, ball_as_anchor_pos blend, and ball_facing_anchor_ori (not raw [0,0,0]).
@@ -45,7 +46,7 @@ ball_facing_anchor_ori: false
 # Target source:
 # - fixed:    use `target_pos`
 # - apriltag: use rt/target_state (AprilTag / target detector) on real robot
-target_source: apriltag
+target_source: fixed
 
 # If target_source=apriltag and the tag is lost:
 # - true:  keep the last seen target direction in a yaw/world cache and
@@ -60,16 +61,18 @@ target_use_fixed_fallback: true
 # Fixed target:
 # - Simulation: world-frame target position [x, y, z]
 # - Real robot: entry时刻记录的 pelvis/body-frame target offset
-target_pos: [5.0, 0.0, 0.0]
+target_pos: [5.0, 0.0, -0.5]
 
 # Ball-trigger gate: hold at frame 0 until the ball enters the circle.
 # When `trigger_play_end_frame` is set, on trigger play inclusive segment
 # [trigger_frame, trigger_play_end_frame], then return to frame 0 and wait
 # (ball must leave the trigger zone once before the next trigger).
 # If `trigger_play_end_frame` is omitted, plays from `trigger_frame` to clip end (one-shot).
+# trigger_play_once: after the one-shot reaches the last frame, anchor_pos_b obs becomes [0,0,z].
 wait_for_ball:   true
-trigger_radius:  0.2    # metres
-trigger_horizon: 0.4    # look-ahead seconds
+trigger_play_once: false
+trigger_radius:  0.3    # metres
+trigger_horizon: 0.5    # look-ahead seconds
 trigger_frame:            250   # first motion frame on trigger (loaded clip indices)
 trigger_play_end_frame:   270   # last motion frame inclusive (252..302 = 51 frames)
 # Default settings:

@@ -487,7 +487,7 @@ class Score(FSMState):
                 return anchor_pos_b.astype(np.float32)
 
             translated_anchor_pos_w = self._translated_anchor_world_pos(aligned_anchor_pos_w)
-            R_pelvis = _quat_to_matrix(self.state_cmd.pelvis_quat_w.astype(np.float64))
+            R_torso_yaw_w = _quat_to_matrix(_yaw_quat(self.state_cmd.torso_quat_w.astype(np.float64)))
             ball_rel_w = (
                 self.state_cmd.ball_pos_w.astype(np.float64)
                 - self.state_cmd.pelvis_pos_w.astype(np.float64)
@@ -495,7 +495,7 @@ class Score(FSMState):
             anchor_pos_b_ref = (
                 R_torso_w.T @ (translated_anchor_pos_w - torso_pos_w)
             ).astype(np.float32)
-            anchor_cmd_xy = (R_pelvis.T @ ball_rel_w)[:2]
+            anchor_cmd_xy = (R_torso_yaw_w.T @ ball_rel_w)[:2].astype(np.float32)
             norm_xy = float(np.linalg.norm(anchor_cmd_xy))
             if norm_xy > 1e-6:
                 anchor_pos_b_ball = 0.2 * (anchor_cmd_xy / norm_xy)
@@ -718,13 +718,14 @@ class Score(FSMState):
         init_world_quat      = _matrix_to_quat(self._init_to_world)
         ref_anchor_pos_w     = self.motion_body_pos[t, NPZ_ANCHOR_IDX].astype(np.float64)
         aligned_anchor_pos_w = self._init_to_world @ ref_anchor_pos_w
-        anchor_world_pos_w = self._translated_anchor_world_pos(aligned_anchor_pos_w)
         anchor_pos_b = self._compute_anchor_pos_b(
             ball_b_effective, torso_pos_w, R_torso_w, aligned_anchor_pos_w
         )
 
         # Cache for visualization (world-frame anchor position).
-        self._debug_anchor_pos_w = anchor_world_pos_w.astype(np.float32)
+        self._debug_anchor_pos_w = (
+            torso_pos_w + R_torso_w @ anchor_pos_b.astype(np.float64)
+        ).astype(np.float32)
         self._debug_torso_pos_w  = torso_pos_w.astype(np.float32)
 
         # ---- motion_anchor_ori_b (relative to torso orientation, in torso body frame) ----

@@ -52,6 +52,8 @@ onboard/perception/camera/
     └── .gitignore              ← 排除 *.pt / *.onnx / *.engine
 ```
 
+通用球位置网页可视化器位于 `onboard/perception/debug/ball_web_viewer.py`，启动脚本为 `onboard/perception/run_ball_web_viewer.sh`。它只订阅 `rt/ball_state`，可配合相机、LiDAR 或融合方案使用。
+
 ---
 
 ## 二、快速启动
@@ -95,6 +97,32 @@ bash onboard/perception/camera/run.sh --imgsz 224 --width 424 --height 240  # �
 | `BALL`   | 本帧 YOLO 检测到球，发布 valid=1 |
 | `COAST`  | 本帧漏检，沿用上帧位置，最多保持 10 帧，发布 valid=1 |
 | `(空)`   | 超过 10 帧未检测到，发布 valid=0 |
+
+---
+
+### 2.1a 实时球位置网页可视化
+
+如果只想看球相对于机器人的位置，不需要打开 RViz。先启动任意会发布 `rt/ball_state` 的检测节点，再另开一个终端：
+
+```bash
+bash onboard/perception/run_ball_web_viewer.sh
+```
+
+默认端口是 **8090**，启动后访问终端打印出的 `http://<robot-ip>:8090/`。页面显示：
+- 俯视图：`+X` 为机器人前方，`+Y` 为机器人左侧，机器人固定在原点。
+- 侧视图：`+X` 为机器人前方，`+Z` 为上方。
+- 数值面板：`x/y/z`、平面距离、3D 距离、DDS sample age、valid/stale 状态和 source。
+- 最近轨迹：保留最近几秒的有效球位置，方便观察抖动和漂移。
+
+常用参数：
+
+```bash
+bash onboard/perception/run_ball_web_viewer.sh --port 8090
+bash onboard/perception/run_ball_web_viewer.sh --topic rt/ball_state
+bash onboard/perception/run_ball_web_viewer.sh --range-m 4.0 --history-sec 5.0
+```
+
+注意：该页面读取的是已经变换到 pelvis/base body frame 的 `rt/ball_state`，所以第一版只画机器人基座和坐标轴，不需要完整 MuJoCo ghost 姿态。
 
 ---
 
@@ -231,6 +259,8 @@ bash onboard/perception/camera/run_dual.sh --show
 ## 三、浏览器预览 `--show`
 
 启动时加 `--show` 参数后，程序在 **port 8080** 开启 HTTP 服务。
+
+这里的 `--show` 是相机画面 MJPEG 预览；如果要看球在机器人坐标系中的实时位置，请使用上面的 `run_ball_web_viewer.sh`（默认 port 8090）。
 
 | URL | 内容 |
 |-----|------|

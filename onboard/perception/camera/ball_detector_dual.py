@@ -62,7 +62,7 @@ from onboard.perception.camera.camera_to_base import (
     transform_point_chest_camera_to_base,
     optical_to_body,
 )
-from common.ball_state_dds import BallStatePublisher
+from common.ball_state_dds import BallStatePublisher, SOURCE_CAM, SOURCE_NONE
 
 
 # ── Detection parameters ──────────────────────────────────────────────────────
@@ -551,7 +551,7 @@ def main():
                     detected = best_box is not None
 
                     with dds_lock:
-                        dds.publish(x, y, z, valid=detected)
+                        dds.publish(x, y, z, valid=detected, source=SOURCE_CAM)
                     with last_valid_lock:
                         last_valid_t[0] = time.time()
                     published_valid = True
@@ -572,7 +572,7 @@ def main():
                     quiet_sec = time.time() - last_valid_t[0]
                 if quiet_sec > VALID_HOLD_SEC:
                     with dds_lock:
-                        dds.publish(0.0, 0.0, 0.0, valid=False)
+                        dds.publish(0.0, 0.0, 0.0, valid=False, source=SOURCE_NONE)
                     if state.fps.fps > 0:
                         print(
                             f"\r[{name}/     ] no ball  fps={state.fps.fps:.1f}" + " " * 20,

@@ -55,7 +55,7 @@ from onboard.perception.camera.camera_to_base import (
     optical_to_body,
 )
 from onboard.perception.lidar.mid360_to_base import transform_point_mid360_to_base
-from common.ball_state_dds import BallStatePublisher
+from common.ball_state_dds import BallStatePublisher, SOURCE_CAM, SOURCE_LIDAR, SOURCE_NONE
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -425,17 +425,20 @@ def _run_fusion(cam_slot: _MeasSlot, lidar_slot: _MeasSlot,
         if cam_age < CAM_STALE_SEC:
             kf.update(cam_pos, _R_CAM)
             source = "cam  "
+            source_id = SOURCE_CAM
             valid  = True
         elif lidar_age < LIDAR_STALE_SEC:
             kf.update(lidar_pos, _R_LIDAR)
             source = "lidar"
+            source_id = SOURCE_LIDAR
             valid  = True
         else:
             source = "none "
+            source_id = SOURCE_NONE
             valid  = False
 
         pos = kf.position if kf.initialized else np.zeros(3, dtype=np.float32)
-        dds.publish(float(pos[0]), float(pos[1]), float(pos[2]), valid=valid)
+        dds.publish(float(pos[0]), float(pos[1]), float(pos[2]), valid=valid, source=source_id)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -849,7 +852,7 @@ from onboard.perception.camera.camera_to_base import (
     optical_to_body,
 )
 from onboard.perception.lidar.mid360_to_base import transform_point_mid360_to_base
-from common.ball_state_dds import BallStatePublisher
+from common.ball_state_dds import BallStatePublisher, SOURCE_CAM, SOURCE_LIDAR, SOURCE_NONE
 from onboard.perception.yolo_util import resolve_model_path
 
 # ==============================================================================
@@ -1169,13 +1172,13 @@ def _run_fusion(cam_slot, lidar_slot, dds, stop_flag):
             lidar_pos, lidar_age = fut_l.result()
 
             if cam_age < CAM_STALE_SEC:
-                pos, valid = cam_pos, True
+                pos, valid, source_id = cam_pos, True, SOURCE_CAM
             elif lidar_age < LIDAR_STALE_SEC:
-                pos, valid = lidar_pos, True
+                pos, valid, source_id = lidar_pos, True, SOURCE_LIDAR
             else:
-                pos, valid = np.zeros(3, dtype=np.float32), False
+                pos, valid, source_id = np.zeros(3, dtype=np.float32), False, SOURCE_NONE
 
-            dds.publish(float(pos[0]), float(pos[1]), float(pos[2]), valid=valid)
+            dds.publish(float(pos[0]), float(pos[1]), float(pos[2]), valid=valid, source=source_id)
 
 
 # ==============================================================================

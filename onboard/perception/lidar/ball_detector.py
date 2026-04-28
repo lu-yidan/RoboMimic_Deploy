@@ -39,7 +39,7 @@ from unitree_hg.msg import LowState
 from onboard.perception.lidar.center_kalman_filter import CenterKalmanFilter
 from onboard.perception.lidar.mid360_to_base import compute_mid360_to_base_transform
 from onboard.perception.lidar.rviz_publisher import RvizPublisher
-from common.ball_state_dds import BallStatePublisher
+from common.ball_state_dds import BallStatePublisher, SOURCE_LIDAR, SOURCE_NONE
 
 
 # ---------------------------------------------------------------------------
@@ -364,7 +364,7 @@ class BallDetector(Node):
             center_base = self._transform_point_mid360_to_base_fast(center_filtered)
 
             x, y, z = float(center_base[0]), float(center_base[1]), float(center_base[2])
-            self._dds.publish(x, y, z, valid=True)
+            self._dds.publish(x, y, z, valid=True, source=SOURCE_LIDAR)
 
             dt_ms = (time.perf_counter() - t0) * 1000.0
             # self._rviz.publish_text(center_filtered, cand.shape[0],
@@ -388,9 +388,9 @@ class BallDetector(Node):
     def _publish_invalid(self):
         if self.center_kf.initialized:
             cb = self._transform_point_mid360_to_base_fast(self.center_kf.position)
-            self._dds.publish(float(cb[0]), float(cb[1]), float(cb[2]), valid=False)
+            self._dds.publish(float(cb[0]), float(cb[1]), float(cb[2]), valid=False, source=SOURCE_LIDAR)
         else:
-            self._dds.publish(0.0, 0.0, 0.0, valid=False)
+            self._dds.publish(0.0, 0.0, 0.0, valid=False, source=SOURCE_NONE)
 
     def destroy_node(self):
         self._stop_flag.set()

@@ -46,7 +46,7 @@ from onboard.perception.camera.camera_to_base import (
     transform_point_camera_to_base,
     optical_to_body,
 )
-from common.ball_state_dds import BallStatePublisher
+from common.ball_state_dds import BallStatePublisher, SOURCE_CAM, SOURCE_NONE
 
 
 # ── Detection params ─────────────────────────────────────────────────────────
@@ -471,7 +471,7 @@ def main():
                     )
                     x, y, z = float(p_base[0]), float(p_base[1]), float(p_base[2])
                     detected = best_box is not None
-                    dds.publish(x, y, z, valid=detected)
+                    dds.publish(x, y, z, valid=detected, source=SOURCE_CAM)
                     published_valid = True
 
                     status = "BALL " if detected else "COAST"
@@ -481,7 +481,7 @@ def main():
                           end="", flush=True)
 
             if not published_valid:
-                dds.publish(0.0, 0.0, 0.0, valid=False)
+                dds.publish(0.0, 0.0, 0.0, valid=False, source=SOURCE_NONE)
                 print(f"\r[     ] no ball  YOLO={yolo_fps.fps:4.1f}fps" + " " * 30,
                       end="", flush=True)
 

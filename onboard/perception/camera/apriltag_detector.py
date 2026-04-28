@@ -407,7 +407,7 @@ def main():
     parser.add_argument(
         "--tag-size",
         type=float,
-        default=0.12,
+        default=0.15,
         help="Printed tag edge length in metres, excluding any white paper margin.",
     )
     parser.add_argument(

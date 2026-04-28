@@ -24,7 +24,7 @@ RIGHT_TOP="$(tmux split-window -h -P -F '#{pane_id}' -t "${LEFT_TOP}" -c "${REPO
 LEFT_BOTTOM="$(tmux split-window -v -P -F '#{pane_id}' -t "${LEFT_TOP}" -c "${REPO_DIR}")"
 RIGHT_BOTTOM="$(tmux split-window -v -P -F '#{pane_id}' -t "${RIGHT_TOP}" -c "${REPO_DIR}")"
 
-tmux send-keys -t "${RIGHT_TOP}" -l "cd ${REPO_DIR} && ./onboard/perception/camera/run_apriltag_target.sh --tag-id 0 --tag-size 0.15 --show"
+tmux send-keys -t "${RIGHT_TOP}" -l "cd ${REPO_DIR} && ./onboard/perception/camera/run_apriltag_target.sh --show"
 tmux send-keys -t "${RIGHT_BOTTOM}" -l "cd ${REPO_DIR} && ./onboard/perception/lidar/run.sh --show"
 tmux send-keys -t "${LEFT_TOP}" -l "cd ${REPO_DIR} && cmake -S bridge -B bridge/build && cmake --build bridge/build -j2 && BRIDGE_NETWORK_INTERFACE=eth0 bridge/build/cpp_bridge_main"
 tmux send-keys -t "${LEFT_BOTTOM}" -l "cd ${REPO_DIR} && python bridge/python/deploy_policy.py"

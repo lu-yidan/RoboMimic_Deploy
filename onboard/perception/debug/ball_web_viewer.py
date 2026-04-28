@@ -181,6 +181,8 @@ HTML_TEMPLATE = """<!doctype html>
   <script>
     const RANGE_M = __RANGE_M__;
     const HISTORY_SEC = __HISTORY_SEC__;
+    const MINOR_GRID_M = 0.5;
+    const MAJOR_GRID_M = 1.0;
     const canvas = document.getElementById("scene");
     const ctx = canvas.getContext("2d");
     const els = {
@@ -253,21 +255,85 @@ HTML_TEMPLATE = """<!doctype html>
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
 
-    function drawGrid(cx, cy, scale, width, height) {
-      ctx.strokeStyle = cssVar("--grid");
-      ctx.lineWidth = 1;
-      ctx.globalAlpha = 0.55;
-      for (let m = -RANGE_M; m <= RANGE_M + 1e-6; m += 0.5) {
+    function isMajorTick(m) {
+      return Math.abs(m / MAJOR_GRID_M - Math.round(m / MAJOR_GRID_M)) < 1e-6;
+    }
+
+    function tickLabel(m, axis) {
+      if (Math.abs(m) < 1e-6) return `${axis}=0`;
+      return `${m > 0 ? "+" : ""}${m.toFixed(0)}m`;
+    }
+
+    function drawTopGrid(cx, cy, scale, width, height) {
+      ctx.font = "12px ui-monospace, monospace";
+      ctx.textBaseline = "middle";
+      for (let m = -RANGE_M; m <= RANGE_M + 1e-6; m += MINOR_GRID_M) {
+        const major = isMajorTick(m);
+        ctx.strokeStyle = cssVar("--grid");
+        ctx.lineWidth = major ? 1.25 : 1;
+        ctx.globalAlpha = major ? 0.55 : 0.18;
+
         const x = cx - m * scale;
         ctx.beginPath();
         ctx.moveTo(x, 0);
         ctx.lineTo(x, height);
         ctx.stroke();
+
         const y = cy - m * scale;
         ctx.beginPath();
         ctx.moveTo(0, y);
         ctx.lineTo(width, y);
         ctx.stroke();
+
+        if (major) {
+          ctx.globalAlpha = 0.8;
+          ctx.fillStyle = cssVar("--muted");
+          ctx.textAlign = "center";
+          if (Math.abs(m) > 1e-6) ctx.fillText(tickLabel(m, "Y"), x, cy + 18);
+          ctx.textAlign = "left";
+          if (Math.abs(m) > 1e-6) ctx.fillText(tickLabel(m, "X"), cx + 10, y);
+        }
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    function drawSideGrid(originX, originY, scale, x0, y0, width, height) {
+      ctx.font = "12px ui-monospace, monospace";
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = cssVar("--muted");
+
+      for (let m = 0; m <= RANGE_M + 1e-6; m += MINOR_GRID_M) {
+        const major = isMajorTick(m);
+        ctx.strokeStyle = cssVar("--grid");
+        ctx.lineWidth = major ? 1.25 : 1;
+        ctx.globalAlpha = major ? 0.55 : 0.18;
+        const x = originX + m * scale;
+        ctx.beginPath();
+        ctx.moveTo(x, y0);
+        ctx.lineTo(x, y0 + height);
+        ctx.stroke();
+        if (major) {
+          ctx.globalAlpha = 0.8;
+          ctx.textAlign = "center";
+          ctx.fillText(tickLabel(m, "X"), x, originY + 18);
+        }
+      }
+
+      for (let m = -1.0; m <= 1.5 + 1e-6; m += MINOR_GRID_M) {
+        const major = isMajorTick(m);
+        ctx.strokeStyle = cssVar("--grid");
+        ctx.lineWidth = major ? 1.25 : 1;
+        ctx.globalAlpha = major ? 0.55 : 0.18;
+        const y = originY - m * scale;
+        ctx.beginPath();
+        ctx.moveTo(x0, y);
+        ctx.lineTo(x0 + width, y);
+        ctx.stroke();
+        if (major && Math.abs(m) > 1e-6) {
+          ctx.globalAlpha = 0.8;
+          ctx.textAlign = "left";
+          ctx.fillText(tickLabel(m, "Z"), originX + 10, y);
+        }
       }
       ctx.globalAlpha = 1;
     }
@@ -318,7 +384,7 @@ HTML_TEMPLATE = """<!doctype html>
       ctx.rect(x0, y0, w, h);
       ctx.clip();
       ctx.translate(x0, y0);
-      drawGrid(w / 2, h / 2, scale, w, h);
+      drawTopGrid(w / 2, h / 2, scale, w, h);
       ctx.restore();
       ctx.fillStyle = cssVar("--muted");
       ctx.font = "14px system-ui, sans-serif";
@@ -339,22 +405,7 @@ HTML_TEMPLATE = """<!doctype html>
       ctx.beginPath();
       ctx.rect(x0, y0, w, h);
       ctx.clip();
-      ctx.strokeStyle = cssVar("--grid");
-      ctx.lineWidth = 1;
-      for (let m = 0; m <= RANGE_M + 1e-6; m += 0.5) {
-        const x = originX + m * scale;
-        ctx.beginPath();
-        ctx.moveTo(x, y0);
-        ctx.lineTo(x, y0 + h);
-        ctx.stroke();
-      }
-      for (let m = -1.0; m <= 1.5 + 1e-6; m += 0.5) {
-        const y = originY - m * scale;
-        ctx.beginPath();
-        ctx.moveTo(x0, y);
-        ctx.lineTo(x0 + w, y);
-        ctx.stroke();
-      }
+      drawSideGrid(originX, originY, scale, x0, y0, w, h);
       ctx.restore();
       ctx.fillStyle = cssVar("--muted");
       ctx.font = "14px system-ui, sans-serif";

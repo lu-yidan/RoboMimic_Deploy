@@ -129,16 +129,16 @@ class BallDetector(Node):
 
         # ---- Detection params ----
         self.r           = 0.115   # ball radius [m]
-        self.reflect_thr = 150
-        self.min_points  = 4
-        self.max_range   = 4
+        self.reflect_thr = 190
+        self.min_points  = 5
+        self.max_range   = 10
         self.min_range   = 0.2
-        self.z_low       = -1.5
-        self.z_high      =  1.5
+        self.z_low       = -5.0
+        self.z_high      =  5.0
         self.x_low       =  0.0
         self.x_high      =  5.0
-        self.y_low       = -1.5
-        self.y_high      =  1.5
+        self.y_low       = -5.0
+        self.y_high      =  5.0
         self.center_offset = 0.085  # [m], adjustable at runtime from keyboard
 
         # ---- Temporal smoothing (Kalman filter) ----

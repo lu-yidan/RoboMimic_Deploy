@@ -235,3 +235,18 @@ DDS Topic（控制器订阅）：
 | Topic | 类型 | 说明 |
 |-------|------|------|
 | `rt/ball_state` | BallState（自定义 DDS） | 球心在 pelvis body 系坐标，`valid` 标志位 |
+
+调试 Topic（网页可视化订阅）：
+
+| Topic | 类型 | 说明 |
+|-------|------|------|
+| `rt/lidar_ball_debug` | LidarBallDebugState（自定义 DDS） | LiDAR raw / KF 球心在 MID360 系的坐标，以及 FK 后 pelvis 坐标 |
+
+如果怀疑 MID360 安装或外参导致 pelvis 系 `y` 有固定偏差，可以先用临时 bias 验证：
+
+```bash
+# 例：实际 y=0，但网页/控制看到 y=-0.02，则先加 +0.02m 补偿
+bash onboard/perception/lidar/run.sh --base-y-bias 0.02
+```
+
+这个 bias 只加在 FK 后、发布到 `rt/ball_state` 的 pelvis-frame `y` 上；网页中的 `lidar raw MID360` 仍显示 FK 前原始 LiDAR 坐标，方便判断偏差来自检测本身还是安装/FK。

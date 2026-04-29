@@ -40,6 +40,7 @@ from onboard.perception.lidar.center_kalman_filter import CenterKalmanFilter
 from onboard.perception.lidar.mid360_to_base import compute_mid360_to_base_transform
 from onboard.perception.lidar.rviz_publisher import RvizPublisher
 from common.ball_state_dds import BallStatePublisher, SOURCE_LIDAR, SOURCE_NONE
+from common.lidar_ball_debug_dds import LidarBallDebugPublisher
 
 
 # ---------------------------------------------------------------------------
@@ -122,6 +123,8 @@ class BallDetector(Node):
     def __init__(
         self,
         dds_topic: str = "rt/ball_state",
+        debug_topic: str = "rt/lidar_ball_debug",
+        base_y_bias: float = 0.0,
         show: bool = False,
         msg_type: str = "pc2",
     ):
@@ -140,6 +143,7 @@ class BallDetector(Node):
         self.y_low       = -5.0
         self.y_high      =  5.0
         self.center_offset = 0.085  # [m], adjustable at runtime from keyboard
+        self.base_y_bias = float(base_y_bias)
 
         # ---- Temporal smoothing (Kalman filter) ----
         self.center_kf = CenterKalmanFilter()
@@ -160,6 +164,10 @@ class BallDetector(Node):
         self._dds_topic = dds_topic
         self._dds = BallStatePublisher(domain_id=0, topic_name=dds_topic)
         self.get_logger().info(f"DDS publisher ready on '{dds_topic}'")
+        self._debug = LidarBallDebugPublisher(domain_id=0, topic_name=debug_topic)
+        self.get_logger().info(
+            f"LiDAR debug DDS ready on '{debug_topic}', base_y_bias={self.base_y_bias:+.3f}m"
+        )
 
         # ---- RViz2 publisher ----
         self._show = show
@@ -362,9 +370,19 @@ class BallDetector(Node):
             self._rviz.publish_ball_kf(center_filtered, stamp)
 
             center_base = self._transform_point_mid360_to_base_fast(center_filtered)
+            center_base[1] += self.base_y_bias
 
             x, y, z = float(center_base[0]), float(center_base[1]), float(center_base[2])
             self._dds.publish(x, y, z, valid=True, source=SOURCE_LIDAR)
+            self._debug.publish(
+                center_lidar,
+                center_filtered,
+                center_base,
+                base_y_bias=self.base_y_bias,
+                candidate_count=cand.shape[0],
+                in_shell_count=in_n,
+                valid=True,
+            )
 
             dt_ms = (time.perf_counter() - t0) * 1000.0
             # self._rviz.publish_text(center_filtered, cand.shape[0],
@@ -387,10 +405,27 @@ class BallDetector(Node):
 
     def _publish_invalid(self):
         if self.center_kf.initialized:
-            cb = self._transform_point_mid360_to_base_fast(self.center_kf.position)
+            raw = self.center_kf.position
+            cb = self._transform_point_mid360_to_base_fast(raw)
+            cb[1] += self.base_y_bias
             self._dds.publish(float(cb[0]), float(cb[1]), float(cb[2]), valid=False, source=SOURCE_LIDAR)
+            self._debug.publish(
+                raw,
+                raw,
+                cb,
+                base_y_bias=self.base_y_bias,
+                valid=False,
+            )
         else:
             self._dds.publish(0.0, 0.0, 0.0, valid=False, source=SOURCE_NONE)
+            zero = np.zeros(3, dtype=np.float32)
+            self._debug.publish(
+                zero,
+                zero,
+                zero,
+                base_y_bias=self.base_y_bias,
+                valid=False,
+            )
 
     def destroy_node(self):
         self._stop_flag.set()
@@ -408,6 +443,10 @@ def main():
     parser = argparse.ArgumentParser(description="LiDAR ball detector")
     parser.add_argument("--dds-topic", default="rt/ball_state",
                         help="DDS topic name to publish to (default: rt/ball_state)")
+    parser.add_argument("--debug-topic", default="rt/lidar_ball_debug",
+                        help="DDS debug topic for pre-FK LiDAR values")
+    parser.add_argument("--base-y-bias", type=float, default=0.0,
+                        help="Add this bias to pelvis-frame y before publishing, e.g. 0.02 for +2cm")
     parser.add_argument("--show", action="store_true",
                         help="Enable RViz debug publishers (slower)")
     parser.add_argument("--msg-type", choices=("pc2", "custom"), default="pc2",
@@ -415,7 +454,13 @@ def main():
     args, _ = parser.parse_known_args()
 
     rclpy.init()
-    node = BallDetector(dds_topic=args.dds_topic, show=args.show, msg_type=args.msg_type)
+    node = BallDetector(
+        dds_topic=args.dds_topic,
+        debug_topic=args.debug_topic,
+        base_y_bias=args.base_y_bias,
+        show=args.show,
+        msg_type=args.msg_type,
+    )
     # Use spin_once + sleep instead of spin() to avoid /lowstate 500 Hz
     # saturating the GIL and starving the worker thread.  The sleep yields
     # the GIL every 2 ms so the worker thread can run Python between spins.

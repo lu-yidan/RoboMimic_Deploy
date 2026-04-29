@@ -33,6 +33,12 @@ from common.ball_state_dds import (  # noqa: E402
     BallState,
     BallStateSubscriber,
 )
+from common.lidar_ball_debug_dds import (  # noqa: E402
+    LIDAR_BALL_DEBUG_TOPIC,
+    LIDAR_BALL_DEBUG_STALE_MS,
+    LidarBallDebugState,
+    LidarBallDebugSubscriber,
+)
 
 
 SOURCE_NAMES = {
@@ -168,6 +174,9 @@ HTML_TEMPLATE = """<!doctype html>
         <div>3d distance</div><div class="value" id="dist3D">--</div>
         <div>age</div><div class="value" id="age">--</div>
         <div>source</div><div class="value" id="source">--</div>
+        <div>lidar raw MID360</div><div class="value" id="lidarRaw">--</div>
+        <div>base y bias</div><div class="value" id="baseYBias">--</div>
+        <div>lidar candidates</div><div class="value" id="lidarCounts">--</div>
         <div>timestamp</div><div class="value" id="ts">--</div>
       </div>
       <div class="legend">
@@ -196,6 +205,9 @@ HTML_TEMPLATE = """<!doctype html>
       dist3D: document.getElementById("dist3D"),
       age: document.getElementById("age"),
       source: document.getElementById("source"),
+      lidarRaw: document.getElementById("lidarRaw"),
+      baseYBias: document.getElementById("baseYBias"),
+      lidarCounts: document.getElementById("lidarCounts"),
       ts: document.getElementById("ts"),
     };
     let state = null;
@@ -221,6 +233,11 @@ HTML_TEMPLATE = """<!doctype html>
       return Number.isFinite(v) ? `${v.toFixed(digits)}${suffix}` : "--";
     }
 
+    function fmtVec(v) {
+      if (!v || !Number.isFinite(v.x) || !Number.isFinite(v.y) || !Number.isFinite(v.z)) return "--";
+      return `(${fmt(v.x)}, ${fmt(v.y)}, ${fmt(v.z)})`;
+    }
+
     function updatePanel(s) {
       const color = colorFor(s);
       els.statusDot.style.background = color;
@@ -240,6 +257,10 @@ HTML_TEMPLATE = """<!doctype html>
       els.dist3D.textContent = s && s.has_sample ? fmtPlain(s.distance_3d) : "--";
       els.age.textContent = s && s.age_ms !== null ? `${s.age_ms.toFixed(0)} ms` : "--";
       els.source.textContent = s && s.has_sample ? `${s.source_name} (${s.source})` : "--";
+      const dbg = s && s.lidar_debug && s.lidar_debug.has_sample ? s.lidar_debug : null;
+      els.lidarRaw.textContent = dbg ? fmtVec(dbg.raw_mid360) : "--";
+      els.baseYBias.textContent = dbg ? fmt(dbg.base_y_bias) : "--";
+      els.lidarCounts.textContent = dbg ? `${dbg.candidate_count} cand / ${dbg.in_shell_count} shell` : "--";
       els.ts.textContent = s && s.timestamp_us ? new Date(s.timestamp_us / 1000).toLocaleTimeString() : "--";
     }
 
@@ -478,9 +499,12 @@ HTML_TEMPLATE = """<!doctype html>
 class BallStateStore:
     def __init__(self, stale_ms):
         self._stale_ms = stale_ms
+        self._debug_stale_ms = LIDAR_BALL_DEBUG_STALE_MS
         self._lock = threading.Lock()
         self._last = None
         self._received_at = None
+        self._debug_last = None
+        self._debug_received_at = None
 
     def update(self, sample):
         if not isinstance(sample, BallState):
@@ -489,10 +513,55 @@ class BallStateStore:
             self._last = sample
             self._received_at = time.monotonic()
 
+    def update_debug(self, sample):
+        if not isinstance(sample, LidarBallDebugState):
+            return
+        with self._lock:
+            self._debug_last = sample
+            self._debug_received_at = time.monotonic()
+
+    def _debug_snapshot_unlocked(self):
+        sample = self._debug_last
+        received_at = self._debug_received_at
+        if sample is None or received_at is None:
+            return {
+                "has_sample": False,
+                "fresh": False,
+                "valid": False,
+            }
+        age_ms = (time.monotonic() - received_at) * 1000.0
+        fresh = age_ms <= self._debug_stale_ms
+        return {
+            "has_sample": True,
+            "fresh": bool(fresh),
+            "valid": bool(sample.valid) and bool(fresh),
+            "age_ms": age_ms,
+            "timestamp_us": int(sample.timestamp_us),
+            "raw_mid360": {
+                "x": float(sample.raw_x),
+                "y": float(sample.raw_y),
+                "z": float(sample.raw_z),
+            },
+            "kf_mid360": {
+                "x": float(sample.kf_x),
+                "y": float(sample.kf_y),
+                "z": float(sample.kf_z),
+            },
+            "base": {
+                "x": float(sample.base_x),
+                "y": float(sample.base_y),
+                "z": float(sample.base_z),
+            },
+            "base_y_bias": float(sample.base_y_bias),
+            "candidate_count": int(sample.candidate_count),
+            "in_shell_count": int(sample.in_shell_count),
+        }
+
     def snapshot(self):
         with self._lock:
             sample = self._last
             received_at = self._received_at
+            lidar_debug = self._debug_snapshot_unlocked()
 
         if sample is None or received_at is None:
             return {
@@ -508,6 +577,7 @@ class BallStateStore:
                 "distance_3d": 0.0,
                 "source": SOURCE_NONE,
                 "source_name": "none",
+                "lidar_debug": lidar_debug,
             }
 
         age_ms = (time.monotonic() - received_at) * 1000.0
@@ -528,6 +598,7 @@ class BallStateStore:
             "distance_3d": math.sqrt(x * x + y * y + z * z),
             "source": source,
             "source_name": SOURCE_NAMES.get(source, "unknown"),
+            "lidar_debug": lidar_debug,
         }
 
 
@@ -620,6 +691,8 @@ def main():
                         help="CycloneDDS domain id, default: 0")
     parser.add_argument("--topic", default=BALL_STATE_TOPIC,
                         help=f"DDS topic, default: {BALL_STATE_TOPIC}")
+    parser.add_argument("--lidar-debug-topic", default=LIDAR_BALL_DEBUG_TOPIC,
+                        help=f"Optional LiDAR debug DDS topic, default: {LIDAR_BALL_DEBUG_TOPIC}")
     parser.add_argument("--stale-ms", type=float, default=BALL_STALE_MS,
                         help=f"Mark samples stale after this many ms, default: {BALL_STALE_MS}")
     parser.add_argument("--rate-hz", type=float, default=30.0,
@@ -637,7 +710,13 @@ def main():
         callback=store.update,
         topic_name=args.topic,
     )
+    debug_sub = LidarBallDebugSubscriber(
+        domain_id=args.domain_id,
+        callback=store.update_debug,
+        topic_name=args.lidar_debug_topic,
+    )
     sub.start()
+    debug_sub.start()
 
     html = _build_html(args.topic, args.range_m, args.history_sec)
     handler = _make_handler(store, html, interval_s)
@@ -646,6 +725,7 @@ def main():
     httpd.daemon_threads = True
 
     print(f"[INFO] Subscribed to DDS topic {args.topic!r} (domain={args.domain_id})")
+    print(f"[INFO] Subscribed to LiDAR debug topic {args.lidar_debug_topic!r}")
     print(f"[INFO] Ball web viewer started -> open {_get_url(args.host, args.port)}")
     print("[INFO] Press Ctrl+C to stop.")
     try:
@@ -654,6 +734,7 @@ def main():
         print("\n[INFO] Interrupted.")
     finally:
         sub.stop()
+        debug_sub.stop()
         httpd.shutdown()
         httpd.server_close()
         print("[INFO] Done.")

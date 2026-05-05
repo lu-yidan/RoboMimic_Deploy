@@ -42,6 +42,7 @@ DEFAULTS = {
     "FILL_MIN":     10,   # percent (0-30)
     "MIN_R":         4,   # pixels
     "EXCL_TOP":     20,   # percent of frame height to black out (exclude screens/ceiling)
+    "CIRC_MIN":     40,   # circularity × 100 (circle=100, square≈78, junk<50)
 }
 
 WIN = "HSV Tuner"
@@ -50,7 +51,7 @@ PANEL_H = 360
 
 
 def _detect(frame, h_low, h_high, s_min, v_min, dilation, fill_min_pct, min_r,
-            exclude_top_frac=0.0):
+            exclude_top_frac=0.0, circ_min=0.0):
     """Run the same algorithm as _detect_ball_hsv() in apriltag_detector.py."""
     hsv_low  = np.array([h_low,  s_min, v_min], dtype=np.uint8)
     hsv_high = np.array([h_high, 255,   255  ], dtype=np.uint8)
@@ -74,6 +75,15 @@ def _detect(frame, h_low, h_high, s_min, v_min, dilation, fill_min_pct, min_r,
     best = None
 
     for cnt in contours:
+        # ── circularity: 4π·area/perimeter² (circle=1.0, square≈0.785) ──
+        perimeter = cv2.arcLength(cnt, True)
+        if perimeter < 1:
+            continue
+        cnt_area = cv2.contourArea(cnt)
+        circularity = 4 * np.pi * cnt_area / (perimeter * perimeter)
+        if circularity < circ_min:
+            continue
+
         (bx, by), br = cv2.minEnclosingCircle(cnt)
         bx, by, br = int(bx), int(by), float(br)
         r_est = br - dil_half
@@ -87,9 +97,9 @@ def _detect(frame, h_low, h_high, s_min, v_min, dilation, fill_min_pct, min_r,
         fill = orig_px / circle_area
         if fill < fill_min:
             continue
-        score = orig_px * fill
+        score = orig_px * fill * circularity   # circularity boosts rounder blobs
         if best is None or score > best[0]:
-            best = (score, bx, by, r_est, fill)
+            best = (score, bx, by, r_est, fill, circularity)
 
     return mask, merged, best
 
@@ -110,14 +120,14 @@ def _draw_result(frame, best, w=PANEL_W, h=PANEL_H):
     sx, sy = w / orig_w, h / orig_h
     panel = cv2.resize(frame.copy(), (w, h))
     if best is not None:
-        _, cx, cy, r_est, fill = best
+        _, cx, cy, r_est, fill, circ = best
         px, py = int(cx * sx), int(cy * sy)
         pr     = max(2, int(r_est * (sx + sy) / 2))
         cv2.circle(panel, (px, py), pr, (0, 255, 80), 2)
         cv2.circle(panel, (px, py), 3,  (0, 255, 80), -1)
-        label = f"r={r_est:.0f}px  fill={fill*100:.0f}%"
+        label = f"r={r_est:.0f}px fill={fill*100:.0f}% circ={circ:.2f}"
         cv2.putText(panel, label, (px - pr, py - pr - 6),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 80), 2, cv2.LINE_AA)
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 80), 2, cv2.LINE_AA)
     else:
         cv2.putText(panel, "no detection", (8, 48),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 60, 255), 2, cv2.LINE_AA)
@@ -146,6 +156,7 @@ def run_images(paths: list[str]):
     cv2.createTrackbar("FILL_MIN (%)",     WIN, DEFAULTS["FILL_MIN"],     30, lambda v: None)
     cv2.createTrackbar("MIN_R    (px)",    WIN, DEFAULTS["MIN_R"],        40, lambda v: None)
     cv2.createTrackbar("EXCL_TOP (%)",     WIN, DEFAULTS["EXCL_TOP"],     50, lambda v: None)
+    cv2.createTrackbar("CIRC_MIN (x100)", WIN, DEFAULTS["CIRC_MIN"],     100, lambda v: None)
 
     print(f"[tuner] {len(paths)} image(s) loaded. n/p=next/prev  s=save  q=quit")
 
@@ -165,9 +176,10 @@ def run_images(paths: list[str]):
         fill   = cv2.getTrackbarPos("FILL_MIN (%)",     WIN)
         min_r  = max(1, cv2.getTrackbarPos("MIN_R    (px)",  WIN))
         excl   = cv2.getTrackbarPos("EXCL_TOP (%)",     WIN)
+        circ   = cv2.getTrackbarPos("CIRC_MIN (x100)", WIN)
 
         mask, merged, best = _detect(frame, h_low, h_high, s_min, v_min, dil, fill, min_r,
-                                     exclude_top_frac=excl/100.0)
+                                     exclude_top_frac=excl/100.0, circ_min=circ/100.0)
 
         p1 = _make_panel(frame,  f"Original  [{os.path.basename(path)}]")
         p2 = _make_panel(mask,   f"HSV mask  H=[{h_low},{h_high}] S>={s_min} V>={v_min}")
@@ -231,6 +243,7 @@ def run_camera():
     cv2.createTrackbar("FILL_MIN (%)",    WIN, DEFAULTS["FILL_MIN"],  30, lambda v: None)
     cv2.createTrackbar("MIN_R    (px)",   WIN, DEFAULTS["MIN_R"],     40, lambda v: None)
     cv2.createTrackbar("EXCL_TOP (%)",    WIN, DEFAULTS["EXCL_TOP"],  50, lambda v: None)
+    cv2.createTrackbar("CIRC_MIN (x100)",WIN, DEFAULTS["CIRC_MIN"], 100, lambda v: None)
 
     print("[tuner] Live mode. s=save params  q=quit")
     try:
@@ -249,9 +262,10 @@ def run_camera():
             fill   = cv2.getTrackbarPos("FILL_MIN (%)",     WIN)
             min_r  = max(1, cv2.getTrackbarPos("MIN_R    (px)", WIN))
             excl   = cv2.getTrackbarPos("EXCL_TOP (%)",     WIN)
+            circ   = cv2.getTrackbarPos("CIRC_MIN (x100)",  WIN)
 
             mask, merged, best = _detect(frame, h_low, h_high, s_min, v_min, dil, fill, min_r,
-                                         exclude_top_frac=excl/100.0)
+                                         exclude_top_frac=excl/100.0, circ_min=circ/100.0)
 
             p1 = _make_panel(frame,  "Original (live)")
             p2 = _make_panel(mask,   f"HSV mask  H=[{h_low},{h_high}] S>={s_min} V>={v_min}")
@@ -324,16 +338,18 @@ _HTML_PAGE = """\
 <br><img src="/stream" alt="live stream">
 <script>
 const DEFS = {H_LOW:__H_LOW__,H_HIGH:__H_HIGH__,S_MIN:__S_MIN__,V_MIN:__V_MIN__,
-              DILATION:__DILATION__,FILL_MIN:__FILL_MIN__,MIN_R:__MIN_R__,EXCL_TOP:__EXCL_TOP__};
+              DILATION:__DILATION__,FILL_MIN:__FILL_MIN__,MIN_R:__MIN_R__,
+              EXCL_TOP:__EXCL_TOP__,CIRC_MIN:__CIRC_MIN__};
 const META = [
-  {k:"H_LOW",    label:"H_LOW  颜色下限",  max:179, hint:"颜色色相最小值（蓝=100，紫=120，绿=40）"},
-  {k:"H_HIGH",   label:"H_HIGH 颜色上限",  max:179, hint:"颜色色相最大值，范围越窄越精准"},
-  {k:"S_MIN",    label:"S_MIN  饱和度",    max:255, hint:"★最重要★ 过低会把灰色/白色地板误判；建议>=60"},
-  {k:"V_MIN",    label:"V_MIN  亮度",      max:255, hint:"过低会抓阴影；光线好时可调高"},
-  {k:"DILATION", label:"DILATION 膨胀",    max:51,  hint:"把散碎色块合并成圆；太大会合并噪点；球块分散时需要大值"},
-  {k:"FILL_MIN", label:"FILL_MIN 填充率%", max:30,  hint:"越高越严格，要求圆内颜色覆盖越多"},
-  {k:"MIN_R",    label:"MIN_R  最小半径",  max:40,  hint:"小于此像素的检测结果忽略"},
-  {k:"EXCL_TOP", label:"EXCL_TOP 排除顶部%",max:50, hint:"屏蔽画面顶部N%区域（排除屏幕/天花板干扰）"},
+  {k:"H_LOW",    label:"H_LOW  颜色下限",    max:179, hint:"颜色色相最小值（蓝=100，紫=120，绿=40）"},
+  {k:"H_HIGH",   label:"H_HIGH 颜色上限",    max:179, hint:"颜色色相最大值，范围越窄越精准"},
+  {k:"S_MIN",    label:"S_MIN  饱和度",      max:255, hint:"★最重要★ 过低会把灰色/白色地板误判；建议>=60"},
+  {k:"V_MIN",    label:"V_MIN  亮度",        max:255, hint:"过低会抓阴影；光线好时可调高"},
+  {k:"DILATION", label:"DILATION 膨胀",      max:51,  hint:"把散碎色块合并成圆；太大会合并噪点；球块分散时需要大值"},
+  {k:"FILL_MIN", label:"FILL_MIN 填充率%",   max:30,  hint:"越高越严格，要求圆内颜色覆盖越多"},
+  {k:"MIN_R",    label:"MIN_R  最小半径",    max:40,  hint:"小于此像素的检测结果忽略"},
+  {k:"EXCL_TOP", label:"EXCL_TOP 排除顶部%", max:50,  hint:"屏蔽画面顶部N%区域（排除屏幕/天花板干扰）"},
+  {k:"CIRC_MIN", label:"CIRC_MIN 圆形度x100",max:100, hint:"圆=100，矩形=78；提高可排除屏幕/线缆等非圆形噪点"},
 ];
 const div = document.getElementById("sliders");
 for (const m of META) {
@@ -356,7 +372,7 @@ function refreshStatus() {
   fetch("/status").then(r=>r.json()).then(d=>{
     const el = document.getElementById("status");
     if (d.detected) {
-      el.textContent = `✅ DETECTED  r=${d.r}px  fill=${d.fill}%  cx=${d.cx}  cy=${d.cy}`;
+      el.textContent = `✅ DETECTED  r=${d.r}px  fill=${d.fill}%  circ=${d.circ}  cx=${d.cx}  cy=${d.cy}`;
       el.className = "det";
     } else {
       el.textContent = "❌ no ball"; el.className = "miss";
@@ -410,7 +426,8 @@ def run_web(port: int):
                 mask, merged, best = _detect(
                     frame, p["H_LOW"], p["H_HIGH"], p["S_MIN"], p["V_MIN"],
                     p["DILATION"], p["FILL_MIN"], p["MIN_R"],
-                    exclude_top_frac=p["EXCL_TOP"]/100.0)
+                    exclude_top_frac=p["EXCL_TOP"]/100.0,
+                    circ_min=p["CIRC_MIN"]/100.0)
                 p1 = _make_panel(frame,  "Original", _WEB_PW, _WEB_PH)
                 p2 = _make_panel(mask,   f"HSV mask H=[{p['H_LOW']},{p['H_HIGH']}] S≥{p['S_MIN']} V≥{p['V_MIN']}",
                                  _WEB_PW, _WEB_PH)
@@ -423,9 +440,11 @@ def run_web(port: int):
                     _WEB_FRAME = jpg.tobytes()
                     _WEB_STATUS = ({"detected": True,
                                     "r": round(best[3]), "fill": round(best[4]*100, 1),
+                                    "circ": round(best[5], 2),
                                     "cx": best[1], "cy": best[2]}
                                    if best else
-                                   {"detected": False, "r": 0, "fill": 0.0, "cx": 0, "cy": 0})
+                                   {"detected": False, "r": 0, "fill": 0.0,
+                                    "circ": 0.0, "cx": 0, "cy": 0})
         finally:
             pipe.stop()
 
@@ -489,7 +508,7 @@ def run_web(port: int):
             elif path == "/params":
                 qs = parse_qs(parsed.query)
                 with _WEB_LOCK:
-                    for k in ("H_LOW","H_HIGH","S_MIN","V_MIN","DILATION","FILL_MIN","MIN_R","EXCL_TOP"):
+                    for k in ("H_LOW","H_HIGH","S_MIN","V_MIN","DILATION","FILL_MIN","MIN_R","EXCL_TOP","CIRC_MIN"):
                         if k in qs:
                             _WEB_PARAMS[k] = int(qs[k][0])
                 self._send(200, "application/json", '{"ok":true}')

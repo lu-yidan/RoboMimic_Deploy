@@ -51,6 +51,7 @@ DEFAULTS = {
     "HOUGH_MINR":        15,   # min ball radius (px)
     "HOUGH_MAXR":       100,   # max ball radius (px)
     "HOUGH_MIN_CONTRAST": 15,  # min (inner - outer annulus) brightness; ball > carpet
+    "HOUGH_MAX_TEXTURE":  50,  # max interior std-dev; ball=smooth(~15), apriltag=textured(~80+)
 }
 
 WIN = "HSV Tuner"
@@ -113,12 +114,12 @@ def _detect(frame, h_low, h_high, s_min, v_min, dilation, fill_min_pct, min_r,
 
 
 def _detect_hough(frame, blur_k, param2, min_r, max_r, min_contrast=15,
-                  exclude_top_frac=0.0):
-    """Detect ball by circular shape + local contrast (inner vs outer annulus).
+                  exclude_top_frac=0.0, max_texture=50):
+    """Detect ball by circular shape + local contrast + interior smoothness.
 
-    Score = mean_inside - mean_outside_annulus.
-    A gray/white ball on dark carpet has high contrast; a bright floor
-    patch surrounded by equally-bright carpet has low contrast.
+    Score = mean_inside - mean_outside_annulus (brightness contrast).
+    Texture = std-dev of pixels inside circle (ball=smooth~15, apriltag=textured~80+).
+    A ball is: high contrast AND low texture.
     """
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     if exclude_top_frac > 0:
@@ -144,29 +145,52 @@ def _detect_hough(frame, blur_k, param2, min_r, max_r, min_contrast=15,
         circles_int = np.round(circles[0]).astype(int)
         scored = []
         for cx, cy, r in circles_int:
-            inner = np.zeros((h, w), np.uint8)
-            cv2.circle(inner, (cx, cy), max(1, r), 255, -1)
-            outer = np.zeros((h, w), np.uint8)
-            cv2.circle(outer, (cx, cy), max(1, int(r * 1.6)), 255, -1)
-            annulus = cv2.subtract(outer, inner)   # ring outside the ball
-            mean_in  = float(cv2.mean(gray, mask=inner)[0])
+            inner_mask = np.zeros((h, w), np.uint8)
+            cv2.circle(inner_mask, (cx, cy), max(1, r), 255, -1)
+            outer_mask = np.zeros((h, w), np.uint8)
+            cv2.circle(outer_mask, (cx, cy), max(1, int(r * 1.6)), 255, -1)
+            annulus = cv2.subtract(outer_mask, inner_mask)
+
+            mean_in  = float(cv2.mean(gray, mask=inner_mask)[0])
             mean_out = float(cv2.mean(gray, mask=annulus)[0]) if annulus.any() else mean_in
-            contrast = mean_in - mean_out          # positive = brighter inside = ball-like
-            scored.append((contrast, mean_in, int(cx), int(cy), int(r)))
+            contrast = mean_in - mean_out   # positive = brighter inside = ball-like
 
-        # Draw all candidates: green border = passes contrast, red = fails
-        for contrast, mean_in, cx, cy, r in scored:
-            ok = contrast >= min_contrast
-            color = (0, 200, 60) if ok else (40, 40, 200)
+            # Interior texture: std-dev of pixel values inside circle
+            # Ball = uniform gray surface → low std (~10-30)
+            # Apriltag board = black/white squares → high std (~60-120)
+            iy0 = max(0, cy - r); iy1 = min(h, cy + r + 1)
+            ix0 = max(0, cx - r); ix1 = min(w, cx + r + 1)
+            roi = gray[iy0:iy1, ix0:ix1]
+            roi_mask = inner_mask[iy0:iy1, ix0:ix1]
+            pts = roi[roi_mask > 0]
+            texture = float(pts.std()) if len(pts) > 4 else 999.0
+
+            scored.append((contrast, mean_in, texture, int(cx), int(cy), int(r)))
+
+        # Draw all candidates: color encodes pass/fail
+        #   green  = passes contrast AND texture  (ball candidate)
+        #   orange = passes contrast but texture too high  (textured circle = likely apriltag)
+        #   red    = fails contrast
+        for contrast, mean_in, texture, cx, cy, r in scored:
+            c_ok = contrast >= min_contrast
+            t_ok = texture  <= max_texture
+            if c_ok and t_ok:
+                color = (0, 200, 60)      # green: both pass
+            elif c_ok:
+                color = (0, 140, 255)     # orange: contrast ok but too textured
+            else:
+                color = (40, 40, 200)     # red: contrast fails
             cv2.circle(vis, (cx, cy), r, color, 2)
-            cv2.putText(vis, f"+{contrast:.0f}" if contrast >= 0 else f"{contrast:.0f}",
-                        (cx - 16, cy),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.38, color, 1)
+            label = f"c{contrast:.0f} t{texture:.0f}"
+            cv2.putText(vis, label, (cx - 22, cy),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.35, color, 1)
 
-        # Winner = highest contrast among passing candidates
-        valid = [(c, mi, cx, cy, r) for c, mi, cx, cy, r in scored if c >= min_contrast]
+        # Winner = highest contrast among candidates passing both filters
+        valid = [(c, mi, tx, cx, cy, r)
+                 for c, mi, tx, cx, cy, r in scored
+                 if c >= min_contrast and tx <= max_texture]
         if valid:
-            best_contrast, mean_in, bx, by, br = max(valid, key=lambda x: x[0])
+            best_contrast, mean_in, best_tx, bx, by, br = max(valid, key=lambda x: x[0])
             cv2.circle(vis, (bx, by), br, (0, 255, 255), 3)   # cyan = winner
             best = (0, bx, by, br, round(mean_in / 255, 2), round(best_contrast / 255, 2))
 
@@ -411,7 +435,8 @@ const DEFS = {H_LOW:__H_LOW__,H_HIGH:__H_HIGH__,S_MIN:__S_MIN__,V_MIN:__V_MIN__,
               EXCL_TOP:__EXCL_TOP__,CIRC_MIN:__CIRC_MIN__,
               HOUGH:__HOUGH__,HOUGH_P2:__HOUGH_P2__,HOUGH_BLUR:__HOUGH_BLUR__,
               HOUGH_MINR:__HOUGH_MINR__,HOUGH_MAXR:__HOUGH_MAXR__,
-              HOUGH_MIN_CONTRAST:__HOUGH_MIN_CONTRAST__};
+              HOUGH_MIN_CONTRAST:__HOUGH_MIN_CONTRAST__,
+              HOUGH_MAX_TEXTURE:__HOUGH_MAX_TEXTURE__};
 const META_HSV = [
   {k:"H_LOW",    label:"H_LOW  颜色下限",    max:179, hint:"颜色色相最小值（蓝=100，紫=120，绿=40）"},
   {k:"H_HIGH",   label:"H_HIGH 颜色上限",    max:179, hint:"颜色色相最大值，范围越窄越精准"},
@@ -427,7 +452,8 @@ const META_HOUGH = [
   {k:"HOUGH_BLUR",         label:"HOUGH_BLUR 模糊",       max:31,  hint:"平滑噪点；越大越平滑；奇数"},
   {k:"HOUGH_MINR",         label:"HOUGH_MINR 最小半径",   max:80,  hint:"球最小半径(px)；排除小噪点"},
   {k:"HOUGH_MAXR",         label:"HOUGH_MAXR 最大半径",   max:300, hint:"球最大半径(px)；排除过大误检"},
-  {k:"HOUGH_MIN_CONTRAST", label:"MIN_CONTRAST 局部对比", max:80,  hint:"★关键★ 圆内比圆外亮多少；绿=通过，红=未通过，青=最终结果。球比地毯亮，调到刚好排除地板"},
+  {k:"HOUGH_MIN_CONTRAST", label:"MIN_CONTRAST 最小对比", max:80,  hint:"圆内比圆外亮多少；绿=通过，红=未通过，青=最终结果。球比地毯亮"},
+  {k:"HOUGH_MAX_TEXTURE",  label:"MAX_TEXTURE 最大纹理",  max:120, hint:"★关键★ 圆内像素方差；球面光滑(~15-30)，apriltag格子高纹理(~60-120)；橙色=对比通过但纹理超标"},
 ];
 const META_COMMON = [
   {k:"EXCL_TOP", label:"EXCL_TOP 排除顶部%", max:50, hint:"屏蔽画面顶部N%区域（排除屏幕/天花板干扰）"},
@@ -544,7 +570,8 @@ def run_web(port: int):
                     frame, p["HOUGH_BLUR"], p["HOUGH_P2"],
                     p["HOUGH_MINR"], p["HOUGH_MAXR"],
                     min_contrast=p["HOUGH_MIN_CONTRAST"],
-                    exclude_top_frac=excl)
+                    exclude_top_frac=excl,
+                    max_texture=p["HOUGH_MAX_TEXTURE"])
 
                 best = best_hough if p["HOUGH"] else best_hsv
                 mode_label = "HOUGH" if p["HOUGH"] else "HSV"
@@ -661,7 +688,7 @@ def run_web(port: int):
                 with _WEB_LOCK:
                     for k in ("H_LOW","H_HIGH","S_MIN","V_MIN","DILATION","FILL_MIN","MIN_R",
                               "EXCL_TOP","CIRC_MIN","HOUGH","HOUGH_P2","HOUGH_BLUR",
-                              "HOUGH_MINR","HOUGH_MAXR","HOUGH_MIN_CONTRAST"):
+                              "HOUGH_MINR","HOUGH_MAXR","HOUGH_MIN_CONTRAST","HOUGH_MAX_TEXTURE"):
                         if k in qs:
                             _WEB_PARAMS[k] = int(qs[k][0])
                 self._send(200, "application/json", '{"ok":true}')

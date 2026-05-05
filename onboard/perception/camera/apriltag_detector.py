@@ -466,10 +466,9 @@ def main():
     print(f"[INFO] AprilTag family: {family_name}")
     print(f"[INFO] Tag size: {args.tag_size:.4f} m")
 
-    pipeline, profile = _start_camera_pipeline(args)
-    if args.list_cameras:
-        return
-
+    # Init ROS2 and DDS BEFORE starting the camera — D455@30fps on USB 3.x
+    # consumes significant memory, leaving insufficient headroom for DDS node
+    # creation afterwards.
     rclpy.init()
     joint = None
     try:
@@ -486,6 +485,10 @@ def main():
         print(f"[WARN] ROS2 joint listener failed ({e}), using neutral joint angles", flush=True)
 
     dds = TargetStatePublisher(domain_id=0, topic_name=args.dds_topic)
+
+    pipeline, profile = _start_camera_pipeline(args)
+    if args.list_cameras:
+        return
     print(f"[INFO] DDS publisher ready on '{args.dds_topic}'")
 
     default_xyz, default_rpy = get_default_chest_extrinsics()

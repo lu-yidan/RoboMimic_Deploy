@@ -46,6 +46,12 @@ source /home/unitree/miniconda3/etc/profile.d/conda.sh 2>/dev/null || true
 source /opt/ros/foxy/setup.bash
 source ~/yixuan/yichao-deploy/ws_livox/install/setup.sh 2>/dev/null || true
 
+# Use CycloneDDS — Unitree's intended RMW.
+# FastDDS (the Foxy default) pre-allocates ~14 GB of shared memory on a 16 GB
+# system, immediately triggering the OOM killer before any Python code runs.
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+export CYCLONEDDS_URI='<CycloneDDS><Domain><General><Interfaces><NetworkInterface name="eth0" priority="default" multicast="default" /></Interfaces></General></Domain></CycloneDDS>'
+
 use_default_board_layout=1
 for arg in "$@"; do
     case "$arg" in

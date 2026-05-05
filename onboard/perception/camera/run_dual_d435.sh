@@ -33,6 +33,15 @@ export PYTHONPATH=/usr/lib/python3.8/dist-packages:${PYTHONPATH:-}
 source /opt/ros/foxy/setup.bash
 source ~/yixuan/yichao-deploy/ws_livox/install/setup.sh 2>/dev/null || true
 
+# ── 4b. conda init for non-interactive shells (e.g. SSH) ──
+source /home/unitree/miniconda3/etc/profile.d/conda.sh 2>/dev/null || true
+
+# ── 4c. Use CycloneDDS — Unitree's intended RMW ───────────
+# FastDDS (the Foxy default) pre-allocates ~14 GB of shared memory on a 16 GB
+# system, immediately triggering the OOM killer before any Python code runs.
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+export CYCLONEDDS_URI='<CycloneDDS><Domain><General><Interfaces><NetworkInterface name="eth0" priority="default" multicast="default" /></Interfaces></General></Domain></CycloneDDS>'
+
 # ── 5. 启动双相机检测器 ───────────────────────────────────
 conda run -n robomimic --no-capture-output \
     python -u onboard/perception/camera/ball_detector_dual.py "$@"

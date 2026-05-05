@@ -894,3 +894,142 @@ p.stop()
 python -u onboard/perception/camera/ball_detector.py --imgsz 320
 # 正常输出：[BALL] pelvis=(...) d=1.07m YOLO=25.1fps
 ```
+
+---
+
+## 十一、ROS2 / DDS 相关问题
+
+### 11.1 进程在 `rclpy.init()` 前被 OOM Killer 杀死（`bad_alloc` + `Killed`）
+
+#### 现象
+
+任何调用 ROS2 的脚本（`run_apriltag_target.sh`、`run_target.sh`、
+`run_dual_d435.sh` 等）在 Jetson 上通过 SSH 启动时，Python **在打印第一行之前**
+就被杀死，stderr 只显示：
+
+```
+bad_alloc caught: std::bad_alloc
+bad_alloc caught: std::bad_alloc
+...
+Killed
+```
+
+相机驱动完全没有参与，隔离测试（只运行 `rclpy.init()` + 创建节点，不打开相机）
+同样复现。`dmesg` 显示是 OOM Killer 触发：
+
+```
+Out of memory: Killed process <PID> (python) total-vm:30862628kB, anon-rss:14476516kB
+```
+
+注意：系统有 15 GB RAM，`free -h` 显示 13 GB 可用。**并非真正内存不足。**
+
+#### 根本原因
+
+**FastDDS（Fast RTPS）是 ROS2 Foxy 的默认 RMW**。FastDDS 在初始化时会通过
+`mmap` 预分配一个共享内存传输缓冲区，其大小与系统 RAM 成正比。
+在 16 GB Jetson Orin NX 上，这个缓冲区约为 **14–15 GB**。
+
+Linux 的内存过度提交（overcommit）允许 `mmap` 成功，但当内核真正尝试分配
+物理页时，OOM Killer 立即介入并用 SIGKILL 杀死进程（exit code 137）。
+
+**Unitree G1 设计使用 CycloneDDS**（`rmw_cyclonedds_cpp`），不会有这个问题。
+`~/unitree_ros2/setup.sh` 会设置 `RMW_IMPLEMENTATION=rmw_cyclonedds_cpp`，
+但该脚本只在交互式 shell 中通过 `.bashrc` 加载，**非交互式 SSH 不执行 `.bashrc`**，
+因此通过 SSH 启动的脚本默认回退到 FastDDS，触发 OOM。
+
+#### 修复
+
+在所有 `run_*.sh` 脚本中，在 `source /opt/ros/foxy/setup.bash` 之后加入：
+
+```bash
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+export CYCLONEDDS_URI='<CycloneDDS><Domain><General><Interfaces><NetworkInterface name="eth0" priority="default" multicast="default" /></Interfaces></General></Domain></CycloneDDS>'
+```
+
+`onboard/perception/camera/` 下的所有 `run_*.sh` 已包含此修复。
+
+#### 快速验证
+
+```bash
+source /opt/ros/foxy/setup.bash
+source ~/yixuan/yichao-deploy/ws_livox/install/setup.sh
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+export CYCLONEDDS_URI='<CycloneDDS><Domain><General><Interfaces><NetworkInterface name="eth0" priority="default" multicast="default" /></Interfaces></General></Domain></CycloneDDS>'
+source /home/unitree/miniconda3/etc/profile.d/conda.sh
+conda run -n robomimic python -c "
+import rclpy
+from rclpy.node import Node
+rclpy.init()
+class T(Node): pass
+t = T('test_node')
+print('rclpy OK')
+rclpy.shutdown()
+"
+# 应输出：rclpy OK
+```
+
+---
+
+### 11.2 `conda: command not found`（非交互式 SSH）
+
+#### 现象
+
+通过 SSH 远程执行脚本时报：
+
+```
+bash: conda: command not found
+```
+
+#### 根因
+
+非交互式 SSH 不执行 `.bashrc`，conda 的 shell 函数未被定义。
+
+#### 修复
+
+在所有 `run_*.sh` 脚本的 `conda run` 之前加入：
+
+```bash
+source /home/unitree/miniconda3/etc/profile.d/conda.sh 2>/dev/null || true
+```
+
+---
+
+### 11.3 usbfs_memory_mb 与 librealsense `bad_alloc`
+
+librealsense 通过 USB 内核缓冲区传输帧数据。系统默认值（16 MB）对高分辨率
+D455 流不够，会导致 librealsense **帧缓冲池** 耗尽并抛出 `bad_alloc`。
+这是**另一个不同的** `bad_alloc`，发生在相机流启动后，而非 DDS 初始化时。
+
+`/etc/rc.local` 在启动时设置：
+
+```sh
+echo 256 > /sys/module/usbcore/parameters/usbfs_memory_mb
+```
+
+256 MB 对 D455 在 USB 3.2 下以 1280×720@30fps 或 848×480@60fps 运行足够。
+
+> **不要**将此值设为 1000（1 GB）。这会在内核中预留 1 GB 内存，
+> 配合 FastDDS 的 14 GB mmap，总计超出可用 RAM，导致系统不稳定。
+
+检查当前值：
+
+```bash
+cat /sys/module/usbcore/parameters/usbfs_memory_mb
+```
+
+---
+
+### 11.4 D455 只有 15 fps（分辨率 1280×720）
+
+#### 根因
+
+相机连接到了 **USB 2.1** 口。D455 在 1280×720@30fps 需要 USB 3.x 带宽。
+USB 2.1 上限约 60 MB/s，librealsense 自动降帧率。
+
+#### 修复
+
+将 D455 重新插入 **USB 3.2**（蓝色或标有 "SS"）端口。验证：
+
+```bash
+rs-enumerate-devices | grep USB   # 应显示 USB 3.2
+```

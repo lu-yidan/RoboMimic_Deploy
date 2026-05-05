@@ -176,9 +176,9 @@ def _start_camera_pipeline(args, with_depth: bool = False):
         rs_cfg.enable_device(serial)
         rs_cfg.enable_stream(rs.stream.color, args.width, args.height, rs.format.bgr8, color_fps)
         if with_depth:
-            # Depth at 848×480 (D455 native depth resolution).
+            # Depth at 424×240 — sufficient for ball centroid depth; smaller copy = less GIL.
             # Color may be 1280×720 — different resolutions on same pipeline are supported.
-            rs_cfg.enable_stream(rs.stream.depth, 848, 480, rs.format.z16, color_fps)
+            rs_cfg.enable_stream(rs.stream.depth, 424, 240, rs.format.z16, color_fps)
         for attempt in range(2):
             try:
                 print(
@@ -392,13 +392,16 @@ def _make_yolo_ball_thread(
 ):
     """Start a background YOLO ball-detection thread.
 
-    Shares the camera frameset buffer with the AprilTag main loop.
-    Publishes BallState to *topic* (default rt/cam_ball_state).
+    The main loop pre-copies (color_small, depth_arr) into buf_frames[0] before
+    signalling buf_event, so this thread never touches librealsense frame objects.
+    That releases the librealsense frame buffer immediately, letting
+    pipeline.wait_for_frames() return at full camera fps instead of waiting for
+    this thread to finish inference.
 
     GIL notes:
     - buf_event.wait() releases the GIL while idle — no contention with AprilTag.
     - YOLO CUDA inference (~25ms) releases the GIL — AprilTag can run freely.
-    - Only Python overhead (~3ms) and depth sampling (~2ms) hold the GIL per frame.
+    - Only Python overhead (~2ms) and depth sampling (~1ms) hold the GIL per frame.
     """
     def _run():
         # TensorRT / ultralytics need np.bool / np.int aliases removed in Py ≥ 3.9.
@@ -407,7 +410,6 @@ def _make_yolo_ball_thread(
             if not hasattr(_np_compat, _attr):
                 setattr(_np_compat, _attr, getattr(__builtins__, _attr, None))
 
-        import cv2 as _cv2
         from ultralytics import YOLO
 
         # Prefer .engine (TRT) over .pt if available alongside the requested path.
@@ -438,6 +440,9 @@ def _make_yolo_ball_thread(
 
         t_cx = color_to_depth_extr.translation[0]
         t_cy = color_to_depth_extr.translation[1]
+        # Scale factors are fixed for the lifetime of the thread.
+        sx = color_intrin.width  / imgsz
+        sy = color_intrin.height / imgsz
 
         while True:
             if not buf_event.wait(timeout=1.0):
@@ -446,23 +451,15 @@ def _make_yolo_ball_thread(
             buf_event.clear()
 
             with buf_lock:
-                frameset = buf_frames[0]
-            if frameset is None:
+                buf_item = buf_frames[0]
+            if buf_item is None:
                 continue
 
-            cf = frameset.get_color_frame()
-            df = frameset.get_depth_frame()
-            if not cf or not df:
+            # Main loop pre-copies (color_small, depth_arr) so we never hold
+            # a librealsense frame object — that would block pipeline.wait_for_frames().
+            color_small, depth_arr = buf_item
+            if depth_arr is None:
                 continue
-
-            color = __import__("numpy").asanyarray(cf.get_data()).copy()
-            depth_raw = __import__("numpy").asanyarray(df.get_data())
-            depth_arr = depth_raw.copy()   # DMA → cache-friendly heap (~2ms)
-
-            orig_h, orig_w = color.shape[:2]
-            color_small = _cv2.resize(color, (imgsz, imgsz))
-            sx = orig_w / imgsz
-            sy = orig_h / imgsz
 
             results = _model.track(color_small, conf=_BALL_CONF_THRESH,
                                    persist=True, verbose=False, **_kw)
@@ -775,11 +772,14 @@ def main():
 
             color = np.asanyarray(color_frame.get_data()).copy()
 
-            # Share frameset with the YOLO ball thread (if active).
-            # set() is ~0.1ms and does not hold the GIL long.
+            # Pre-copy frame data for YOLO thread so librealsense can immediately
+            # recycle the frame buffer — do NOT share the frameset object itself.
             if args.ball:
+                _df = frames.get_depth_frame()
+                _depth_np = np.asanyarray(_df.get_data()).copy() if _df else None
+                _color_small = cv2.resize(color, (args.ball_imgsz, args.ball_imgsz))
                 with _yolo_buf_lock:
-                    _yolo_buf_frames[0] = frames
+                    _yolo_buf_frames[0] = (_color_small, _depth_np)
                 _yolo_buf_event.set()
 
             gray = cv2.cvtColor(color, cv2.COLOR_BGR2GRAY)

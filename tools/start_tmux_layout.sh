@@ -17,14 +17,15 @@ fi
 tmux new-session -d -s "${SESSION_NAME}" -n main -c "${REPO_DIR}"
 
 # Layout (2 columns × 3 rows):
-#   left-top    | right-top     apriltag + cam ball detection
-#   left-mid    | right-mid     lidar ball detection
-#   left-bottom | right-bottom  deploy policy | ball fuser
+#   left-top    | right-top     bridge/cpp  | apriltag + cam ball detection
+#   left-mid    | right-mid     deploy_policy | lidar ball detection
+#   left-bottom | right-bottom  sensor dashboard (port 8091) | ball fuser
 #
 # Data flow:
 #   right-top  -> rt/target_state  +  rt/cam_ball_state
 #   right-mid  -> rt/lidar_ball_state
 #   right-bot  -> rt/ball_state (fused output for deploy_policy.py)
+#   left-bot   subscribes all four topics -> browser http://<robot>:8091/
 LEFT_TOP="$(tmux display-message -p -t "${SESSION_NAME}:0.0" '#{pane_id}')"
 RIGHT_TOP="$(tmux split-window -h -P -F '#{pane_id}' -t "${LEFT_TOP}" -c "${REPO_DIR}")"
 LEFT_MID="$(tmux split-window -v -P -F '#{pane_id}' -t "${LEFT_TOP}" -c "${REPO_DIR}")"
@@ -38,7 +39,7 @@ tmux send-keys -t "${RIGHT_MID}"    -l "cd ${REPO_DIR} && ./onboard/perception/l
 tmux send-keys -t "${RIGHT_BOTTOM}" -l "cd ${REPO_DIR} && bash onboard/perception/run_ball_fuser.sh"
 tmux send-keys -t "${LEFT_TOP}"     -l "cd ${REPO_DIR} && cmake -S bridge -B bridge/build && cmake --build bridge/build -j2 && BRIDGE_NETWORK_INTERFACE=eth0 bridge/build/cpp_bridge_main"
 tmux send-keys -t "${LEFT_MID}"     -l "cd ${REPO_DIR} && python bridge/python/deploy_policy.py"
-tmux send-keys -t "${LEFT_BOTTOM}"  -l "cd ${REPO_DIR} && bash onboard/perception/run_ball_web_viewer.sh"
+tmux send-keys -t "${LEFT_BOTTOM}"  -l "cd ${REPO_DIR} && bash onboard/perception/run_sensor_dashboard.sh"
 
 tmux select-pane -t "${LEFT_TOP}"
 tmux attach-session -t "${SESSION_NAME}"

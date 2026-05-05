@@ -43,6 +43,7 @@ from common.target_state_dds import (  # noqa: E402
     SOURCE_CHEST_CAMERA,
     TargetStatePublisher,
 )
+from common.ball_state_dds import BallStatePublisher, SOURCE_CAM, SOURCE_NONE  # noqa: E402
 from onboard.perception.camera.camera_to_base import (  # noqa: E402
     get_default_chest_extrinsics,
     optical_to_body,
@@ -53,6 +54,17 @@ from onboard.perception.camera.camera_to_base import (  # noqa: E402
 COAST_FRAMES = 8
 EMA_ALPHA = 0.5
 EMA_GATE = 0.4
+
+# ── Ball detection constants (used when --ball is active) ─────────────────
+_BALL_DEPTH_SAMPLE_R = 5
+_BALL_DEPTH_MIN      = 0.1    # m — minimum valid depth
+_BALL_DEPTH_MAX      = 10.0   # m — maximum valid depth
+_BALL_RADIUS         = 0.115  # m — physical ball radius; depth sensor sees front surface
+_BALL_CONF_THRESH    = 0.25   # YOLO confidence threshold
+_BALL_SPORTS_ID      = 32     # COCO class index for sports ball
+_BALL_COAST          = 10     # frames to hold last position after YOLO miss
+_BALL_EMA_ALPHA      = 0.5
+_BALL_EMA_GATE       = 0.6    # m — EMA reset threshold
 
 
 class _FPS:
@@ -138,7 +150,7 @@ def _get_apriltag_dictionary(tag_family):
     return cv2.aruco.getPredefinedDictionary(families[family_key]), family_key
 
 
-def _start_camera_pipeline(args):
+def _start_camera_pipeline(args, with_depth: bool = False):
     ctx = rs.context()
     devs = ctx.query_devices()
     all_sns = [d.get_info(rs.camera_info.serial_number) for d in devs]
@@ -163,6 +175,10 @@ def _start_camera_pipeline(args):
         rs_cfg = rs.config()
         rs_cfg.enable_device(serial)
         rs_cfg.enable_stream(rs.stream.color, args.width, args.height, rs.format.bgr8, color_fps)
+        if with_depth:
+            # Depth at 848×480 (D455 native depth resolution).
+            # Color may be 1280×720 — different resolutions on same pipeline are supported.
+            rs_cfg.enable_stream(rs.stream.depth, 848, 480, rs.format.z16, color_fps)
         for attempt in range(2):
             try:
                 print(
@@ -367,6 +383,180 @@ def _fuse_target_points_optical(detections):
     return fused, len(detections)
 
 
+def _make_yolo_ball_thread(
+    model_path, topic, imgsz, joint,
+    color_intrin, depth_intrin, color_to_depth_extr, depth_scale,
+    chest_xyz, chest_rpy,
+    buf_frames, buf_lock, buf_event,
+):
+    """Start a background YOLO ball-detection thread.
+
+    Shares the camera frameset buffer with the AprilTag main loop.
+    Publishes BallState to *topic* (default rt/cam_ball_state).
+
+    GIL notes:
+    - buf_event.wait() releases the GIL while idle — no contention with AprilTag.
+    - YOLO CUDA inference (~25ms) releases the GIL — AprilTag can run freely.
+    - Only Python overhead (~3ms) and depth sampling (~2ms) hold the GIL per frame.
+    """
+    def _run():
+        # TensorRT / ultralytics need np.bool / np.int aliases removed in Py ≥ 3.9.
+        import numpy as _np_compat
+        for _attr in ("bool", "int", "float", "complex", "object", "str"):
+            if not hasattr(_np_compat, _attr):
+                setattr(_np_compat, _attr, getattr(__builtins__, _attr, None))
+
+        import cv2 as _cv2
+        from ultralytics import YOLO
+
+        # Prefer .engine (TRT) over .pt if available alongside the requested path.
+        _mp = model_path
+        if _mp.endswith(".pt"):
+            _eng = _mp.replace(".pt", ".engine")
+            if __import__("os").path.exists(_eng):
+                _mp = _eng
+        _is_trt = _mp.endswith(".engine")
+
+        print(f"[BALL] Loading YOLO model: {_mp}")
+        _model = YOLO(_mp)
+        _dummy = __import__("numpy").zeros((imgsz, imgsz, 3), dtype=__import__("numpy").uint8)
+        _kw = {} if _is_trt else dict(device="cuda:0", half=True)
+        print("[BALL] YOLO warming up...")
+        for _ in range(3):
+            _model.track(_dummy, persist=True, verbose=False, **_kw)
+        print("[BALL] YOLO ready.")
+
+        ball_dds = BallStatePublisher(domain_id=0, topic_name=topic)
+        print(f"[BALL] DDS publisher ready on '{topic}'")
+
+        # State
+        center_ema = None
+        last_bbox  = None
+        miss_count = 0
+        ball_fps   = _FPS()
+
+        t_cx = color_to_depth_extr.translation[0]
+        t_cy = color_to_depth_extr.translation[1]
+
+        while True:
+            if not buf_event.wait(timeout=1.0):
+                ball_dds.publish(0.0, 0.0, 0.0, valid=False, source=SOURCE_NONE)
+                continue
+            buf_event.clear()
+
+            with buf_lock:
+                frameset = buf_frames[0]
+            if frameset is None:
+                continue
+
+            cf = frameset.get_color_frame()
+            df = frameset.get_depth_frame()
+            if not cf or not df:
+                continue
+
+            color = __import__("numpy").asanyarray(cf.get_data()).copy()
+            depth_raw = __import__("numpy").asanyarray(df.get_data())
+            depth_arr = depth_raw.copy()   # DMA → cache-friendly heap (~2ms)
+
+            orig_h, orig_w = color.shape[:2]
+            color_small = _cv2.resize(color, (imgsz, imgsz))
+            sx = orig_w / imgsz
+            sy = orig_h / imgsz
+
+            results = _model.track(color_small, conf=_BALL_CONF_THRESH,
+                                   persist=True, verbose=False, **_kw)
+            best_box  = None
+            best_conf = 0.0
+            for _r in results:
+                for _b in _r.boxes:
+                    if int(_b.cls[0]) == _BALL_SPORTS_ID:
+                        _c = float(_b.conf[0])
+                        if _c > best_conf:
+                            best_conf, best_box = _c, _b
+
+            import numpy as np
+            if best_box is not None:
+                miss_count = 0
+                x1s, y1s, x2s, y2s = best_box.xyxy[0]
+                last_bbox = (int(x1s * sx), int(y1s * sy),
+                             int(x2s * sx), int(y2s * sy))
+            else:
+                miss_count += 1
+
+            published_valid = False
+            if last_bbox is not None and miss_count <= _BALL_COAST:
+                x1, y1, x2, y2 = last_bbox
+                cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
+
+                # Color pixel → depth pixel (3-step, see TROUBLESHOOTING.md §9)
+                dh, dw = depth_arr.shape
+                ndcx = (cx - color_intrin.ppx) / color_intrin.fx
+                ndcy = (cy - color_intrin.ppy) / color_intrin.fy
+                dx0 = int(ndcx * depth_intrin.fx + depth_intrin.ppx + 0.5)
+                dy0 = int(ndcy * depth_intrin.fy + depth_intrin.ppy + 0.5)
+                dx0 = max(0, min(dw - 1, dx0))
+                dy0 = max(0, min(dh - 1, dy0))
+                raw0 = depth_arr[dy0, dx0]
+                depth_coarse = raw0 * depth_scale if raw0 > 0 else 1.0
+
+                dx_par = t_cx / depth_coarse * depth_intrin.fx
+                dy_par = t_cy / depth_coarse * depth_intrin.fy
+                dx = int(ndcx * depth_intrin.fx + depth_intrin.ppx + dx_par + 0.5)
+                dy = int(ndcy * depth_intrin.fy + depth_intrin.ppy + dy_par + 0.5)
+                dx = max(0, min(dw - 1, dx))
+                dy = max(0, min(dh - 1, dy))
+
+                r = _BALL_DEPTH_SAMPLE_R
+                patch = depth_arr[max(0, dy - r):dy + r + 1,
+                                  max(0, dx - r):dx + r + 1].astype(np.float32) * depth_scale
+                valid_d = patch[(patch > _BALL_DEPTH_MIN) & (patch < _BALL_DEPTH_MAX)]
+                depth_surface = float(np.median(valid_d)) if len(valid_d) > 0 else 0.0
+                depth_m = depth_surface + _BALL_RADIUS if depth_surface > 0 else 0.0
+
+                if depth_m > 0:
+                    p_opt = rs.rs2_deproject_pixel_to_point(color_intrin, [cx, cy], depth_m)
+                    p_cam = optical_to_body(p_opt)
+
+                    if center_ema is None:
+                        center_ema = p_cam.copy()
+                    else:
+                        gate = float(np.linalg.norm(p_cam - center_ema))
+                        if gate < _BALL_EMA_GATE:
+                            center_ema = (_BALL_EMA_ALPHA * p_cam
+                                          + (1 - _BALL_EMA_ALPHA) * center_ema)
+                        else:
+                            center_ema = p_cam.copy()
+
+                    p_base = transform_point_chest_camera_to_base_with_extrinsics(
+                        center_ema,
+                        joint.q_wy, joint.q_wr, joint.q_wp,
+                        chest_xyz=chest_xyz, chest_rpy=chest_rpy,
+                    )
+                    bx, by, bz = float(p_base[0]), float(p_base[1]), float(p_base[2])
+                    is_det = best_box is not None
+                    ball_dds.publish(bx, by, bz, valid=is_det, source=SOURCE_CAM)
+                    published_valid = True
+
+                    tag = "BALL " if is_det else "COAST"
+                    print(
+                        f"\r[{tag}] cam_ball pelvis=({bx:+.3f},{by:+.3f},{bz:+.3f}) "
+                        f"dist={depth_m:.2f}m ball={ball_fps.fps:4.1f}fps" + " " * 5,
+                        end="", flush=True,
+                    )
+
+            if not published_valid:
+                center_ema = None
+                ball_dds.publish(0.0, 0.0, 0.0, valid=False, source=SOURCE_NONE)
+                print(f"\r[     ] cam_ball: no ball  fps={ball_fps.fps:4.1f}" + " " * 20,
+                      end="", flush=True)
+
+            ball_fps.tick()
+
+    t = threading.Thread(target=_run, daemon=True, name="yolo-ball")
+    t.start()
+    return t
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Chest D455 + AprilTag target detector -> rt/target_state"
@@ -430,6 +620,26 @@ def main():
     parser.add_argument("--coast-frames", type=int, default=COAST_FRAMES)
     parser.add_argument("--ema-alpha", type=float, default=EMA_ALPHA)
     parser.add_argument("--ema-gate", type=float, default=EMA_GATE)
+
+    # ── Ball detection (optional, --ball enables YOLO thread) ─────────────
+    parser.add_argument(
+        "--ball", action="store_true",
+        help="Also run YOLO ball detection on the same chest camera. "
+             "Publishes to --ball-topic (default rt/cam_ball_state).",
+    )
+    parser.add_argument(
+        "--ball-model",
+        default="onboard/perception/camera/models/yolo11m.pt",
+        help="YOLO model path for ball detection (default: yolo11m.pt; .engine preferred).",
+    )
+    parser.add_argument(
+        "--ball-topic", default="rt/cam_ball_state",
+        help="DDS topic for camera ball detection output (default: rt/cam_ball_state).",
+    )
+    parser.add_argument(
+        "--ball-imgsz", type=int, default=320,
+        help="YOLO input resolution for ball detection (default 320).",
+    )
     parser.add_argument(
         "--chest-xyz",
         type=float,
@@ -483,7 +693,7 @@ def main():
     dds = TargetStatePublisher(domain_id=0, topic_name=args.dds_topic)
     print(f"[INFO] DDS publisher ready on '{args.dds_topic}'")
 
-    pipeline, profile = _start_camera_pipeline(args)
+    pipeline, profile = _start_camera_pipeline(args, with_depth=args.ball)
     if args.list_cameras:
         return
 
@@ -498,6 +708,34 @@ def main():
     camera_matrix = _build_camera_matrix(color_intrin)
     dist_coeffs = _build_dist_coeffs(color_intrin)
     print(f"[INFO] Color intrinsics fx={color_intrin.fx:.1f} fy={color_intrin.fy:.1f}")
+
+    # ── Ball detection thread setup ────────────────────────────────────────
+    _yolo_buf_frames = [None]
+    _yolo_buf_lock   = threading.Lock()
+    _yolo_buf_event  = threading.Event()
+    if args.ball:
+        depth_profile       = profile.get_stream(rs.stream.depth).as_video_stream_profile()
+        depth_intrin        = depth_profile.get_intrinsics()
+        color_to_depth_extr = color_profile.get_extrinsics_to(depth_profile)
+        depth_scale         = profile.get_device().first_depth_sensor().get_depth_scale()
+        print(f"[INFO] Depth intrinsics fx={depth_intrin.fx:.1f} fy={depth_intrin.fy:.1f}  "
+              f"depth_scale={depth_scale:.4f}")
+        _make_yolo_ball_thread(
+            model_path=args.ball_model,
+            topic=args.ball_topic,
+            imgsz=args.ball_imgsz,
+            joint=joint,
+            color_intrin=color_intrin,
+            depth_intrin=depth_intrin,
+            color_to_depth_extr=color_to_depth_extr,
+            depth_scale=depth_scale,
+            chest_xyz=chest_xyz,
+            chest_rpy=chest_rpy,
+            buf_frames=_yolo_buf_frames,
+            buf_lock=_yolo_buf_lock,
+            buf_event=_yolo_buf_event,
+        )
+        print(f"[INFO] Ball detection thread started -> topic '{args.ball_topic}'")
 
     if args.show:
         httpd, mjpeg_frame, mjpeg_lock = _start_mjpeg_server()
@@ -522,6 +760,14 @@ def main():
                 continue
 
             color = np.asanyarray(color_frame.get_data()).copy()
+
+            # Share frameset with the YOLO ball thread (if active).
+            # set() is ~0.1ms and does not hold the GIL long.
+            if args.ball:
+                with _yolo_buf_lock:
+                    _yolo_buf_frames[0] = frames
+                _yolo_buf_event.set()
+
             gray = cv2.cvtColor(color, cv2.COLOR_BGR2GRAY)
             # Downscale before ArUco to avoid bad_alloc in OpenCV C++ on Jetson
             # at high resolutions/fps. Corners are scaled back so pose estimation

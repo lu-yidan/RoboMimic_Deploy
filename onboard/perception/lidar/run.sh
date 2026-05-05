@@ -15,6 +15,12 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 source /opt/ros/foxy/setup.bash
 source ~/yixuan/yichao-deploy/ws_livox/install/setup.sh 2>/dev/null || true
 
+source /home/unitree/miniconda3/etc/profile.d/conda.sh 2>/dev/null || true
+
+# Use CycloneDDS — Unitree's intended RMW (FastDDS OOM-kills on 16 GB Jetson).
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+export CYCLONEDDS_URI='<CycloneDDS><Domain><General><Interfaces><NetworkInterface name="eth0" priority="default" multicast="default" /></Interfaces></General></Domain></CycloneDDS>'
+
 cd "$ROOT_DIR"
 
 # ── 清理 ─────────────────────────────────────────────────────────────────────

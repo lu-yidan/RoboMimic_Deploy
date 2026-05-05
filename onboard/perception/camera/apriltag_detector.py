@@ -66,6 +66,131 @@ _BALL_COAST          = 10     # frames to hold last position after YOLO miss
 _BALL_EMA_ALPHA      = 0.5
 _BALL_EMA_GATE       = 0.6    # m — EMA reset threshold
 
+# HSV ball detection constants (used when --ball-hsv is active)
+# Tuned for a soccer ball with blue/purple hexagonal patches on white background.
+# Adjust via --ball-hsv-h-low / --ball-hsv-h-high / --ball-hsv-s-min / --ball-hsv-v-min.
+_HSV_H_LOW_DEFAULT  = 90
+_HSV_H_HIGH_DEFAULT = 150
+_HSV_S_MIN_DEFAULT  = 40
+_HSV_V_MIN_DEFAULT  = 50
+_HSV_DILATION       = 17    # px — merges scattered color patches into one blob; half=8
+_HSV_MIN_R          = 4     # px — smallest allowed ball radius (~8m max range)
+_HSV_MAX_R          = 280   # px — largest allowed ball radius
+_HSV_FILL_MIN       = 0.05  # fraction of enclosing circle covered by original mask pixels
+
+
+def _detect_ball_hsv(
+    color_bgr: np.ndarray,
+    hsv_low: np.ndarray,
+    hsv_high: np.ndarray,
+    min_r: int = _HSV_MIN_R,
+    max_r: int = _HSV_MAX_R,
+    fill_min: float = _HSV_FILL_MIN,
+) -> tuple:
+    """Detect soccer ball by HSV color patch matching.
+
+    Works for balls with scattered color patches (e.g. blue hexagons on white):
+    dilates the mask heavily to merge patches into one blob, finds the largest
+    circular cluster, then corrects the radius for the dilation offset.
+
+    Returns (cx_px, cy_px, r_est_px) or (None, None, 0.0).
+    r_est_px is the corrected ball radius in the color image (≈ actual ball edge).
+    """
+    hsv = cv2.cvtColor(color_bgr, cv2.COLOR_BGR2HSV)
+    mask = cv2.inRange(hsv, hsv_low, hsv_high)
+
+    # Merge separated color patches with a large dilation.
+    k_merge = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (_HSV_DILATION, _HSV_DILATION))
+    merged = cv2.dilate(mask, k_merge)
+    # Remove stray noise that survived dilation.
+    k_clean = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    merged = cv2.morphologyEx(merged, cv2.MORPH_OPEN, k_clean)
+
+    contours, _ = cv2.findContours(merged, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return None, None, 0.0
+
+    dilation_half = _HSV_DILATION // 2
+    h, w = mask.shape
+    best = None
+
+    for cnt in contours:
+        (blob_cx, blob_cy), blob_r = cv2.minEnclosingCircle(cnt)
+        blob_cx, blob_cy, blob_r = int(blob_cx), int(blob_cy), float(blob_r)
+
+        # Estimated true ball radius (subtract the dilation that inflated the blob).
+        r_est = blob_r - dilation_half
+        if not (min_r <= r_est <= max_r):
+            continue
+
+        # Validate with original (undilated) mask: check what fraction of the
+        # enclosing circle contains actual color pixels.
+        circle_area = np.pi * blob_r * blob_r
+        y0 = max(0, blob_cy - int(blob_r))
+        y1 = min(h, blob_cy + int(blob_r) + 1)
+        x0 = max(0, blob_cx - int(blob_r))
+        x1 = min(w, blob_cx + int(blob_r) + 1)
+        roi = mask[y0:y1, x0:x1]
+        orig_pixels = int(np.count_nonzero(roi))
+        fill = orig_pixels / circle_area
+        if fill < fill_min:
+            continue
+
+        score = orig_pixels * fill
+        if best is None or score > best[0]:
+            best = (score, blob_cx, blob_cy, r_est)
+
+    if best is None:
+        return None, None, 0.0
+    _, cx, cy, r_est = best
+    return cx, cy, r_est
+
+
+def _sample_ball_depth(
+    cx: int, cy: int,
+    depth_arr: np.ndarray,
+    depth_scale: float,
+    color_intrin,
+    depth_intrin,
+    color_to_depth_extr,
+    sample_r: int = _BALL_DEPTH_SAMPLE_R,
+) -> float:
+    """3-step color→depth pixel mapping + patch median → ball-center depth in metres.
+
+    Returns 0.0 if depth is unavailable or out of range.
+    """
+    dh, dw = depth_arr.shape
+    ndcx = (cx - color_intrin.ppx) / color_intrin.fx
+    ndcy = (cy - color_intrin.ppy) / color_intrin.fy
+
+    # Step 1: FOV-only mapping (no parallax correction yet).
+    dx0 = int(ndcx * depth_intrin.fx + depth_intrin.ppx + 0.5)
+    dy0 = int(ndcy * depth_intrin.fy + depth_intrin.ppy + 0.5)
+    dx0 = max(0, min(dw - 1, dx0))
+    dy0 = max(0, min(dh - 1, dy0))
+    raw0 = depth_arr[dy0, dx0]
+    depth_coarse = raw0 * depth_scale if raw0 > 0 else 1.0
+
+    # Step 2: Parallax correction using color→depth baseline.
+    t_cx = color_to_depth_extr.translation[0]
+    t_cy = color_to_depth_extr.translation[1]
+    dx = int(ndcx * depth_intrin.fx + depth_intrin.ppx
+             + t_cx / depth_coarse * depth_intrin.fx + 0.5)
+    dy = int(ndcy * depth_intrin.fy + depth_intrin.ppy
+             + t_cy / depth_coarse * depth_intrin.fy + 0.5)
+    dx = max(0, min(dw - 1, dx))
+    dy = max(0, min(dh - 1, dy))
+
+    # Step 3: Median of a small depth patch.
+    patch = (depth_arr[max(0, dy - sample_r):dy + sample_r + 1,
+                       max(0, dx - sample_r):dx + sample_r + 1]
+             .astype(np.float32) * depth_scale)
+    valid_d = patch[(patch > _BALL_DEPTH_MIN) & (patch < _BALL_DEPTH_MAX)]
+    if len(valid_d) == 0:
+        return 0.0
+    # depth to ball center = surface depth + ball radius
+    return float(np.median(valid_d)) + _BALL_RADIUS
+
 
 class _FPS:
     def __init__(self, window=30):
@@ -647,6 +772,26 @@ def main():
         "--ball-imgsz", type=int, default=320,
         help="YOLO input resolution for ball detection (default 320).",
     )
+
+    # ── HSV ball detection (alternative to YOLO, runs in main loop, no thread) ─
+    parser.add_argument(
+        "--ball-hsv", action="store_true",
+        help="Enable HSV color-matching ball detection instead of YOLO. "
+             "Runs synchronously in the main loop — no fps penalty. "
+             "Publishes to --ball-hsv-topic (default rt/cam_ball_state).",
+    )
+    parser.add_argument("--ball-hsv-topic", default="rt/cam_ball_state")
+    parser.add_argument("--ball-hsv-h-low",  type=int, default=_HSV_H_LOW_DEFAULT,
+                        help=f"HSV hue lower bound (0-180, default {_HSV_H_LOW_DEFAULT})")
+    parser.add_argument("--ball-hsv-h-high", type=int, default=_HSV_H_HIGH_DEFAULT,
+                        help=f"HSV hue upper bound (0-180, default {_HSV_H_HIGH_DEFAULT})")
+    parser.add_argument("--ball-hsv-s-min",  type=int, default=_HSV_S_MIN_DEFAULT,
+                        help=f"HSV saturation minimum (default {_HSV_S_MIN_DEFAULT})")
+    parser.add_argument("--ball-hsv-v-min",  type=int, default=_HSV_V_MIN_DEFAULT,
+                        help=f"HSV value minimum (default {_HSV_V_MIN_DEFAULT})")
+    parser.add_argument("--ball-hsv-show-mask", action="store_true",
+                        help="Draw HSV mask outline on the MJPEG stream for tuning.")
+
     parser.add_argument(
         "--chest-xyz",
         type=float,
@@ -700,7 +845,7 @@ def main():
     dds = TargetStatePublisher(domain_id=0, topic_name=args.dds_topic)
     print(f"[INFO] DDS publisher ready on '{args.dds_topic}'")
 
-    pipeline, profile = _start_camera_pipeline(args, with_depth=args.ball)
+    pipeline, profile = _start_camera_pipeline(args, with_depth=args.ball or args.ball_hsv)
     if args.list_cameras:
         return
 
@@ -716,20 +861,27 @@ def main():
     dist_coeffs = _build_dist_coeffs(color_intrin)
     print(f"[INFO] Color intrinsics fx={color_intrin.fx:.1f} fy={color_intrin.fy:.1f}")
 
-    # ── Ball detection thread setup ────────────────────────────────────────
+    # ── Ball detection setup ───────────────────────────────────────────────
     _yolo_buf_frames = [None]
     _yolo_buf_lock   = threading.Lock()
     _yolo_buf_event  = threading.Event()
-    # Shared dict written by YOLO thread, read by MJPEG renderer (no lock needed:
-    # dict key writes are atomic in CPython and we only ever read stale-by-one-frame).
+    # Shared dict written by YOLO/HSV path, read by MJPEG renderer (dict-key writes
+    # are atomic in CPython; stale-by-one-frame reads are acceptable).
     _ball_overlay = {"bbox": None, "pelvis": None, "depth": 0.0, "valid": False, "miss": 0}
-    if args.ball:
+
+    # Depth stream resources (shared by YOLO and HSV modes).
+    depth_intrin        = None
+    color_to_depth_extr = None
+    depth_scale         = 1.0
+    if args.ball or args.ball_hsv:
         depth_profile       = profile.get_stream(rs.stream.depth).as_video_stream_profile()
         depth_intrin        = depth_profile.get_intrinsics()
         color_to_depth_extr = color_profile.get_extrinsics_to(depth_profile)
         depth_scale         = profile.get_device().first_depth_sensor().get_depth_scale()
         print(f"[INFO] Depth intrinsics fx={depth_intrin.fx:.1f} fy={depth_intrin.fy:.1f}  "
               f"depth_scale={depth_scale:.4f}")
+
+    if args.ball:
         _make_yolo_ball_thread(
             model_path=args.ball_model,
             topic=args.ball_topic,
@@ -746,7 +898,21 @@ def main():
             buf_event=_yolo_buf_event,
             overlay_state=_ball_overlay,
         )
-        print(f"[INFO] Ball detection thread started -> topic '{args.ball_topic}'")
+        print(f"[INFO] YOLO ball detection thread started -> topic '{args.ball_topic}'")
+
+    # HSV ball detection state (main-loop, no thread).
+    _hsv_ball_dds   = None
+    _hsv_low        = None
+    _hsv_high       = None
+    _hsv_center_ema = None
+    _hsv_miss_count = 0
+    if args.ball_hsv:
+        _hsv_low  = np.array([args.ball_hsv_h_low,  args.ball_hsv_s_min, args.ball_hsv_v_min],
+                             dtype=np.uint8)
+        _hsv_high = np.array([args.ball_hsv_h_high, 255, 255], dtype=np.uint8)
+        _hsv_ball_dds = BallStatePublisher(domain_id=0, topic_name=args.ball_hsv_topic)
+        print(f"[INFO] HSV ball detection active  H=[{args.ball_hsv_h_low},{args.ball_hsv_h_high}] "
+              f"S≥{args.ball_hsv_s_min} V≥{args.ball_hsv_v_min} -> topic '{args.ball_hsv_topic}'")
 
     if args.show:
         httpd, mjpeg_frame, mjpeg_lock = _start_mjpeg_server()
@@ -772,15 +938,101 @@ def main():
 
             color = np.asanyarray(color_frame.get_data()).copy()
 
-            # Pre-copy frame data for YOLO thread so librealsense can immediately
-            # recycle the frame buffer — do NOT share the frameset object itself.
-            if args.ball:
+            # Copy depth once for any ball mode that needs it; release frame buffer ASAP.
+            _ball_depth_np = None
+            if args.ball or args.ball_hsv:
                 _df = frames.get_depth_frame()
-                _depth_np = np.asanyarray(_df.get_data()).copy() if _df else None
+                if _df:
+                    _ball_depth_np = np.asanyarray(_df.get_data()).copy()
+
+            # YOLO thread: share pre-copied arrays (never the frameset object).
+            if args.ball:
                 _color_small = cv2.resize(color, (args.ball_imgsz, args.ball_imgsz))
                 with _yolo_buf_lock:
-                    _yolo_buf_frames[0] = (_color_small, _depth_np)
+                    _yolo_buf_frames[0] = (_color_small, _ball_depth_np)
                 _yolo_buf_event.set()
+
+            # HSV ball detection runs synchronously here — pure OpenCV, no thread needed.
+            if args.ball_hsv:
+                _hsv_cx, _hsv_cy, _hsv_r = _detect_ball_hsv(
+                    color, _hsv_low, _hsv_high)
+
+                if _hsv_cx is not None:
+                    _hsv_miss_count = 0
+
+                    # Depth: sensor first, visual-size fallback.
+                    _hsv_depth = 0.0
+                    if _ball_depth_np is not None and depth_intrin is not None:
+                        _hsv_depth = _sample_ball_depth(
+                            _hsv_cx, _hsv_cy, _ball_depth_np, depth_scale,
+                            color_intrin, depth_intrin, color_to_depth_extr,
+                        )
+                    if _hsv_depth <= 0 and _hsv_r > 0:
+                        # Apparent-size estimate: depth = fx * R_physical / r_px
+                        _hsv_depth = color_intrin.fx * _BALL_RADIUS / _hsv_r
+
+                    if _hsv_depth > 0:
+                        _p_opt = rs.rs2_deproject_pixel_to_point(
+                            color_intrin, [_hsv_cx, _hsv_cy], _hsv_depth)
+                        _p_cam = optical_to_body(_p_opt)
+                        _p_arr = np.array(_p_cam, dtype=np.float32)
+
+                        if _hsv_center_ema is None:
+                            _hsv_center_ema = _p_arr.copy()
+                        elif np.linalg.norm(_p_arr - _hsv_center_ema) < _BALL_EMA_GATE:
+                            _hsv_center_ema = (_BALL_EMA_ALPHA * _p_arr
+                                               + (1 - _BALL_EMA_ALPHA) * _hsv_center_ema)
+                        else:
+                            _hsv_center_ema = _p_arr.copy()
+
+                        _p_base = transform_point_chest_camera_to_base_with_extrinsics(
+                            _hsv_center_ema,
+                            joint.q_wy, joint.q_wr, joint.q_wp,
+                            chest_xyz=chest_xyz, chest_rpy=chest_rpy,
+                        )
+                        _hbx, _hby, _hbz = (float(_p_base[0]),
+                                             float(_p_base[1]),
+                                             float(_p_base[2]))
+                        _hsv_ball_dds.publish(_hbx, _hby, _hbz,
+                                              valid=True, source=SOURCE_CAM)
+
+                        _r_int = int(_hsv_r)
+                        _ball_overlay["bbox"]   = (_hsv_cx - _r_int, _hsv_cy - _r_int,
+                                                   _hsv_cx + _r_int, _hsv_cy + _r_int)
+                        _ball_overlay["pelvis"] = (_hbx, _hby, _hbz)
+                        _ball_overlay["depth"]  = _hsv_depth
+                        _ball_overlay["valid"]  = True
+                        _ball_overlay["miss"]   = 0
+
+                        if args.ball_hsv_show_mask:
+                            cv2.circle(color, (_hsv_cx, _hsv_cy), _r_int,
+                                       (0, 255, 180), 2)
+
+                        print(f"\r[HSV ] cam_ball "
+                              f"pelvis=({_hbx:+.3f},{_hby:+.3f},{_hbz:+.3f}) "
+                              f"dist={_hsv_depth:.2f}m",
+                              end="", flush=True)
+                else:
+                    _hsv_miss_count += 1
+                    if _hsv_miss_count <= _BALL_COAST and _hsv_center_ema is not None:
+                        _p_base = transform_point_chest_camera_to_base_with_extrinsics(
+                            _hsv_center_ema,
+                            joint.q_wy, joint.q_wr, joint.q_wp,
+                            chest_xyz=chest_xyz, chest_rpy=chest_rpy,
+                        )
+                        _hbx, _hby, _hbz = (float(_p_base[0]),
+                                             float(_p_base[1]),
+                                             float(_p_base[2]))
+                        _hsv_ball_dds.publish(_hbx, _hby, _hbz,
+                                              valid=False, source=SOURCE_CAM)
+                        _ball_overlay["miss"]  = _hsv_miss_count
+                        _ball_overlay["valid"] = False
+                    else:
+                        if _hsv_miss_count > _BALL_COAST:
+                            _hsv_center_ema = None
+                            _ball_overlay["bbox"] = None
+                        _hsv_ball_dds.publish(0.0, 0.0, 0.0,
+                                              valid=False, source=SOURCE_NONE)
 
             gray = cv2.cvtColor(color, cv2.COLOR_BGR2GRAY)
             # Downscale before ArUco to avoid bad_alloc in OpenCV C++ on Jetson

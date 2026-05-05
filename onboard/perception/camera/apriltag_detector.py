@@ -388,6 +388,7 @@ def _make_yolo_ball_thread(
     color_intrin, depth_intrin, color_to_depth_extr, depth_scale,
     chest_xyz, chest_rpy,
     buf_frames, buf_lock, buf_event,
+    overlay_state=None,   # optional dict shared with MJPEG renderer
 ):
     """Start a background YOLO ball-detection thread.
 
@@ -537,6 +538,13 @@ def _make_yolo_ball_thread(
                     ball_dds.publish(bx, by, bz, valid=is_det, source=SOURCE_CAM)
                     published_valid = True
 
+                    if overlay_state is not None:
+                        overlay_state["bbox"]   = last_bbox
+                        overlay_state["pelvis"] = (bx, by, bz)
+                        overlay_state["depth"]  = depth_m
+                        overlay_state["valid"]  = is_det
+                        overlay_state["miss"]   = miss_count
+
                     tag = "BALL " if is_det else "COAST"
                     print(
                         f"\r[{tag}] cam_ball pelvis=({bx:+.3f},{by:+.3f},{bz:+.3f}) "
@@ -546,6 +554,8 @@ def _make_yolo_ball_thread(
 
             if not published_valid:
                 center_ema = None
+                if overlay_state is not None:
+                    overlay_state["bbox"] = None
                 ball_dds.publish(0.0, 0.0, 0.0, valid=False, source=SOURCE_NONE)
                 print(f"\r[     ] cam_ball: no ball  fps={ball_fps.fps:4.1f}" + " " * 20,
                       end="", flush=True)
@@ -713,6 +723,9 @@ def main():
     _yolo_buf_frames = [None]
     _yolo_buf_lock   = threading.Lock()
     _yolo_buf_event  = threading.Event()
+    # Shared dict written by YOLO thread, read by MJPEG renderer (no lock needed:
+    # dict key writes are atomic in CPython and we only ever read stale-by-one-frame).
+    _ball_overlay = {"bbox": None, "pelvis": None, "depth": 0.0, "valid": False, "miss": 0}
     if args.ball:
         depth_profile       = profile.get_stream(rs.stream.depth).as_video_stream_profile()
         depth_intrin        = depth_profile.get_intrinsics()
@@ -734,6 +747,7 @@ def main():
             buf_frames=_yolo_buf_frames,
             buf_lock=_yolo_buf_lock,
             buf_event=_yolo_buf_event,
+            overlay_state=_ball_overlay,
         )
         print(f"[INFO] Ball detection thread started -> topic '{args.ball_topic}'")
 
@@ -998,6 +1012,31 @@ def main():
                     )
                     cv2.putText(vis, info, (10, vis.shape[0] - 12),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 0), 2)
+
+                # Draw ball detection overlay (from YOLO thread, if --ball active)
+                if args.ball:
+                    bo = _ball_overlay
+                    if bo["bbox"] is not None:
+                        bx1, by1, bx2, by2 = bo["bbox"]
+                        is_ball_valid = bo["valid"]
+                        box_color = (0, 255, 128) if is_ball_valid else (0, 165, 255)
+                        cv2.rectangle(vis, (bx1, by1), (bx2, by2), box_color, 2)
+                        bcx, bcy = (bx1 + bx2) // 2, (by1 + by2) // 2
+                        cv2.circle(vis, (bcx, bcy), 5, box_color, -1)
+                        miss = bo["miss"]
+                        label = (f"ball d={bo['depth']:.2f}m" if is_ball_valid
+                                 else f"ball coast {miss}")
+                        cv2.putText(vis, label, (bx1, max(16, by1 - 6)),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, box_color, 2)
+                        if bo["pelvis"] is not None:
+                            px, py, pz = bo["pelvis"]
+                            cv2.putText(
+                                vis,
+                                f"ball pelvis ({px:+.2f},{py:+.2f},{pz:+.2f})m",
+                                (10, vis.shape[0] - 34),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, box_color, 2,
+                            )
+
                 ok, jpg_buf = cv2.imencode(".jpg", vis, [cv2.IMWRITE_JPEG_QUALITY, 60])
                 if ok:
                     with mjpeg_lock:

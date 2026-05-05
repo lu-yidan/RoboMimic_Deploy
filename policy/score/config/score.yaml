@@ -4,8 +4,8 @@
 # onnx_path:   "policy-obs-325-uz8.onnx"
 # onnx_path:   "policy-stop.onnx"
 # onnx_path:   "policy-obs-410-vvj.onnx"
-# onnx_path:   "policy-obs-54-vhh.onnx"
-onnx_path:   "policy-obs-54-4s.onnx"
+onnx_path:   "policy-obs-54-vhh.onnx"
+# onnx_path:   "policy-obs-54-4s.onnx"
 motion_path: "score_motion.npz"
 
 control_dt:      0.02     # 50 Hz control (sim: 2ms * 10 decimation)
@@ -78,7 +78,7 @@ trigger_play_once: true
 trigger_radius:  0.3    # metres
 trigger_horizon: 0.5    # look-ahead seconds
 trigger_frame:            250   # first motion frame on trigger (loaded clip indices)
-trigger_play_end_frame:   280   # last motion frame inclusive (252..302 = 51 frames)
+trigger_play_end_frame:   300   # last motion frame inclusive (252..302 = 51 frames)
 # Default settings:
 # wait_for_ball:   false
 # trigger_frame:   0  

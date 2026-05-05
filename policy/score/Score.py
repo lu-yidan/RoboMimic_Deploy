@@ -533,7 +533,7 @@ class Score(FSMState):
             norm_xy = float(np.linalg.norm(anchor_cmd_xy))
             if norm_xy > 1e-6:
                 clipped_norm_xy = np.clip(0.5*norm_xy, 0, 1.0)
-                anchor_pos_b_ball = 1 * clipped_norm_xy * (anchor_cmd_xy / norm_xy)
+                anchor_pos_b_ball = 0.5 * clipped_norm_xy * (anchor_cmd_xy / norm_xy)
                 return np.concatenate(
                     [anchor_pos_b_ball, [aligned_anchor_pos_w[2] - torso_pos_w[2]]]
                 ).astype(np.float32)

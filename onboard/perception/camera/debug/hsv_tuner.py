@@ -48,9 +48,9 @@ DEFAULTS = {
     "HOUGH":         0,   # 0=HSV mode, 1=Hough circle mode
     "HOUGH_P2":     25,   # accumulator threshold (lower=more detections, noisier)
     "HOUGH_BLUR":    9,   # Gaussian blur kernel (must be odd)
-    "HOUGH_MINR":   15,   # min ball radius (px)
-    "HOUGH_MAXR":  100,   # max ball radius (px)
-    "HOUGH_MIN_V": 120,   # min mean brightness inside circle (ball > carpet)
+    "HOUGH_MINR":        15,   # min ball radius (px)
+    "HOUGH_MAXR":       100,   # max ball radius (px)
+    "HOUGH_MIN_CONTRAST": 15,  # min (inner - outer annulus) brightness; ball > carpet
 }
 
 WIN = "HSV Tuner"
@@ -112,11 +112,13 @@ def _detect(frame, h_low, h_high, s_min, v_min, dilation, fill_min_pct, min_r,
     return mask, merged, best
 
 
-def _detect_hough(frame, blur_k, param2, min_r, max_r, min_v=100, exclude_top_frac=0.0):
-    """Detect ball by circular shape + brightness — works for white/gray balls.
+def _detect_hough(frame, blur_k, param2, min_r, max_r, min_contrast=15,
+                  exclude_top_frac=0.0):
+    """Detect ball by circular shape + local contrast (inner vs outer annulus).
 
-    Scores candidates by mean interior brightness (white/gray ball >> dark carpet),
-    ignoring candidates dimmer than min_v.
+    Score = mean_inside - mean_outside_annulus.
+    A gray/white ball on dark carpet has high contrast; a bright floor
+    patch surrounded by equally-bright carpet has low contrast.
     """
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     if exclude_top_frac > 0:
@@ -137,32 +139,36 @@ def _detect_hough(frame, blur_k, param2, min_r, max_r, min_v=100, exclude_top_fr
     h, w = gray.shape
     vis = cv2.cvtColor(blurred, cv2.COLOR_GRAY2BGR)
     best = None
-    best_brightness = -1
 
     if circles is not None:
         circles_int = np.round(circles[0]).astype(int)
         scored = []
         for cx, cy, r in circles_int:
-            # Mean brightness inside the circle (using original gray, not blurred)
-            cmask = np.zeros((h, w), np.uint8)
-            cv2.circle(cmask, (cx, cy), max(1, r), 255, -1)
-            mean_v = float(cv2.mean(gray, mask=cmask)[0])
-            scored.append((mean_v, int(cx), int(cy), int(r)))
+            inner = np.zeros((h, w), np.uint8)
+            cv2.circle(inner, (cx, cy), max(1, r), 255, -1)
+            outer = np.zeros((h, w), np.uint8)
+            cv2.circle(outer, (cx, cy), max(1, int(r * 1.6)), 255, -1)
+            annulus = cv2.subtract(outer, inner)   # ring outside the ball
+            mean_in  = float(cv2.mean(gray, mask=inner)[0])
+            mean_out = float(cv2.mean(gray, mask=annulus)[0]) if annulus.any() else mean_in
+            contrast = mean_in - mean_out          # positive = brighter inside = ball-like
+            scored.append((contrast, mean_in, int(cx), int(cy), int(r)))
 
-        # Draw all candidates (dim = below threshold, bright = above)
-        for mean_v, cx, cy, r in scored:
-            ok = mean_v >= min_v
-            cv2.circle(vis, (cx, cy), r, (0, 180, 60) if ok else (40, 40, 180), 2)
-            cv2.putText(vis, f"{mean_v:.0f}", (cx - 12, cy),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.38,
-                        (0, 240, 80) if ok else (80, 80, 220), 1)
+        # Draw all candidates: green border = passes contrast, red = fails
+        for contrast, mean_in, cx, cy, r in scored:
+            ok = contrast >= min_contrast
+            color = (0, 200, 60) if ok else (40, 40, 200)
+            cv2.circle(vis, (cx, cy), r, color, 2)
+            cv2.putText(vis, f"+{contrast:.0f}" if contrast >= 0 else f"{contrast:.0f}",
+                        (cx - 16, cy),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.38, color, 1)
 
-        # Pick the brightest candidate that passes min_v
-        valid = [(mv, cx, cy, r) for mv, cx, cy, r in scored if mv >= min_v]
+        # Winner = highest contrast among passing candidates
+        valid = [(c, mi, cx, cy, r) for c, mi, cx, cy, r in scored if c >= min_contrast]
         if valid:
-            best_brightness, bx, by, br = max(valid, key=lambda x: x[0])
+            best_contrast, mean_in, bx, by, br = max(valid, key=lambda x: x[0])
             cv2.circle(vis, (bx, by), br, (0, 255, 255), 3)   # cyan = winner
-            best = (0, bx, by, br, round(best_brightness / 255, 2), 1.0)
+            best = (0, bx, by, br, round(mean_in / 255, 2), round(best_contrast / 255, 2))
 
     return blurred, vis, best
 
@@ -404,7 +410,8 @@ const DEFS = {H_LOW:__H_LOW__,H_HIGH:__H_HIGH__,S_MIN:__S_MIN__,V_MIN:__V_MIN__,
               DILATION:__DILATION__,FILL_MIN:__FILL_MIN__,MIN_R:__MIN_R__,
               EXCL_TOP:__EXCL_TOP__,CIRC_MIN:__CIRC_MIN__,
               HOUGH:__HOUGH__,HOUGH_P2:__HOUGH_P2__,HOUGH_BLUR:__HOUGH_BLUR__,
-              HOUGH_MINR:__HOUGH_MINR__,HOUGH_MAXR:__HOUGH_MAXR__,HOUGH_MIN_V:__HOUGH_MIN_V__};
+              HOUGH_MINR:__HOUGH_MINR__,HOUGH_MAXR:__HOUGH_MAXR__,
+              HOUGH_MIN_CONTRAST:__HOUGH_MIN_CONTRAST__};
 const META_HSV = [
   {k:"H_LOW",    label:"H_LOW  颜色下限",    max:179, hint:"颜色色相最小值（蓝=100，紫=120，绿=40）"},
   {k:"H_HIGH",   label:"H_HIGH 颜色上限",    max:179, hint:"颜色色相最大值，范围越窄越精准"},
@@ -416,11 +423,11 @@ const META_HSV = [
   {k:"CIRC_MIN", label:"CIRC_MIN 圆形度x100",max:100, hint:"圆=100，矩形=78；提高可排除屏幕/线缆"},
 ];
 const META_HOUGH = [
-  {k:"HOUGH_P2",    label:"HOUGH_P2 灵敏度",    max:80,  hint:"越低越灵敏(更多候选)，越高越严格；从30开始调"},
-  {k:"HOUGH_BLUR",  label:"HOUGH_BLUR 模糊",     max:31,  hint:"平滑噪点；越大越平滑；奇数"},
-  {k:"HOUGH_MINR",  label:"HOUGH_MINR 最小半径", max:80,  hint:"球最小半径(px)；排除小噪点"},
-  {k:"HOUGH_MAXR",  label:"HOUGH_MAXR 最大半径", max:300, hint:"球最大半径(px)；排除过大误检"},
-  {k:"HOUGH_MIN_V", label:"HOUGH_MIN_V 最低亮度",max:255, hint:"★关键★ 球比地毯亮；green候选=合格，red=太暗被过滤；cyan=最终选择"},
+  {k:"HOUGH_P2",           label:"HOUGH_P2 灵敏度",      max:80,  hint:"越低越灵敏(更多红绿候选)，越高越严格；从30开始"},
+  {k:"HOUGH_BLUR",         label:"HOUGH_BLUR 模糊",       max:31,  hint:"平滑噪点；越大越平滑；奇数"},
+  {k:"HOUGH_MINR",         label:"HOUGH_MINR 最小半径",   max:80,  hint:"球最小半径(px)；排除小噪点"},
+  {k:"HOUGH_MAXR",         label:"HOUGH_MAXR 最大半径",   max:300, hint:"球最大半径(px)；排除过大误检"},
+  {k:"HOUGH_MIN_CONTRAST", label:"MIN_CONTRAST 局部对比", max:80,  hint:"★关键★ 圆内比圆外亮多少；绿=通过，红=未通过，青=最终结果。球比地毯亮，调到刚好排除地板"},
 ];
 const META_COMMON = [
   {k:"EXCL_TOP", label:"EXCL_TOP 排除顶部%", max:50, hint:"屏蔽画面顶部N%区域（排除屏幕/天花板干扰）"},
@@ -527,47 +534,68 @@ def run_web(port: int):
                 with _WEB_LOCK:
                     p = dict(_WEB_PARAMS)
 
-                if p["HOUGH"]:
-                    gray_blur, hough_vis, best = _detect_hough(
-                        frame, p["HOUGH_BLUR"], p["HOUGH_P2"],
-                        p["HOUGH_MINR"], p["HOUGH_MAXR"],
-                        min_v=p["HOUGH_MIN_V"],
-                        exclude_top_frac=p["EXCL_TOP"]/100.0)
-                    p1 = _make_panel(frame,    "Original", _WEB_PW, _WEB_PH)
-                    p2 = _make_panel(gray_blur, f"Grayscale blur={p['HOUGH_BLUR']}px", _WEB_PW, _WEB_PH)
-                    p3 = _make_panel(hough_vis, f"Hough candidates (p2={p['HOUGH_P2']})", _WEB_PW, _WEB_PH)
-                    p4 = _draw_result(frame, best, _WEB_PW, _WEB_PH)
-                    mode_label = "HOUGH"
-                else:
-                    mask, merged, best = _detect(
-                        frame, p["H_LOW"], p["H_HIGH"], p["S_MIN"], p["V_MIN"],
-                        p["DILATION"], p["FILL_MIN"], p["MIN_R"],
-                        exclude_top_frac=p["EXCL_TOP"]/100.0,
-                        circ_min=p["CIRC_MIN"]/100.0)
-                    p1 = _make_panel(frame,  "Original", _WEB_PW, _WEB_PH)
-                    p2 = _make_panel(mask,   f"HSV mask H=[{p['H_LOW']},{p['H_HIGH']}] S>={p['S_MIN']} V>={p['V_MIN']}",
-                                     _WEB_PW, _WEB_PH)
-                    p3 = _make_panel(merged, f"Merged (dil={p['DILATION']}px)", _WEB_PW, _WEB_PH)
-                    p4 = _draw_result(frame, best, _WEB_PW, _WEB_PH)
-                    mode_label = "HSV"
+                # ── always run BOTH algorithms ──────────────────────────────
+                excl = p["EXCL_TOP"] / 100.0
+                mask, merged, best_hsv = _detect(
+                    frame, p["H_LOW"], p["H_HIGH"], p["S_MIN"], p["V_MIN"],
+                    p["DILATION"], p["FILL_MIN"], p["MIN_R"],
+                    exclude_top_frac=excl, circ_min=p["CIRC_MIN"]/100.0)
+                gray_blur, hough_vis, best_hough = _detect_hough(
+                    frame, p["HOUGH_BLUR"], p["HOUGH_P2"],
+                    p["HOUGH_MINR"], p["HOUGH_MAXR"],
+                    min_contrast=p["HOUGH_MIN_CONTRAST"],
+                    exclude_top_frac=excl)
 
-                canvas = np.vstack([np.hstack([p1, p2]), np.hstack([p3, p4])])
-                cv2.putText(canvas, f"[{mode_label}]",
-                            (8, canvas.shape[0] - 8), cv2.FONT_HERSHEY_SIMPLEX,
-                            0.5, (180, 180, 80), 1, cv2.LINE_AA)
+                best = best_hough if p["HOUGH"] else best_hsv
+                mode_label = "HOUGH" if p["HOUGH"] else "HSV"
+
+                # ── 6-panel layout: 2 rows × 3 cols ────────────────────────
+                # Row 0: Original | HSV mask | Merged
+                # Row 1: Grayscale| Hough vis| Combined result
+                pw, ph = _WEB_PW, _WEB_PH
+
+                # combined result: draw both on one frame
+                result_frame = frame.copy()
+                orig_h, orig_w = frame.shape[:2]
+                sx, sy = orig_w / pw, orig_h / ph
+                if best_hsv is not None:
+                    hcx = int(best_hsv[1] / sx * pw / pw * orig_w)   # keep full-res coords
+                    cv2.circle(result_frame, (best_hsv[1], best_hsv[2]),
+                               max(2, int(best_hsv[3])), (0, 255, 60), 2)
+                    cv2.putText(result_frame, f"HSV r={best_hsv[3]:.0f}",
+                                (best_hsv[1] - 40, best_hsv[2] - int(best_hsv[3]) - 6),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 60), 2)
+                if best_hough is not None:
+                    cv2.circle(result_frame, (best_hough[1], best_hough[2]),
+                               max(2, int(best_hough[3])), (0, 255, 255), 2)
+                    cv2.putText(result_frame, f"Hough r={best_hough[3]:.0f}",
+                                (best_hough[1] - 40, best_hough[2] + int(best_hough[3]) + 18),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
+
+                r0 = np.hstack([
+                    _make_panel(frame,       "Original", pw, ph),
+                    _make_panel(mask,        f"HSV mask S>={p['S_MIN']} V>={p['V_MIN']}", pw, ph),
+                    _make_panel(merged,      f"Merged dil={p['DILATION']}px", pw, ph),
+                ])
+                r1 = np.hstack([
+                    _make_panel(gray_blur,   f"Grayscale blur={p['HOUGH_BLUR']}px", pw, ph),
+                    _make_panel(hough_vis,   f"Hough p2={p['HOUGH_P2']} contrast>={p['HOUGH_MIN_CONTRAST']}", pw, ph),
+                    _make_panel(result_frame,f"Result  [primary={mode_label}]", pw, ph),
+                ])
+                canvas = np.vstack([r0, r1])
                 _, jpg = cv2.imencode(".jpg", canvas, [cv2.IMWRITE_JPEG_QUALITY, 70])
                 with _WEB_LOCK:
                     global _WEB_FRAME, _WEB_STATUS
                     _WEB_FRAME = jpg.tobytes()
-                    _WEB_STATUS = ({"detected": True,
-                                    "r": round(best[3]), "fill": round(best[4]*100, 1),
-                                    "circ": round(best[5], 2),
-                                    "cx": best[1], "cy": best[2],
-                                    "mode": mode_label}
-                                   if best else
-                                   {"detected": False, "r": 0, "fill": 0.0,
-                                    "circ": 0.0, "cx": 0, "cy": 0,
-                                    "mode": mode_label})
+                    st = {"mode": mode_label}
+                    if best:
+                        st.update({"detected": True, "r": round(best[3]),
+                                   "fill": round(best[4]*100, 1), "circ": round(best[5], 2),
+                                   "cx": best[1], "cy": best[2]})
+                    else:
+                        st.update({"detected": False, "r": 0, "fill": 0.0,
+                                   "circ": 0.0, "cx": 0, "cy": 0})
+                    _WEB_STATUS = st
         finally:
             pipe.stop()
 
@@ -633,7 +661,7 @@ def run_web(port: int):
                 with _WEB_LOCK:
                     for k in ("H_LOW","H_HIGH","S_MIN","V_MIN","DILATION","FILL_MIN","MIN_R",
                               "EXCL_TOP","CIRC_MIN","HOUGH","HOUGH_P2","HOUGH_BLUR",
-                              "HOUGH_MINR","HOUGH_MAXR","HOUGH_MIN_V"):
+                              "HOUGH_MINR","HOUGH_MAXR","HOUGH_MIN_CONTRAST"):
                         if k in qs:
                             _WEB_PARAMS[k] = int(qs[k][0])
                 self._send(200, "application/json", '{"ok":true}')

@@ -13,7 +13,9 @@ Sliders let you tune all parameters without restarting. Press:
 Usage:
     python debug/hsv_tuner.py debug/test/image.png
     python debug/hsv_tuner.py debug/test/          # cycles through all images
-    python debug/hsv_tuner.py --camera              # live from RealSense D455
+    python debug/hsv_tuner.py --camera              # live from RealSense D455 (needs display)
+    python debug/hsv_tuner.py --web                 # web UI at http://<robot>:8092/
+    python debug/hsv_tuner.py --headless            # save frames to /tmp/hsv_tuner_out/
 
 Output: prints best --ball-hsv-* flags to paste into your launch command.
 """
@@ -22,7 +24,10 @@ import argparse
 import glob
 import os
 import sys
+import threading
 import time
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from urllib.parse import parse_qs, urlparse
 
 import cv2
 import numpy as np
@@ -263,6 +268,215 @@ def run_camera():
         cv2.destroyAllWindows()
 
 
+_WEB_LOCK   = threading.Lock()
+_WEB_FRAME  = b""        # current JPEG bytes
+_WEB_PARAMS = dict(DEFAULTS)
+_WEB_STATUS = {"detected": False, "r": 0, "fill": 0.0, "cx": 0, "cy": 0}
+
+_HTML_PAGE = """\
+<!DOCTYPE html><html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>HSV Ball Tuner</title>
+<style>
+  body { font-family: monospace; background: #1a1a1a; color: #eee; margin: 20px; }
+  h2 { color: #7cf; margin-bottom: 10px; }
+  .row { display:flex; align-items:center; margin: 6px 0; gap: 12px; }
+  label { width: 160px; text-align: right; }
+  input[type=range] { width: 300px; }
+  .val { width: 40px; text-align: left; }
+  #status { margin-top: 14px; padding: 8px 14px; border-radius: 6px;
+            font-size: 1.1em; display:inline-block; }
+  .det  { background: #1a4a1a; color: #4f4; }
+  .miss { background: #3a1a1a; color: #f44; }
+  #params { margin-top: 10px; color: #fa0; font-size: 0.9em; }
+  img { border: 2px solid #444; margin-top: 14px; max-width: 100%; }
+  button { margin-top: 12px; padding: 8px 20px; background:#2a6; color:#fff;
+           border:none; border-radius:4px; cursor:pointer; font-size:1em; }
+  button:hover { background:#3b7; }
+</style>
+</head>
+<body>
+<h2>HSV Ball Tuner — live camera</h2>
+<div id="sliders"></div>
+<div id="status" class="miss">no ball</div>
+<div id="params"></div>
+<br><button onclick="saveParams()">Save params (hsv_params.txt)</button>
+<br><img id="frame" src="/frame.jpg" alt="frame">
+<script>
+const DEFS = {H_LOW:__H_LOW__,H_HIGH:__H_HIGH__,S_MIN:__S_MIN__,V_MIN:__V_MIN__,
+              DILATION:__DILATION__,FILL_MIN:__FILL_MIN__,MIN_R:__MIN_R__};
+const META = {
+  H_LOW:   {label:"H_LOW  (hue ≥)",  max:179},
+  H_HIGH:  {label:"H_HIGH (hue ≤)",  max:179},
+  S_MIN:   {label:"S_MIN  (sat ≥)",  max:255},
+  V_MIN:   {label:"V_MIN  (val ≥)",  max:255},
+  DILATION:{label:"DILATION (px)",   max:51},
+  FILL_MIN:{label:"FILL_MIN (%)",    max:30},
+  MIN_R:   {label:"MIN_R   (px)",    max:40},
+};
+const div = document.getElementById("sliders");
+for (const [k, m] of Object.entries(META)) {
+  const row = document.createElement("div"); row.className = "row";
+  row.innerHTML = `<label>${m.label}</label>
+    <input type="range" id="sl_${k}" min="0" max="${m.max}" value="${DEFS[k]}"
+           oninput="update('${k}', this.value)">
+    <span class="val" id="v_${k}">${DEFS[k]}</span>`;
+  div.appendChild(row);
+}
+function update(k, val) {
+  document.getElementById("v_"+k).textContent = val;
+  const params = {};
+  for (const key of Object.keys(META))
+    params[key] = document.getElementById("sl_"+key).value;
+  fetch("/params?" + new URLSearchParams(params));
+}
+function refreshFrame() {
+  document.getElementById("frame").src = "/frame.jpg?t=" + Date.now();
+}
+function refreshStatus() {
+  fetch("/status").then(r=>r.json()).then(d=>{
+    const el = document.getElementById("status");
+    const pe = document.getElementById("params");
+    if (d.detected) {
+      el.textContent = `DETECTED  r=${d.r}px  fill=${d.fill}%  cx=${d.cx}  cy=${d.cy}`;
+      el.className = "det";
+    } else {
+      el.textContent = "no ball"; el.className = "miss";
+    }
+    pe.textContent = d.cmd;
+  });
+}
+function saveParams() {
+  fetch("/save").then(r=>r.json()).then(d=>alert("Saved: " + d.cmd));
+}
+setInterval(refreshFrame,  200);
+setInterval(refreshStatus, 300);
+</script>
+</body></html>
+"""
+
+
+def run_web(port: int):
+    """Web-based HSV tuner — no display needed. Open http://<robot>:port/ in a browser."""
+    try:
+        import pyrealsense2 as rs
+    except ImportError:
+        print("[tuner] pyrealsense2 not available")
+        sys.exit(1)
+
+    # ── camera thread ───────────────────────────────────────────────────────
+    def _camera_loop():
+        pipe = rs.pipeline()
+        cfg  = rs.config()
+        cfg.enable_stream(rs.stream.color, 1280, 720, rs.format.bgr8, 30)
+        pipe.start(cfg)
+        print(f"[tuner] Camera started. Open http://0.0.0.0:{port}/")
+        for _ in range(5):          # warm-up
+            pipe.wait_for_frames()
+        try:
+            while True:
+                frames = pipe.wait_for_frames()
+                cf = frames.get_color_frame()
+                if not cf:
+                    continue
+                frame = np.asanyarray(cf.get_data()).copy()
+                with _WEB_LOCK:
+                    p = dict(_WEB_PARAMS)
+                mask, merged, best = _detect(
+                    frame, p["H_LOW"], p["H_HIGH"], p["S_MIN"], p["V_MIN"],
+                    p["DILATION"], p["FILL_MIN"], p["MIN_R"])
+                p1 = _make_panel(frame,  f"Original")
+                p2 = _make_panel(mask,   f"HSV mask  H=[{p['H_LOW']},{p['H_HIGH']}] S≥{p['S_MIN']} V≥{p['V_MIN']}")
+                p3 = _make_panel(merged, f"Merged (dilation={p['DILATION']}px)")
+                p4 = _draw_result(frame, best)
+                canvas = np.vstack([np.hstack([p1, p2]), np.hstack([p3, p4])])
+                _, jpg = cv2.imencode(".jpg", canvas, [cv2.IMWRITE_JPEG_QUALITY, 80])
+                with _WEB_LOCK:
+                    global _WEB_FRAME, _WEB_STATUS
+                    _WEB_FRAME = jpg.tobytes()
+                    if best:
+                        _WEB_STATUS = {"detected": True,
+                                       "r": round(best[3]), "fill": round(best[4]*100, 1),
+                                       "cx": best[1], "cy": best[2]}
+                    else:
+                        _WEB_STATUS = {"detected": False, "r": 0, "fill": 0.0, "cx": 0, "cy": 0}
+        finally:
+            pipe.stop()
+
+    t = threading.Thread(target=_camera_loop, daemon=True)
+    t.start()
+    time.sleep(1.5)     # let camera warm up before serving
+
+    # ── HTTP handler ────────────────────────────────────────────────────────
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, fmt, *args):
+            pass    # silence access log
+
+        def _send(self, code, ctype, body):
+            if isinstance(body, str):
+                body = body.encode()
+            self.send_response(code)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", len(body))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_GET(self):
+            parsed = urlparse(self.path)
+            path   = parsed.path
+
+            if path == "/":
+                html = _HTML_PAGE
+                for k, v in DEFAULTS.items():
+                    html = html.replace(f"__{k}__", str(v))
+                self._send(200, "text/html; charset=utf-8", html)
+
+            elif path == "/frame.jpg":
+                with _WEB_LOCK:
+                    data = bytes(_WEB_FRAME)
+                if not data:
+                    self._send(503, "text/plain", "not ready")
+                else:
+                    self._send(200, "image/jpeg", data)
+
+            elif path == "/params":
+                qs = parse_qs(parsed.query)
+                with _WEB_LOCK:
+                    for k in ("H_LOW","H_HIGH","S_MIN","V_MIN","DILATION","FILL_MIN","MIN_R"):
+                        if k in qs:
+                            _WEB_PARAMS[k] = int(qs[k][0])
+                self._send(200, "application/json", '{"ok":true}')
+
+            elif path == "/status":
+                import json
+                with _WEB_LOCK:
+                    st = dict(_WEB_STATUS)
+                    p  = dict(_WEB_PARAMS)
+                st["cmd"] = _params_str(p["H_LOW"], p["H_HIGH"], p["S_MIN"], p["V_MIN"])
+                self._send(200, "application/json", json.dumps(st))
+
+            elif path == "/save":
+                import json
+                with _WEB_LOCK:
+                    p = dict(_WEB_PARAMS)
+                cmd = _params_str(p["H_LOW"], p["H_HIGH"], p["S_MIN"], p["V_MIN"])
+                with open("hsv_params.txt", "w") as f:
+                    f.write(cmd + "\n")
+                print(f"[tuner] Saved: {cmd}")
+                self._send(200, "application/json", json.dumps({"cmd": cmd}))
+
+            else:
+                self._send(404, "text/plain", "not found")
+
+    server = HTTPServer(("0.0.0.0", port), Handler)
+    print(f"[tuner] Web tuner at http://0.0.0.0:{port}/  (Ctrl-C to quit)")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+
+
 def run_headless(n_frames: int, out_dir: str):
     """Capture N frames from camera, save detection results as images (no display needed)."""
     try:
@@ -331,7 +545,15 @@ def main():
                     help="Number of frames to capture in --headless mode (default: 5)")
     ap.add_argument("--out-dir", default="/tmp/hsv_tuner_out",
                     help="Output directory for --headless images (default: /tmp/hsv_tuner_out)")
+    ap.add_argument("--web", action="store_true",
+                    help="Web UI tuner — no display needed, open http://<robot>:8092/")
+    ap.add_argument("--port", type=int, default=8092,
+                    help="Port for --web mode (default: 8092)")
     args = ap.parse_args()
+
+    if args.web:
+        run_web(args.port)
+        return
 
     if args.headless:
         run_headless(args.frames, args.out_dir)

@@ -85,6 +85,21 @@ def pd_control(target_q, q, kp, target_dq, dq, kd):
     return (target_q - q) * kp + (target_dq - dq) * kd
 
 
+def _print_joint_pos(q: np.ndarray, fsm_state_name: str = ""):
+    """Print current joint positions in MuJoCo DFS order, grouped by segment."""
+    def fmt(vals):
+        return ",  ".join(f"{v:7.4f}" for v in vals)
+    tag = f"  [{fsm_state_name}]" if fsm_state_name else ""
+    print(f"\n[Joint pos]{tag}")
+    print(f"  L-leg  : [{fmt(q[0:6])}]")
+    print(f"  R-leg  : [{fmt(q[6:12])}]")
+    print(f"  waist  : [{fmt(q[12:15])}]")
+    print(f"  L-arm  : [{fmt(q[15:22])}]")
+    print(f"  R-arm  : [{fmt(q[22:29])}]")
+    all_vals = ",  ".join(f"{v:7.4f}" for v in q)
+    print(f"  all    : [{all_vals}]")
+
+
 def _reset_ball_state(m, d, ball_body_id, pos_w, vel_w, quat_w=None, ang_vel_w=None):
     """Reset the free-joint ball pose/velocity in-place."""
     if ball_body_id < 0 or m.body_jntnum[ball_body_id] <= 0:
@@ -180,6 +195,9 @@ def main(cfg: DictConfig):
                 if joystick.is_button_released(JoystickButton.L3):                                                    # Ghost toggle, L3
                     ghost_flags[0] = not ghost_flags[0]
                     print(f"[Ghost] {'ON' if ghost_flags[0] else 'OFF'}")
+                if joystick.is_button_released(JoystickButton.Y):                                                    # Print joint pos, Y
+                    _print_joint_pos(d.qpos[7:7+num_joints],
+                                     FSM_controller.cur_policy.name_str)
                 if joystick.is_button_released(JoystickButton.X):                                                        # Ball reset, X
                     if _reset_ball_state(
                         m, d, ball_body_id,

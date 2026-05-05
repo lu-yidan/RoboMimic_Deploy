@@ -372,7 +372,7 @@ def main():
         description="Chest D455 + AprilTag target detector -> rt/target_state"
     )
     parser.add_argument("--width", type=int, default=1280)
-    parser.add_argument("--height", type=int, default=800)
+    parser.add_argument("--height", type=int, default=720)
     parser.add_argument(
         "--camera-serial",
         default=None,

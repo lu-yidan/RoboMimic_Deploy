@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """Interactive HSV ball-detection tuner.
 
 Loads images from a file or directory and shows four panels in real time:

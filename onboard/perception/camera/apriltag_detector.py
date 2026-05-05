@@ -473,7 +473,13 @@ def main():
     print("[DEBUG] calling rclpy.init()", flush=True)
     rclpy.init()
     print("[DEBUG] rclpy.init() done", flush=True)
-    joint = _JointListener()
+    try:
+        joint = _JointListener()
+    except Exception as e:
+        import traceback
+        print(f"[ERROR] _JointListener failed: {e}", flush=True)
+        traceback.print_exc()
+        raise
     print("[DEBUG] _JointListener created", flush=True)
 
     def _spin_loop():

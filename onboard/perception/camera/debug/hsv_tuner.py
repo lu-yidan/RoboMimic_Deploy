@@ -48,8 +48,9 @@ DEFAULTS = {
     "HOUGH":         0,   # 0=HSV mode, 1=Hough circle mode
     "HOUGH_P2":     25,   # accumulator threshold (lower=more detections, noisier)
     "HOUGH_BLUR":    9,   # Gaussian blur kernel (must be odd)
-    "HOUGH_MINR":   12,   # min ball radius (px)
-    "HOUGH_MAXR":  150,   # max ball radius (px)
+    "HOUGH_MINR":   15,   # min ball radius (px)
+    "HOUGH_MAXR":  100,   # max ball radius (px)
+    "HOUGH_MIN_V": 120,   # min mean brightness inside circle (ball > carpet)
 }
 
 WIN = "HSV Tuner"
@@ -111,35 +112,57 @@ def _detect(frame, h_low, h_high, s_min, v_min, dilation, fill_min_pct, min_r,
     return mask, merged, best
 
 
-def _detect_hough(frame, blur_k, param2, min_r, max_r, exclude_top_frac=0.0):
-    """Detect ball by circular shape in grayscale — works for white/gray balls."""
+def _detect_hough(frame, blur_k, param2, min_r, max_r, min_v=100, exclude_top_frac=0.0):
+    """Detect ball by circular shape + brightness — works for white/gray balls.
+
+    Scores candidates by mean interior brightness (white/gray ball >> dark carpet),
+    ignoring candidates dimmer than min_v.
+    """
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     if exclude_top_frac > 0:
         gray[:int(gray.shape[0] * exclude_top_frac), :] = 0
 
-    k = max(3, (blur_k // 2) * 2 + 1)      # ensure odd
+    k = max(3, (blur_k // 2) * 2 + 1)
     blurred = cv2.GaussianBlur(gray, (k, k), 0)
 
     circles = cv2.HoughCircles(
         blurred, cv2.HOUGH_GRADIENT, dp=1.2,
         minDist=max(min_r * 2, 30),
-        param1=60,        # Canny upper threshold (fixed — works well)
-        param2=param2,    # accumulator threshold: lower = more sensitive
+        param1=60,
+        param2=param2,
         minRadius=min_r,
         maxRadius=max_r,
     )
 
-    # Visualisation: draw all candidates on gray
+    h, w = gray.shape
     vis = cv2.cvtColor(blurred, cv2.COLOR_GRAY2BGR)
     best = None
+    best_brightness = -1
+
     if circles is not None:
-        circles = np.round(circles[0]).astype(int)
-        for i, (cx, cy, r) in enumerate(circles):
-            color = (0, 200, 80) if i == 0 else (60, 60, 200)
-            cv2.circle(vis, (cx, cy), r, color, 2)
-            cv2.circle(vis, (cx, cy), 3, color, -1)
-        cx, cy, r = circles[0]
-        best = (0, int(cx), int(cy), int(r), 1.0, 1.0)   # same tuple shape as HSV best
+        circles_int = np.round(circles[0]).astype(int)
+        scored = []
+        for cx, cy, r in circles_int:
+            # Mean brightness inside the circle (using original gray, not blurred)
+            cmask = np.zeros((h, w), np.uint8)
+            cv2.circle(cmask, (cx, cy), max(1, r), 255, -1)
+            mean_v = float(cv2.mean(gray, mask=cmask)[0])
+            scored.append((mean_v, int(cx), int(cy), int(r)))
+
+        # Draw all candidates (dim = below threshold, bright = above)
+        for mean_v, cx, cy, r in scored:
+            ok = mean_v >= min_v
+            cv2.circle(vis, (cx, cy), r, (0, 180, 60) if ok else (40, 40, 180), 2)
+            cv2.putText(vis, f"{mean_v:.0f}", (cx - 12, cy),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.38,
+                        (0, 240, 80) if ok else (80, 80, 220), 1)
+
+        # Pick the brightest candidate that passes min_v
+        valid = [(mv, cx, cy, r) for mv, cx, cy, r in scored if mv >= min_v]
+        if valid:
+            best_brightness, bx, by, br = max(valid, key=lambda x: x[0])
+            cv2.circle(vis, (bx, by), br, (0, 255, 255), 3)   # cyan = winner
+            best = (0, bx, by, br, round(best_brightness / 255, 2), 1.0)
 
     return blurred, vis, best
 
@@ -381,7 +404,7 @@ const DEFS = {H_LOW:__H_LOW__,H_HIGH:__H_HIGH__,S_MIN:__S_MIN__,V_MIN:__V_MIN__,
               DILATION:__DILATION__,FILL_MIN:__FILL_MIN__,MIN_R:__MIN_R__,
               EXCL_TOP:__EXCL_TOP__,CIRC_MIN:__CIRC_MIN__,
               HOUGH:__HOUGH__,HOUGH_P2:__HOUGH_P2__,HOUGH_BLUR:__HOUGH_BLUR__,
-              HOUGH_MINR:__HOUGH_MINR__,HOUGH_MAXR:__HOUGH_MAXR__};
+              HOUGH_MINR:__HOUGH_MINR__,HOUGH_MAXR:__HOUGH_MAXR__,HOUGH_MIN_V:__HOUGH_MIN_V__};
 const META_HSV = [
   {k:"H_LOW",    label:"H_LOW  颜色下限",    max:179, hint:"颜色色相最小值（蓝=100，紫=120，绿=40）"},
   {k:"H_HIGH",   label:"H_HIGH 颜色上限",    max:179, hint:"颜色色相最大值，范围越窄越精准"},
@@ -393,10 +416,11 @@ const META_HSV = [
   {k:"CIRC_MIN", label:"CIRC_MIN 圆形度x100",max:100, hint:"圆=100，矩形=78；提高可排除屏幕/线缆"},
 ];
 const META_HOUGH = [
-  {k:"HOUGH_P2",   label:"HOUGH_P2 灵敏度",   max:80,  hint:"越低越灵敏(更多候选)，越高越严格；从25开始"},
-  {k:"HOUGH_BLUR", label:"HOUGH_BLUR 模糊",    max:31,  hint:"平滑噪点；越大越平滑；奇数"},
-  {k:"HOUGH_MINR", label:"HOUGH_MINR 最小半径",max:80,  hint:"球最小半径(px)；排除小噪点"},
-  {k:"HOUGH_MAXR", label:"HOUGH_MAXR 最大半径",max:300, hint:"球最大半径(px)；排除过大误检"},
+  {k:"HOUGH_P2",    label:"HOUGH_P2 灵敏度",    max:80,  hint:"越低越灵敏(更多候选)，越高越严格；从30开始调"},
+  {k:"HOUGH_BLUR",  label:"HOUGH_BLUR 模糊",     max:31,  hint:"平滑噪点；越大越平滑；奇数"},
+  {k:"HOUGH_MINR",  label:"HOUGH_MINR 最小半径", max:80,  hint:"球最小半径(px)；排除小噪点"},
+  {k:"HOUGH_MAXR",  label:"HOUGH_MAXR 最大半径", max:300, hint:"球最大半径(px)；排除过大误检"},
+  {k:"HOUGH_MIN_V", label:"HOUGH_MIN_V 最低亮度",max:255, hint:"★关键★ 球比地毯亮；green候选=合格，red=太暗被过滤；cyan=最终选择"},
 ];
 const META_COMMON = [
   {k:"EXCL_TOP", label:"EXCL_TOP 排除顶部%", max:50, hint:"屏蔽画面顶部N%区域（排除屏幕/天花板干扰）"},
@@ -507,6 +531,7 @@ def run_web(port: int):
                     gray_blur, hough_vis, best = _detect_hough(
                         frame, p["HOUGH_BLUR"], p["HOUGH_P2"],
                         p["HOUGH_MINR"], p["HOUGH_MAXR"],
+                        min_v=p["HOUGH_MIN_V"],
                         exclude_top_frac=p["EXCL_TOP"]/100.0)
                     p1 = _make_panel(frame,    "Original", _WEB_PW, _WEB_PH)
                     p2 = _make_panel(gray_blur, f"Grayscale blur={p['HOUGH_BLUR']}px", _WEB_PW, _WEB_PH)
@@ -608,7 +633,7 @@ def run_web(port: int):
                 with _WEB_LOCK:
                     for k in ("H_LOW","H_HIGH","S_MIN","V_MIN","DILATION","FILL_MIN","MIN_R",
                               "EXCL_TOP","CIRC_MIN","HOUGH","HOUGH_P2","HOUGH_BLUR",
-                              "HOUGH_MINR","HOUGH_MAXR"):
+                              "HOUGH_MINR","HOUGH_MAXR","HOUGH_MIN_V"):
                         if k in qs:
                             _WEB_PARAMS[k] = int(qs[k][0])
                 self._send(200, "application/json", '{"ok":true}')

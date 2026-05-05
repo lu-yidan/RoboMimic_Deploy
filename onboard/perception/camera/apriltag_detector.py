@@ -374,10 +374,10 @@ def main():
     parser.add_argument("--width", type=int, default=1280)
     parser.add_argument("--height", type=int, default=720)
     parser.add_argument(
-        "--detect-scale", type=float, default=0.5,
+        "--detect-scale", type=float, default=1.0,
         help="Scale factor applied to gray frame before ArUco detection "
-             "(default 0.5 = half-size; workaround for bad_alloc on Jetson OpenCV). "
-             "Corners are scaled back so pose estimation uses original intrinsics.",
+             "(default 1.0 = full resolution). Set <1.0 if bad_alloc occurs "
+             "on low-memory systems; corners are scaled back automatically.",
     )
     parser.add_argument(
         "--camera-serial",
@@ -466,29 +466,22 @@ def main():
     print(f"[INFO] AprilTag family: {family_name}")
     print(f"[INFO] Tag size: {args.tag_size:.4f} m")
 
-    # Init ROS2 and DDS BEFORE starting the camera — D455@30fps on USB 3.x
-    # consumes significant memory, leaving insufficient headroom for DDS node
-    # creation afterwards.
-    rclpy.init()
-    joint = None
-    try:
-        joint = _JointListener()
-        print("[INFO] ROS2 joint listener started (/lowstate)")
-
-        def _spin_loop():
-            while True:
-                rclpy.spin_once(joint, timeout_sec=0.0)
-                time.sleep(0.02)
-
-        threading.Thread(target=_spin_loop, daemon=True).start()
-    except Exception as e:
-        print(f"[WARN] ROS2 joint listener failed ({e}), using neutral joint angles", flush=True)
-
-    dds = TargetStatePublisher(domain_id=0, topic_name=args.dds_topic)
-
     pipeline, profile = _start_camera_pipeline(args)
     if args.list_cameras:
         return
+
+    rclpy.init()
+    joint = _JointListener()
+
+    def _spin_loop():
+        while True:
+            rclpy.spin_once(joint, timeout_sec=0.0)
+            time.sleep(0.02)
+
+    threading.Thread(target=_spin_loop, daemon=True).start()
+    print("[INFO] ROS2 joint listener started (/lowstate)")
+
+    dds = TargetStatePublisher(domain_id=0, topic_name=args.dds_topic)
     print(f"[INFO] DDS publisher ready on '{args.dds_topic}'")
 
     default_xyz, default_rpy = get_default_chest_extrinsics()
@@ -520,11 +513,7 @@ def main():
     print("[INFO] Camera running. Press Ctrl+C to stop.")
     try:
         while True:
-            try:
-                frames = pipeline.wait_for_frames()
-            except Exception as e:
-                print(f"[WARN] wait_for_frames error: {e}", flush=True)
-                continue
+            frames = pipeline.wait_for_frames()
             color_frame = frames.get_color_frame()
             if not color_frame:
                 continue
@@ -541,11 +530,7 @@ def main():
                 )
             else:
                 gray_det = gray
-            try:
-                corners_list, ids, _ = detector.detectMarkers(gray_det)
-            except Exception as e:
-                print(f"[WARN] detectMarkers error: {e}", flush=True)
-                corners_list, ids = [], None
+            corners_list, ids, _ = detector.detectMarkers(gray_det)
             if args.detect_scale != 1.0 and corners_list:
                 corners_list = tuple(c / args.detect_scale for c in corners_list)
             ids_flat = ids.reshape(-1).tolist() if ids is not None else []
@@ -615,14 +600,11 @@ def main():
                     else:
                         center_ema = p_cam_arr.copy()
 
-                q_wy = joint.q_wy if joint is not None else 0.0
-                q_wr = joint.q_wr if joint is not None else 0.0
-                q_wp = joint.q_wp if joint is not None else 0.0
                 p_base = transform_point_chest_camera_to_base_with_extrinsics(
                     center_ema,
-                    q_wy,
-                    q_wr,
-                    q_wp,
+                    joint.q_wy,
+                    joint.q_wr,
+                    joint.q_wp,
                     chest_xyz=chest_xyz,
                     chest_rpy=chest_rpy,
                 )
@@ -780,8 +762,7 @@ def main():
         pipeline.stop()
         if httpd is not None:
             httpd.shutdown()
-        if joint is not None:
-            rclpy.shutdown()
+        rclpy.shutdown()
         print("[INFO] Done.")
 
 

@@ -21,11 +21,12 @@ import hydra
 
 
 def _draw_viz_spheres(scn, viz_spheres):
-    """Draw debug spheres/lines into a MuJoCo mjvScene.
+    """Draw debug spheres/lines/arrows into a MuJoCo mjvScene.
 
     Each entry in viz_spheres is a dict with either:
       - sphere: {"pos": (3,), "radius": float, "rgba": (4,)}
       - line:   {"from": (3,), "to": (3,), "radius": float, "rgba": (4,)}
+      - arrow:  {"from": (3,), "to": (3,), "radius": float, "rgba": (4,), "geom": "arrow"}
     """
     if not viz_spheres:
         return
@@ -36,8 +37,13 @@ def _draw_viz_spheres(scn, viz_spheres):
         rgba = np.asarray(item.get("rgba", [1.0, 1.0, 1.0, 1.0]), dtype=np.float32)
         if "from" in item:
             r = float(item.get("radius", 0.005))
+            geom_type = mujoco.mjtGeom.mjGEOM_CAPSULE
+            if item.get("geom", "").lower() == "arrow":
+                geom_type = getattr(
+                    mujoco.mjtGeom, "mjGEOM_ARROW", mujoco.mjtGeom.mjGEOM_CAPSULE
+                )
             mujoco.mjv_makeConnector(
-                g, mujoco.mjtGeom.mjGEOM_CAPSULE, r,
+                g, geom_type, r,
                 *item["from"], *item["to"],
             )
             g.rgba[:] = rgba

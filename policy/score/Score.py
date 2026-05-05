@@ -266,6 +266,7 @@ class Score(FSMState):
         self._debug_target_pos_w = np.zeros(3, dtype=np.float32)
         self._debug_ball_pos_b = np.zeros(3, dtype=np.float32)
         self._debug_target_pos_b = np.zeros(3, dtype=np.float32)
+        self._debug_anchor_x_axis_w = np.array([1.0, 0.0, 0.0], dtype=np.float32)
         self._target_debug_source = "fixed"
 
         # History buffers (oldest → newest, HISTORY_LEN frames each)
@@ -334,6 +335,7 @@ class Score(FSMState):
         self._debug_target_pos_w = np.zeros(3, dtype=np.float32)
         self._debug_ball_pos_b = np.zeros(3, dtype=np.float32)
         self._debug_target_pos_b = np.zeros(3, dtype=np.float32)
+        self._debug_anchor_x_axis_w = np.array([1.0, 0.0, 0.0], dtype=np.float32)
         self._target_debug_source = "fixed"
 
         # ---- Warm-up interpolation targets ----
@@ -457,6 +459,38 @@ class Score(FSMState):
             ).astype(np.float32)
         return ball_b_effective
 
+    def _pelvis_to_torso_offset_pelvis(self) -> np.ndarray:
+        """Return torso origin relative to pelvis, expressed in pelvis frame."""
+        waist_yaw = float(self.state_cmd.q[12])
+        R_waist_yaw = _quat_to_matrix(
+            np.array(
+                [np.cos(waist_yaw * 0.5), 0.0, 0.0, np.sin(waist_yaw * 0.5)],
+                dtype=np.float64,
+            )
+        )
+        return R_waist_yaw @ np.array([-0.0039635, 0.0, 0.044], dtype=np.float64)
+
+    def _get_ball_pos_torso_b(
+        self,
+        ball_b_effective,
+        torso_pos_w: np.ndarray,
+        R_torso_w: np.ndarray,
+    ):
+        """Return ball position relative to torso, expressed in torso frame."""
+        if self.runtime_mode == "real":
+            if ball_b_effective is None:
+                return None
+            R_pelvis_w = _quat_to_matrix(self.state_cmd.pelvis_quat_w.astype(np.float64))
+            ball_rel_torso_pelvis = (
+                ball_b_effective.astype(np.float64) - self._pelvis_to_torso_offset_pelvis()
+            )
+            return (R_torso_w.T @ (R_pelvis_w @ ball_rel_torso_pelvis)).astype(np.float32)
+
+        ball_rel_torso_w = (
+            self.state_cmd.ball_pos_w.astype(np.float64) - torso_pos_w
+        )
+        return (R_torso_w.T @ ball_rel_torso_w).astype(np.float32)
+
     def _compute_anchor_pos_b(
         self,
         ball_b_effective,
@@ -469,19 +503,15 @@ class Score(FSMState):
             return np.zeros(3, dtype=np.float32)
 
         if self.anchor_mode == "ball_cmd":
+            ball_pos_torso_b = self._get_ball_pos_torso_b(
+                ball_b_effective, torso_pos_w, R_torso_w
+            )
             if self.runtime_mode == "real":
-                R_pelvis_yaw_w = _quat_to_matrix(_yaw_quat(self.state_cmd.pelvis_quat_w.astype(np.float64)))
-                R_torso_yaw_w = _quat_to_matrix(_yaw_quat(self.state_cmd.torso_quat_w.astype(np.float64)))
                 anchor_pos_b_ref = (
                     R_torso_w.T @ (aligned_anchor_pos_w - torso_pos_w)
                 ).astype(np.float32)
-                if self.state_cmd.ball_valid and ball_b_effective is not None:
-                    ball_dir_pelvis = np.array(
-                        [ball_b_effective[0], ball_b_effective[1], 0.0], dtype=np.float64
-                    )
-                    anchor_cmd_xy = (
-                        R_torso_yaw_w.T @ (R_pelvis_yaw_w @ ball_dir_pelvis)
-                    )[:2].astype(np.float32)
+                if self.state_cmd.ball_valid and ball_pos_torso_b is not None:
+                    anchor_cmd_xy = ball_pos_torso_b[:2].astype(np.float32)
                     norm_xy = float(np.linalg.norm(anchor_cmd_xy))
                     if norm_xy > 1e-6:
                         clipped_norm_xy = np.clip(0.5*norm_xy, 0, 1.0)
@@ -496,19 +526,14 @@ class Score(FSMState):
                 anchor_pos_b[2] = aligned_anchor_pos_w[2] - torso_pos_w[2]
                 return anchor_pos_b.astype(np.float32)
 
-            R_pelvis = _quat_to_matrix(self.state_cmd.pelvis_quat_w.astype(np.float64))
-            ball_rel_w = (
-                self.state_cmd.ball_pos_w.astype(np.float64)
-                - self.state_cmd.pelvis_pos_w.astype(np.float64)
-            )
             _adisp = aligned_anchor_pos_w - self._ref_anchor_world_origin
             _rdisp = torso_pos_w - self._entry_torso_pos_w
             anchor_pos_b_ref = (R_torso_w.T @ (_adisp - _rdisp)).astype(np.float32)
-            anchor_cmd_xy = (R_pelvis.T @ ball_rel_w)[:2]
+            anchor_cmd_xy = ball_pos_torso_b[:2]
             norm_xy = float(np.linalg.norm(anchor_cmd_xy))
             if norm_xy > 1e-6:
                 clipped_norm_xy = np.clip(0.5*norm_xy, 0, 1.0)
-                anchor_pos_b_ball = 0.5 * clipped_norm_xy * (anchor_cmd_xy / norm_xy)
+                anchor_pos_b_ball = 1 * clipped_norm_xy * (anchor_cmd_xy / norm_xy)
                 return np.concatenate(
                     [anchor_pos_b_ball, [aligned_anchor_pos_w[2] - torso_pos_w[2]]]
                 ).astype(np.float32)
@@ -530,19 +555,23 @@ class Score(FSMState):
         """Compute anchor orientation observation in torso/body frame."""
         if self.anchor_ori_mode == "ball_facing":
             if self.runtime_mode == "real":
-                # Real robot: directly use the ball direction relative to pelvis.
+                # Real robot: use the ball direction relative to torso.
                 # Only horizontal relative yaw is kept here.
-                ball_relevant_pos_to_pelvis = (
-                    np.zeros(2, dtype=np.float64)
-                    if ball_b_effective is None else
-                    ball_b_effective[:2].astype(np.float64)
+                R_torso_w = _quat_to_matrix(torso_quat_w)
+                ball_pos_torso_b = self._get_ball_pos_torso_b(
+                    ball_b_effective, torso_pos_w, R_torso_w
                 )
-                norm_xy = float(np.linalg.norm(ball_relevant_pos_to_pelvis))
+                ball_relevant_pos_to_torso = (
+                    np.zeros(2, dtype=np.float64)
+                    if ball_pos_torso_b is None else
+                    ball_pos_torso_b[:2].astype(np.float64)
+                )
+                norm_xy = float(np.linalg.norm(ball_relevant_pos_to_torso))
                 yaw_rel = (
                     0.0 if norm_xy < 1e-6 else
                     float(np.arctan2(
-                        ball_relevant_pos_to_pelvis[1],
-                        ball_relevant_pos_to_pelvis[0],
+                        ball_relevant_pos_to_torso[1],
+                        ball_relevant_pos_to_torso[0],
                     ))
                 )
                 rel_quat = np.array(
@@ -552,9 +581,8 @@ class Score(FSMState):
                 return _rot6d_from_quat(rel_quat)
 
             ball_pos_w_f64 = self.state_cmd.ball_pos_w.astype(np.float64)
-            pelvis_pos_w = self.state_cmd.pelvis_pos_w.astype(np.float64)
-            to_ball_w = ball_pos_w_f64 - pelvis_pos_w
-            to_ball_w[2] = aligned_anchor_pos_w[2] - pelvis_pos_w[2]
+            to_ball_w = ball_pos_w_f64 - torso_pos_w
+            to_ball_w[2] = aligned_anchor_pos_w[2] - torso_pos_w[2]
             norm = np.linalg.norm(to_ball_w)
             if norm < 1e-6:
                 to_ball_dir = np.array([1.0, 0.0, 0.0])
@@ -740,6 +768,13 @@ class Score(FSMState):
         anchor_ori_6d = self._compute_anchor_ori_6d(
             t, ball_b_effective, torso_quat_w, torso_pos_w, aligned_anchor_pos_w, init_world_quat
         )
+        anchor_x_axis_b = np.array(
+            [anchor_ori_6d[0], anchor_ori_6d[2], anchor_ori_6d[4]],
+            dtype=np.float64,
+        )
+        self._debug_anchor_x_axis_w = (
+            R_torso_w @ anchor_x_axis_b
+        ).astype(np.float32)
 
         # ---- Current joint state (Isaac Lab order) ----
         qj_il  = self.state_cmd.q[ISAAC_TO_MUJOCO]
@@ -851,6 +886,10 @@ class Score(FSMState):
         )
 
         # ---- Visualization: anchor sphere + line from torso to anchor + target square ----
+        anchor_ori_arrow_to = (
+            self._debug_anchor_pos_w.astype(np.float64)
+            + 0.45 * self._debug_anchor_x_axis_w.astype(np.float64)
+        )
         target_marker_pos = np.array(
             [self._debug_target_pos_w[0], self._debug_target_pos_w[1], 0.15],
             dtype=np.float64,
@@ -861,6 +900,9 @@ class Score(FSMState):
             {"from": self._debug_torso_pos_w.copy(),
              "to":   self._debug_anchor_pos_w.copy(), "radius": 0.008,
              "rgba": np.array([1.0, 0.5, 0.0, 0.5], dtype=np.float32)},
+            {"from": self._debug_anchor_pos_w.copy(),
+             "to":   anchor_ori_arrow_to, "radius": 0.025, "geom": "arrow",
+             "rgba": np.array([0.6, 0.0, 1.0, 0.9], dtype=np.float32)},
             {"pos": target_marker_pos, "size": np.array([0.002, 0.15, 0.15]),
              "rgba": np.array([1.0, 0.4, 0.8, 0.85], dtype=np.float32)},
         ]

@@ -231,9 +231,12 @@ class Score(FSMState):
         self.trigger_frame    = int(cfg.get("trigger_frame",     252))
         _tpe = cfg.get("trigger_play_end_frame", None)
         self.trigger_play_end_frame = int(_tpe) if _tpe is not None else None
+        self.trigger_play_once = bool(cfg.get("trigger_play_once", False))
         self.motion_mode = (
             "freeze"
             if self.freeze_motion_at_first_frame else
+            "triggered_once"
+            if self.wait_for_ball and self.trigger_play_once else
             "triggered"
             if self.wait_for_ball else
             "play"
@@ -348,7 +351,11 @@ class Score(FSMState):
 
         max_delta = np.abs(self._t0_target_q - self._entry_q).max()
         if self.wait_for_ball:
-            if self.trigger_play_end_frame is not None:
+            if self.trigger_play_once:
+                s0 = int(np.clip(self.trigger_frame, 0, self.motion_total_steps - 1))
+                trigger_note = (f", waiting for ball (r={self.trigger_radius}m, "
+                                f"h={self.trigger_horizon}s → play once {s0}..end)")
+            elif self.trigger_play_end_frame is not None:
                 s0 = int(np.clip(self.trigger_frame, 0, self.motion_total_steps - 1))
                 s1 = int(np.clip(self.trigger_play_end_frame, 0, self.motion_total_steps - 1))
                 s1 = max(s0, s1)
@@ -380,6 +387,11 @@ class Score(FSMState):
         if self.freeze_motion_at_first_frame or not self._motion_triggered:
             return 0
         steps_since_trigger = policy_step - self._trigger_policy_step
+        if self.wait_for_ball and self.trigger_play_once:
+            return min(
+                int(np.clip(self.trigger_frame, 0, self.motion_total_steps - 1)) + steps_since_trigger,
+                self.motion_total_steps - 1,
+            )
         if self.wait_for_ball and self.trigger_play_end_frame is not None:
             s0, s1 = self._trigger_segment_bounds()
             t_lin = s0 + steps_since_trigger
@@ -387,6 +399,12 @@ class Score(FSMState):
         if self.wait_for_ball:
             return min(self.trigger_frame + steps_since_trigger, self.motion_total_steps - 1)
         return min(max(policy_step, 0), self.motion_total_steps - 1)
+
+    def _trigger_play_once_finished(self, policy_step: int) -> bool:
+        if not (self.wait_for_ball and self.trigger_play_once and self._motion_triggered):
+            return False
+        start_t = int(np.clip(self.trigger_frame, 0, self.trigger_play_end_frame - 1))
+        return (start_t + (policy_step - self._trigger_policy_step)) >= (self.trigger_play_end_frame - 1)
 
     def _estimate_ball_vel_b(self) -> np.ndarray:
         """Estimate body-frame ball velocity on real robot from `ball_pos_b`.
@@ -439,15 +457,6 @@ class Score(FSMState):
             ).astype(np.float32)
         return ball_b_effective
 
-    def _translated_anchor_world_pos(self, aligned_anchor_pos_w: np.ndarray) -> np.ndarray:
-        """Shift sim anchor so motion t=0 starts at the Score entry torso pose."""
-        if self.runtime_mode != "sim":
-            return aligned_anchor_pos_w
-        return (
-            self._entry_torso_pos_w
-            + (aligned_anchor_pos_w - self._ref_anchor_world_origin)
-        )
-
     def _compute_anchor_pos_b(
         self,
         ball_b_effective,
@@ -475,7 +484,8 @@ class Score(FSMState):
                     )[:2].astype(np.float32)
                     norm_xy = float(np.linalg.norm(anchor_cmd_xy))
                     if norm_xy > 1e-6:
-                        anchor_pos_b_ball = 0.2 * (anchor_cmd_xy / norm_xy)
+                        clipped_norm_xy = np.clip(0.5*norm_xy, 0, 1.0)
+                        anchor_pos_b_ball = 0.5 * clipped_norm_xy * (anchor_cmd_xy / norm_xy)
                         anchor_pos_b = np.concatenate(
                             [anchor_pos_b_ball, [aligned_anchor_pos_w[2] - torso_pos_w[2]]]
                         )
@@ -486,31 +496,27 @@ class Score(FSMState):
                 anchor_pos_b[2] = aligned_anchor_pos_w[2] - torso_pos_w[2]
                 return anchor_pos_b.astype(np.float32)
 
-            translated_anchor_pos_w = self._translated_anchor_world_pos(aligned_anchor_pos_w)
-            R_torso_yaw_w = _quat_to_matrix(_yaw_quat(self.state_cmd.torso_quat_w.astype(np.float64)))
+            R_pelvis = _quat_to_matrix(self.state_cmd.pelvis_quat_w.astype(np.float64))
             ball_rel_w = (
                 self.state_cmd.ball_pos_w.astype(np.float64)
                 - self.state_cmd.pelvis_pos_w.astype(np.float64)
             )
-            anchor_pos_b_ref = (
-                R_torso_w.T @ (translated_anchor_pos_w - torso_pos_w)
-            ).astype(np.float32)
-            anchor_cmd_xy = (R_torso_yaw_w.T @ ball_rel_w)[:2].astype(np.float32)
+            _adisp = aligned_anchor_pos_w - self._ref_anchor_world_origin
+            _rdisp = torso_pos_w - self._entry_torso_pos_w
+            anchor_pos_b_ref = (R_torso_w.T @ (_adisp - _rdisp)).astype(np.float32)
+            anchor_cmd_xy = (R_pelvis.T @ ball_rel_w)[:2]
             norm_xy = float(np.linalg.norm(anchor_cmd_xy))
             if norm_xy > 1e-6:
-                anchor_pos_b_ball = 0.2 * (anchor_cmd_xy / norm_xy)
+                clipped_norm_xy = np.clip(0.5*norm_xy, 0, 1.0)
+                anchor_pos_b_ball = 0.5 * clipped_norm_xy * (anchor_cmd_xy / norm_xy)
                 return np.concatenate(
-                    [anchor_pos_b_ball, [translated_anchor_pos_w[2] - torso_pos_w[2]]]
+                    [anchor_pos_b_ball, [aligned_anchor_pos_w[2] - torso_pos_w[2]]]
                 ).astype(np.float32)
             return anchor_pos_b_ref
 
-        if self.runtime_mode == "real":
-            anchor_disp_w = aligned_anchor_pos_w - self._ref_anchor_world_origin
-            robot_disp_w  = torso_pos_w - self._entry_torso_pos_w
-            return (R_torso_w.T @ (anchor_disp_w - robot_disp_w)).astype(np.float32)
-
-        translated_anchor_pos_w = self._translated_anchor_world_pos(aligned_anchor_pos_w)
-        return (R_torso_w.T @ (translated_anchor_pos_w - torso_pos_w)).astype(np.float32)
+        anchor_disp_w = aligned_anchor_pos_w - self._ref_anchor_world_origin
+        robot_disp_w  = torso_pos_w - self._entry_torso_pos_w
+        return (R_torso_w.T @ (anchor_disp_w - robot_disp_w)).astype(np.float32)
 
     def _compute_anchor_ori_6d(
         self,
@@ -547,9 +553,8 @@ class Score(FSMState):
 
             ball_pos_w_f64 = self.state_cmd.ball_pos_w.astype(np.float64)
             pelvis_pos_w = self.state_cmd.pelvis_pos_w.astype(np.float64)
-            translated_anchor_pos_w = self._translated_anchor_world_pos(aligned_anchor_pos_w)
             to_ball_w = ball_pos_w_f64 - pelvis_pos_w
-            to_ball_w[2] = translated_anchor_pos_w[2] - pelvis_pos_w[2]
+            to_ball_w[2] = aligned_anchor_pos_w[2] - pelvis_pos_w[2]
             norm = np.linalg.norm(to_ball_w)
             if norm < 1e-6:
                 to_ball_dir = np.array([1.0, 0.0, 0.0])
@@ -649,7 +654,7 @@ class Score(FSMState):
 
     def _update_motion_trigger_state(self, policy_step: int):
         """Update finite-burst state machine before trigger evaluation."""
-        if (self.wait_for_ball and self._motion_triggered
+        if (self.wait_for_ball and not self.trigger_play_once and self._motion_triggered
                 and self.trigger_play_end_frame is not None):
             s0, s1 = self._trigger_segment_bounds()
             if policy_step - self._trigger_policy_step > (s1 - s0):
@@ -718,14 +723,17 @@ class Score(FSMState):
         init_world_quat      = _matrix_to_quat(self._init_to_world)
         ref_anchor_pos_w     = self.motion_body_pos[t, NPZ_ANCHOR_IDX].astype(np.float64)
         aligned_anchor_pos_w = self._init_to_world @ ref_anchor_pos_w
-        anchor_pos_b = self._compute_anchor_pos_b(
-            ball_b_effective, torso_pos_w, R_torso_w, aligned_anchor_pos_w
-        )
+        if self._trigger_play_once_finished(policy_step):
+            _adisp = aligned_anchor_pos_w - self._ref_anchor_world_origin
+            _rdisp = torso_pos_w - self._entry_torso_pos_w
+            anchor_pos_b = (R_torso_w.T @ (_adisp - _rdisp)).astype(np.float32)
+        else:
+            anchor_pos_b = self._compute_anchor_pos_b(
+                ball_b_effective, torso_pos_w, R_torso_w, aligned_anchor_pos_w
+            )
 
         # Cache for visualization (world-frame anchor position).
-        self._debug_anchor_pos_w = (
-            torso_pos_w + R_torso_w @ anchor_pos_b.astype(np.float64)
-        ).astype(np.float32)
+        self._debug_anchor_pos_w = (torso_pos_w + R_torso_w @ anchor_pos_b.astype(np.float64)).astype(np.float32)
         self._debug_torso_pos_w  = torso_pos_w.astype(np.float32)
 
         # ---- motion_anchor_ori_b (relative to torso orientation, in torso body frame) ----
@@ -798,7 +806,11 @@ class Score(FSMState):
             elif in_circle:
                 self._motion_triggered = True
                 self._trigger_policy_step = policy_step
-                if self.trigger_play_end_frame is not None:
+                if self.trigger_play_once:
+                    s0 = int(np.clip(self.trigger_frame, 0, self.motion_total_steps - 1))
+                    print(f"\n[Score] Ball trigger at policy_step={policy_step} "
+                          f"→ play once from frame {s0} to clip end")
+                elif self.trigger_play_end_frame is not None:
                     s0, s1 = self._trigger_segment_bounds()
                     print(f"\n[Score] Ball trigger at policy_step={policy_step} "
                           f"→ play frames {s0}..{s1}")
@@ -867,7 +879,16 @@ class Score(FSMState):
         self.time_step += 1
         capped = self._motion_frame_index(policy_step)
         self.policy_output.ghost_qpos = self._compute_ghost_qpos(capped)
-        if self.wait_for_ball and self.trigger_play_end_frame is not None:
+        if self.wait_for_ball and self.trigger_play_once:
+            s0 = int(np.clip(self.trigger_frame, 0, self.motion_total_steps - 1))
+            span_ct = self.motion_total_steps - s0
+            bar_total = span_ct * self.control_dt
+            if self._motion_triggered:
+                st = policy_step - self._trigger_policy_step
+                bar_prog = min(st + 1, span_ct) * self.control_dt
+            else:
+                bar_prog = 0.0
+        elif self.wait_for_ball and self.trigger_play_end_frame is not None:
             s0, s1 = self._trigger_segment_bounds()
             span_ct = s1 - s0 + 1
             bar_total = span_ct * self.control_dt

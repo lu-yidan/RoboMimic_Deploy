@@ -180,7 +180,7 @@ def main(cfg: DictConfig):
                 if joystick.is_button_released(JoystickButton.L3):                                                    # Ghost toggle, L3
                     ghost_flags[0] = not ghost_flags[0]
                     print(f"[Ghost] {'ON' if ghost_flags[0] else 'OFF'}")
-                if joystick.is_button_released(JoystickButton.X) and joystick.is_button_pressed(JoystickButton.R1):   # Ball reset, R1+X
+                if joystick.is_button_released(JoystickButton.X):                                                        # Ball reset, X
                     if _reset_ball_state(
                         m, d, ball_body_id,
                         ball_reset_pos_w, ball_reset_vel_w,

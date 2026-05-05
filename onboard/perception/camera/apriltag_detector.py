@@ -282,8 +282,13 @@ def _start_camera_pipeline(args, with_depth: bool = False):
     all_names = [d.get_info(rs.camera_info.name) for d in devs]
 
     print("[INFO] Connected RealSense devices:")
-    for idx, (sn, nm) in enumerate(zip(all_sns, all_names)):
-        print(f"  [{idx}] serial={sn}  {nm}")
+    for idx, (d, sn, nm) in enumerate(zip(devs, all_sns, all_names)):
+        try:
+            usb = d.get_info(rs.camera_info.usb_type_descriptor)
+        except Exception:
+            usb = "?"
+        usb_warn = "  ⚠ USB2 – frame drops likely!" if usb.startswith("2") else ""
+        print(f"  [{idx}] serial={sn}  {nm}  USB {usb}{usb_warn}")
 
     if args.list_cameras:
         return None, None
@@ -291,7 +296,16 @@ def _start_camera_pipeline(args, with_depth: bool = False):
         raise RuntimeError("No RealSense device found.")
 
     serial = args.camera_serial or all_sns[0]
-    print(f"[INFO] CHEST AprilTag camera -> serial {serial}")
+    # Print USB speed for the selected device so frame-drop issues are easy to spot.
+    sel_dev = next((d for d, s in zip(devs, all_sns) if s == serial), None)
+    if sel_dev is not None:
+        try:
+            usb = sel_dev.get_info(rs.camera_info.usb_type_descriptor)
+        except Exception:
+            usb = "?"
+        usb_ok = usb.startswith("3")
+        tag = "OK" if usb_ok else "WARN – frame drops likely if USB2!"
+        print(f"[INFO] CHEST AprilTag camera -> serial {serial}  USB {usb}  [{tag}]")
 
     pipeline = rs.pipeline()
     fps_tries = [30, 15, 10, 5]

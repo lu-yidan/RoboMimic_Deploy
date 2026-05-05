@@ -513,7 +513,11 @@ def main():
     print("[INFO] Camera running. Press Ctrl+C to stop.")
     try:
         while True:
-            frames = pipeline.wait_for_frames()
+            try:
+                frames = pipeline.wait_for_frames()
+            except Exception as e:
+                print(f"[WARN] wait_for_frames error: {e}", flush=True)
+                continue
             color_frame = frames.get_color_frame()
             if not color_frame:
                 continue
@@ -530,7 +534,11 @@ def main():
                 )
             else:
                 gray_det = gray
-            corners_list, ids, _ = detector.detectMarkers(gray_det)
+            try:
+                corners_list, ids, _ = detector.detectMarkers(gray_det)
+            except Exception as e:
+                print(f"[WARN] detectMarkers error: {e}", flush=True)
+                corners_list, ids = [], None
             if args.detect_scale != 1.0 and corners_list:
                 corners_list = tuple(c / args.detect_scale for c in corners_list)
             ids_flat = ids.reshape(-1).tolist() if ids is not None else []

@@ -127,6 +127,8 @@ HTML = r"""<!doctype html>
     .badge.valid  { background: #15803d; }
     .badge.coast  { background: #92400e; }
     .badge.stale  { background: #475569; }
+    .hz { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px;
+          color: var(--muted); margin-left: auto; }
     @media (max-width: 860px) {
       .layout { grid-template-columns: 1fr; padding: 8px 12px 20px; }
       canvas  { height: 56vh; }
@@ -155,6 +157,7 @@ HTML = r"""<!doctype html>
           <span class="dot" style="background:var(--target)"></span>
           Target
           <span class="badge stale" id="badge-target">wait</span>
+          <span class="hz" id="hz-target"></span>
         </div>
         <div class="kv" id="kv-target"></div>
       </div>
@@ -163,6 +166,7 @@ HTML = r"""<!doctype html>
           <span class="dot" style="background:var(--cam)"></span>
           Cam ball
           <span class="badge stale" id="badge-cam">wait</span>
+          <span class="hz" id="hz-cam"></span>
         </div>
         <div class="kv" id="kv-cam"></div>
       </div>
@@ -171,6 +175,7 @@ HTML = r"""<!doctype html>
           <span class="dot" style="background:var(--lidar)"></span>
           Lidar ball
           <span class="badge stale" id="badge-lidar">wait</span>
+          <span class="hz" id="hz-lidar"></span>
         </div>
         <div class="kv" id="kv-lidar"></div>
       </div>
@@ -179,6 +184,7 @@ HTML = r"""<!doctype html>
           <span class="dot" style="background:var(--fused)"></span>
           Fused ball
           <span class="badge stale" id="badge-fused">wait</span>
+          <span class="hz" id="hz-fused"></span>
         </div>
         <div class="kv" id="kv-fused"></div>
       </div>
@@ -360,13 +366,17 @@ function draw() {
 
 function badge(id, state) {
   const el = document.getElementById("badge-" + id);
+  const hz = document.getElementById("hz-" + id);
   if (!el) return;
   if (!state || !state.has_sample) {
-    el.textContent = "wait"; el.className = "badge stale"; return;
+    el.textContent = "wait"; el.className = "badge stale";
+    if (hz) hz.textContent = "";
+    return;
   }
+  if (hz) hz.textContent = state.hz > 0 ? state.hz.toFixed(1) + " Hz" : "";
   if (!state.fresh) { el.textContent = "stale"; el.className = "badge stale"; return; }
-  if (state.valid)  { el.textContent = "valid"; el.className = "badge valid"; return; }
-  if (state.coast)  { el.textContent = "coast"; el.className = "badge coast"; return; }
+  if (state.valid)  { el.textContent = "valid"; el.className = "badge valid";  return; }
+  if (state.coast)  { el.textContent = "coast"; el.className = "badge coast";  return; }
   el.textContent = "inval"; el.className = "badge stale";
 }
 
@@ -384,52 +394,48 @@ function fmtAge(ms) {
 function updatePanel(s) {
   if (!s) return;
 
+  // helper: same 6-row layout for all sensors to keep panel heights identical
+  function sensorRows(s, extra) {
+    const h = s && s.has_sample;
+    return [
+      ["x fwd",  h ? fmt(s.x)           : "--"],
+      ["y left", h ? fmt(s.y)           : "--"],
+      ["z up",   h ? fmt(s.z)           : "--"],
+      ["dist 3d",h ? fmtPlain(s.dist_3d): "--"],
+      extra,
+      ["age",    h ? fmtAge(s.age_ms)   : "--"],
+    ];
+  }
+
+  const srcName = {0:"none", 1:"cam", 2:"lidar"};
+
   // target
   badge("target", s.target);
   const t = s.target;
-  document.getElementById("kv-target").innerHTML = kvHtml([
-    ["x fwd", t && t.has_sample ? fmt(t.x) : "--"],
-    ["y left", t && t.has_sample ? fmt(t.y) : "--"],
-    ["z up", t && t.has_sample ? fmt(t.z) : "--"],
-    ["dist xy", t && t.has_sample ? fmtPlain(t.dist_xy) : "--"],
-    ["conf", t && t.has_sample ? (t.confidence * 100).toFixed(0) + "%" : "--"],
-    ["age", t && t.has_sample ? fmtAge(t.age_ms) : "--"],
-  ]);
+  document.getElementById("kv-target").innerHTML = kvHtml(
+    sensorRows(t, ["conf", t && t.has_sample ? (t.confidence * 100).toFixed(0) + "%" : "--"])
+  );
 
   // cam ball
   badge("cam", s.cam);
   const c = s.cam;
-  document.getElementById("kv-cam").innerHTML = kvHtml([
-    ["x fwd", c && c.has_sample ? fmt(c.x) : "--"],
-    ["y left", c && c.has_sample ? fmt(c.y) : "--"],
-    ["z up", c && c.has_sample ? fmt(c.z) : "--"],
-    ["dist 3d", c && c.has_sample ? fmtPlain(c.dist_3d) : "--"],
-    ["age", c && c.has_sample ? fmtAge(c.age_ms) : "--"],
-  ]);
+  document.getElementById("kv-cam").innerHTML = kvHtml(
+    sensorRows(c, ["dist xy", c && c.has_sample ? fmtPlain(c.dist_xy) : "--"])
+  );
 
   // lidar ball
   badge("lidar", s.lidar);
   const l = s.lidar;
-  document.getElementById("kv-lidar").innerHTML = kvHtml([
-    ["x fwd", l && l.has_sample ? fmt(l.x) : "--"],
-    ["y left", l && l.has_sample ? fmt(l.y) : "--"],
-    ["z up", l && l.has_sample ? fmt(l.z) : "--"],
-    ["dist 3d", l && l.has_sample ? fmtPlain(l.dist_3d) : "--"],
-    ["age", l && l.has_sample ? fmtAge(l.age_ms) : "--"],
-  ]);
+  document.getElementById("kv-lidar").innerHTML = kvHtml(
+    sensorRows(l, ["dist xy", l && l.has_sample ? fmtPlain(l.dist_xy) : "--"])
+  );
 
   // fused
   badge("fused", s.fused);
   const f = s.fused;
-  const src = {0:"none", 1:"cam", 2:"lidar"};
-  document.getElementById("kv-fused").innerHTML = kvHtml([
-    ["x fwd", f && f.has_sample ? fmt(f.x) : "--"],
-    ["y left", f && f.has_sample ? fmt(f.y) : "--"],
-    ["z up", f && f.has_sample ? fmt(f.z) : "--"],
-    ["dist 3d", f && f.has_sample ? fmtPlain(f.dist_3d) : "--"],
-    ["source", f && f.has_sample ? (src[f.source] || "?") : "--"],
-    ["age", f && f.has_sample ? fmtAge(f.age_ms) : "--"],
-  ]);
+  document.getElementById("kv-fused").innerHTML = kvHtml(
+    sensorRows(f, ["source", f && f.has_sample ? (srcName[f.source] || "?") : "--"])
+  );
 }
 
 // ── SSE ──────────────────────────────────────────────────────────────────────
@@ -452,10 +458,40 @@ es.onmessage = (e) => {
 
 # ── Data layer ────────────────────────────────────────────────────────────────
 
-def _ball_snapshot(last, received_at, stale_ms) -> dict:
+class _RateCounter:
+    """Rolling-window message rate counter (thread-safe)."""
+    def __init__(self, window_sec: float = 3.0):
+        self._window = window_sec
+        self._times: list[float] = []
+        self._lock = threading.Lock()
+
+    def tick(self):
+        now = time.monotonic()
+        with self._lock:
+            self._times.append(now)
+            cutoff = now - self._window
+            # trim old entries
+            i = 0
+            while i < len(self._times) and self._times[i] < cutoff:
+                i += 1
+            if i:
+                del self._times[:i]
+
+    @property
+    def hz(self) -> float:
+        now = time.monotonic()
+        with self._lock:
+            recent = [t for t in self._times if t >= now - self._window]
+        if len(recent) < 2:
+            return 0.0
+        span = recent[-1] - recent[0]
+        return (len(recent) - 1) / span if span > 0 else 0.0
+
+
+def _ball_snapshot(last, received_at, stale_ms, hz: float = 0.0) -> dict:
     if last is None or received_at is None:
         return {"has_sample": False, "fresh": False, "valid": False,
-                "coast": False, "age_ms": None,
+                "coast": False, "age_ms": None, "hz": 0.0,
                 "x": 0.0, "y": 0.0, "z": 0.0,
                 "dist_xy": 0.0, "dist_3d": 0.0, "source": 0}
     age_ms = (time.monotonic() - received_at) * 1000.0
@@ -465,7 +501,7 @@ def _ball_snapshot(last, received_at, stale_ms) -> dict:
     coast = (not bool(last.valid)) and bool(last.source) and fresh
     return {
         "has_sample": True, "fresh": bool(fresh), "valid": valid,
-        "coast": coast, "age_ms": age_ms,
+        "coast": coast, "age_ms": age_ms, "hz": round(hz, 1),
         "x": x, "y": y, "z": z,
         "dist_xy": math.hypot(x, y),
         "dist_3d": math.sqrt(x*x + y*y + z*z),
@@ -473,19 +509,22 @@ def _ball_snapshot(last, received_at, stale_ms) -> dict:
     }
 
 
-def _target_snapshot(last, received_at, stale_ms) -> dict:
+def _target_snapshot(last, received_at, stale_ms, hz: float = 0.0) -> dict:
     if last is None or received_at is None:
         return {"has_sample": False, "fresh": False, "valid": False,
-                "age_ms": None, "x": 0.0, "y": 0.0, "z": 0.0,
-                "dist_xy": 0.0, "confidence": 0.0}
+                "age_ms": None, "hz": 0.0,
+                "x": 0.0, "y": 0.0, "z": 0.0,
+                "dist_xy": 0.0, "dist_3d": 0.0, "confidence": 0.0}
     age_ms = (time.monotonic() - received_at) * 1000.0
     fresh = age_ms <= stale_ms
     x, y, z = float(last.x), float(last.y), float(last.z)
     return {
         "has_sample": True, "fresh": bool(fresh),
         "valid": bool(last.valid) and fresh,
-        "age_ms": age_ms, "x": x, "y": y, "z": z,
+        "age_ms": age_ms, "hz": round(hz, 1),
+        "x": x, "y": y, "z": z,
         "dist_xy": math.hypot(x, y),
+        "dist_3d": math.sqrt(x*x + y*y + z*z),
         "confidence": float(last.confidence),
     }
 
@@ -499,29 +538,41 @@ class SensorStore:
         self._cam    = None; self._cam_at    = None
         self._lidar  = None; self._lidar_at  = None
         self._fused  = None; self._fused_at  = None
+        self._rate_target = _RateCounter()
+        self._rate_cam    = _RateCounter()
+        self._rate_lidar  = _RateCounter()
+        self._rate_fused  = _RateCounter()
 
     def update_target(self, s: TargetState):
+        self._rate_target.tick()
         with self._lock:
             self._target = s; self._target_at = time.monotonic()
 
     def update_cam(self, s: BallState):
+        self._rate_cam.tick()
         with self._lock:
             self._cam = s; self._cam_at = time.monotonic()
 
     def update_lidar(self, s: BallState):
+        self._rate_lidar.tick()
         with self._lock:
             self._lidar = s; self._lidar_at = time.monotonic()
 
     def update_fused(self, s: BallState):
+        self._rate_fused.tick()
         with self._lock:
             self._fused = s; self._fused_at = time.monotonic()
 
     def snapshot(self) -> dict:
         with self._lock:
-            t  = _target_snapshot(self._target, self._target_at, self._stale_target)
-            c  = _ball_snapshot(self._cam,   self._cam_at,   self._stale_ball)
-            l  = _ball_snapshot(self._lidar, self._lidar_at, self._stale_ball)
-            f  = _ball_snapshot(self._fused, self._fused_at, self._stale_ball)
+            t = _target_snapshot(self._target, self._target_at,
+                                 self._stale_target, self._rate_target.hz)
+            c = _ball_snapshot(self._cam,   self._cam_at,
+                               self._stale_ball, self._rate_cam.hz)
+            l = _ball_snapshot(self._lidar, self._lidar_at,
+                               self._stale_ball, self._rate_lidar.hz)
+            f = _ball_snapshot(self._fused, self._fused_at,
+                               self._stale_ball, self._rate_fused.hz)
         return {"target": t, "cam": c, "lidar": l, "fused": f}
 
 

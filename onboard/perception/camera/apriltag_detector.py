@@ -176,9 +176,9 @@ def _start_camera_pipeline(args, with_depth: bool = False):
         rs_cfg.enable_device(serial)
         rs_cfg.enable_stream(rs.stream.color, args.width, args.height, rs.format.bgr8, color_fps)
         if with_depth:
-            # Depth at 424×240 — sufficient for ball centroid depth; smaller copy = less GIL.
-            # Color may be 1280×720 — different resolutions on same pipeline are supported.
-            rs_cfg.enable_stream(rs.stream.depth, 424, 240, rs.format.z16, color_fps)
+            # Depth at 848×480 — D455 supports 1280×720 color + 848×480 depth @ 30fps.
+            # 424×240 is NOT a valid paired mode at 30fps and causes fallback to 15fps.
+            rs_cfg.enable_stream(rs.stream.depth, 848, 480, rs.format.z16, color_fps)
         for attempt in range(2):
             try:
                 print(

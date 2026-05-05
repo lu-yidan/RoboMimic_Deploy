@@ -34,15 +34,22 @@ import numpy as np
 
 # ── Default HSV params (tuned for blue-purple soccer ball patches) ────────────
 DEFAULTS = {
+    # ── HSV mode ──────────────────────────────────────────────────────────
     "H_LOW":       100,
     "H_HIGH":      135,
-    "S_MIN":        70,   # raised: filters out gray floor/equipment
+    "S_MIN":        70,
     "V_MIN":        80,
-    "DILATION":     17,   # must be odd; large enough to merge scattered ball patches
-    "FILL_MIN":     10,   # percent (0-30)
-    "MIN_R":         4,   # pixels
-    "EXCL_TOP":     20,   # percent of frame height to black out (exclude screens/ceiling)
-    "CIRC_MIN":     40,   # circularity × 100 (circle=100, square≈78, junk<50)
+    "DILATION":     17,
+    "FILL_MIN":     10,
+    "MIN_R":         4,
+    "EXCL_TOP":     20,
+    "CIRC_MIN":     40,
+    # ── Hough mode ────────────────────────────────────────────────────────
+    "HOUGH":         0,   # 0=HSV mode, 1=Hough circle mode
+    "HOUGH_P2":     25,   # accumulator threshold (lower=more detections, noisier)
+    "HOUGH_BLUR":    9,   # Gaussian blur kernel (must be odd)
+    "HOUGH_MINR":   12,   # min ball radius (px)
+    "HOUGH_MAXR":  150,   # max ball radius (px)
 }
 
 WIN = "HSV Tuner"
@@ -102,6 +109,39 @@ def _detect(frame, h_low, h_high, s_min, v_min, dilation, fill_min_pct, min_r,
             best = (score, bx, by, r_est, fill, circularity)
 
     return mask, merged, best
+
+
+def _detect_hough(frame, blur_k, param2, min_r, max_r, exclude_top_frac=0.0):
+    """Detect ball by circular shape in grayscale — works for white/gray balls."""
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    if exclude_top_frac > 0:
+        gray[:int(gray.shape[0] * exclude_top_frac), :] = 0
+
+    k = max(3, (blur_k // 2) * 2 + 1)      # ensure odd
+    blurred = cv2.GaussianBlur(gray, (k, k), 0)
+
+    circles = cv2.HoughCircles(
+        blurred, cv2.HOUGH_GRADIENT, dp=1.2,
+        minDist=max(min_r * 2, 30),
+        param1=60,        # Canny upper threshold (fixed — works well)
+        param2=param2,    # accumulator threshold: lower = more sensitive
+        minRadius=min_r,
+        maxRadius=max_r,
+    )
+
+    # Visualisation: draw all candidates on gray
+    vis = cv2.cvtColor(blurred, cv2.COLOR_GRAY2BGR)
+    best = None
+    if circles is not None:
+        circles = np.round(circles[0]).astype(int)
+        for i, (cx, cy, r) in enumerate(circles):
+            color = (0, 200, 80) if i == 0 else (60, 60, 200)
+            cv2.circle(vis, (cx, cy), r, color, 2)
+            cv2.circle(vis, (cx, cy), 3, color, -1)
+        cx, cy, r = circles[0]
+        best = (0, int(cx), int(cy), int(r), 1.0, 1.0)   # same tuple shape as HSV best
+
+    return blurred, vis, best
 
 
 def _make_panel(img, label, w=PANEL_W, h=PANEL_H):
@@ -339,40 +379,79 @@ _HTML_PAGE = """\
 <script>
 const DEFS = {H_LOW:__H_LOW__,H_HIGH:__H_HIGH__,S_MIN:__S_MIN__,V_MIN:__V_MIN__,
               DILATION:__DILATION__,FILL_MIN:__FILL_MIN__,MIN_R:__MIN_R__,
-              EXCL_TOP:__EXCL_TOP__,CIRC_MIN:__CIRC_MIN__};
-const META = [
+              EXCL_TOP:__EXCL_TOP__,CIRC_MIN:__CIRC_MIN__,
+              HOUGH:__HOUGH__,HOUGH_P2:__HOUGH_P2__,HOUGH_BLUR:__HOUGH_BLUR__,
+              HOUGH_MINR:__HOUGH_MINR__,HOUGH_MAXR:__HOUGH_MAXR__};
+const META_HSV = [
   {k:"H_LOW",    label:"H_LOW  颜色下限",    max:179, hint:"颜色色相最小值（蓝=100，紫=120，绿=40）"},
   {k:"H_HIGH",   label:"H_HIGH 颜色上限",    max:179, hint:"颜色色相最大值，范围越窄越精准"},
-  {k:"S_MIN",    label:"S_MIN  饱和度",      max:255, hint:"★最重要★ 过低会把灰色/白色地板误判；建议>=60"},
+  {k:"S_MIN",    label:"S_MIN  饱和度",      max:255, hint:"★最重要★ 过低会把灰色/白色误判；建议>=60"},
   {k:"V_MIN",    label:"V_MIN  亮度",        max:255, hint:"过低会抓阴影；光线好时可调高"},
-  {k:"DILATION", label:"DILATION 膨胀",      max:51,  hint:"把散碎色块合并成圆；太大会合并噪点；球块分散时需要大值"},
+  {k:"DILATION", label:"DILATION 膨胀",      max:51,  hint:"把散碎色块合并成圆；太大会合并噪点"},
   {k:"FILL_MIN", label:"FILL_MIN 填充率%",   max:30,  hint:"越高越严格，要求圆内颜色覆盖越多"},
   {k:"MIN_R",    label:"MIN_R  最小半径",    max:40,  hint:"小于此像素的检测结果忽略"},
-  {k:"EXCL_TOP", label:"EXCL_TOP 排除顶部%", max:50,  hint:"屏蔽画面顶部N%区域（排除屏幕/天花板干扰）"},
-  {k:"CIRC_MIN", label:"CIRC_MIN 圆形度x100",max:100, hint:"圆=100，矩形=78；提高可排除屏幕/线缆等非圆形噪点"},
+  {k:"CIRC_MIN", label:"CIRC_MIN 圆形度x100",max:100, hint:"圆=100，矩形=78；提高可排除屏幕/线缆"},
 ];
-const div = document.getElementById("sliders");
-for (const m of META) {
-  const row = document.createElement("div"); row.className = "row";
-  row.innerHTML = `<label>${m.label}</label>
-    <input type="range" id="sl_${m.k}" min="0" max="${m.max}" value="${DEFS[m.k]}"
-           oninput="update('${m.k}', this.value)">
-    <span class="val" id="v_${m.k}">${DEFS[m.k]}</span>
-    <span class="hint">${m.hint}</span>`;
-  div.appendChild(row);
+const META_HOUGH = [
+  {k:"HOUGH_P2",   label:"HOUGH_P2 灵敏度",   max:80,  hint:"越低越灵敏(更多候选)，越高越严格；从25开始"},
+  {k:"HOUGH_BLUR", label:"HOUGH_BLUR 模糊",    max:31,  hint:"平滑噪点；越大越平滑；奇数"},
+  {k:"HOUGH_MINR", label:"HOUGH_MINR 最小半径",max:80,  hint:"球最小半径(px)；排除小噪点"},
+  {k:"HOUGH_MAXR", label:"HOUGH_MAXR 最大半径",max:300, hint:"球最大半径(px)；排除过大误检"},
+];
+const META_COMMON = [
+  {k:"EXCL_TOP", label:"EXCL_TOP 排除顶部%", max:50, hint:"屏蔽画面顶部N%区域（排除屏幕/天花板干扰）"},
+];
+let houghMode = DEFS["HOUGH"] === 1;
+function buildSliders() {
+  const div = document.getElementById("sliders");
+  div.innerHTML = "";
+  const addRow = (m) => {
+    const row = document.createElement("div"); row.className = "row";
+    row.innerHTML = `<label>${m.label}</label>
+      <input type="range" id="sl_${m.k}" min="0" max="${m.max}" value="${DEFS[m.k]}"
+             oninput="update('${m.k}',this.value)">
+      <span class="val" id="v_${m.k}">${DEFS[m.k]}</span>
+      <span class="hint">${m.hint}</span>`;
+    div.appendChild(row);
+  };
+  const modeRow = document.createElement("div"); modeRow.className = "row";
+  modeRow.innerHTML = `<label style="color:#fa0">检测模式</label>
+    <button onclick="toggleMode()" id="modeBtn" style="padding:4px 14px;font-size:0.9em">
+      ${houghMode?"🔵 Hough圆检测":"🎨 HSV色块"}</button>
+    <span class="hint">${houghMode?"灰度圆形检测，适合灰白球":"HSV颜色过滤，适合彩色色块"}</span>`;
+  div.appendChild(modeRow);
+  const meta = houghMode ? META_HOUGH : META_HSV;
+  for (const m of meta) addRow(m);
+  for (const m of META_COMMON) addRow(m);
+}
+buildSliders();
+function toggleMode() {
+  houghMode = !houghMode;
+  DEFS["HOUGH"] = houghMode ? 1 : 0;
+  buildSliders();
+  sendAll();
+}
+function sendAll() {
+  const p = {HOUGH: houghMode ? 1 : 0};
+  const allMeta = [...META_HSV, ...META_HOUGH, ...META_COMMON];
+  for (const m of allMeta) {
+    const el = document.getElementById("sl_"+m.k);
+    if (el) p[m.k] = parseInt(el.value);
+  }
+  fetch("/params?" + new URLSearchParams(p));
 }
 function update(k, val) {
   document.getElementById("v_"+k).textContent = val;
-  const p = {};
-  for (const m of META) p[m.k] = parseInt(document.getElementById("sl_"+m.k).value);
-  fetch("/params?" + new URLSearchParams(p));
+  DEFS[k] = parseInt(val);
+  sendAll();
 }
 let _fps_frames = 0, _fps_t0 = Date.now();
 function refreshStatus() {
   fetch("/status").then(r=>r.json()).then(d=>{
     const el = document.getElementById("status");
     if (d.detected) {
-      el.textContent = `✅ DETECTED  r=${d.r}px  fill=${d.fill}%  circ=${d.circ}  cx=${d.cx}  cy=${d.cy}`;
+      const modeTag = d.mode ? `[${d.mode}] ` : "";
+      el.textContent = `✅ ${modeTag}DETECTED  r=${d.r}px  circ=${d.circ}  cx=${d.cx}  cy=${d.cy}`;
       el.className = "det";
     } else {
       el.textContent = "❌ no ball"; el.className = "miss";
@@ -423,17 +502,34 @@ def run_web(port: int):
                 frame = np.asanyarray(cf.get_data()).copy()
                 with _WEB_LOCK:
                     p = dict(_WEB_PARAMS)
-                mask, merged, best = _detect(
-                    frame, p["H_LOW"], p["H_HIGH"], p["S_MIN"], p["V_MIN"],
-                    p["DILATION"], p["FILL_MIN"], p["MIN_R"],
-                    exclude_top_frac=p["EXCL_TOP"]/100.0,
-                    circ_min=p["CIRC_MIN"]/100.0)
-                p1 = _make_panel(frame,  "Original", _WEB_PW, _WEB_PH)
-                p2 = _make_panel(mask,   f"HSV mask H=[{p['H_LOW']},{p['H_HIGH']}] S≥{p['S_MIN']} V≥{p['V_MIN']}",
-                                 _WEB_PW, _WEB_PH)
-                p3 = _make_panel(merged, f"Merged (dil={p['DILATION']}px)", _WEB_PW, _WEB_PH)
-                p4 = _draw_result(frame, best, _WEB_PW, _WEB_PH)
+
+                if p["HOUGH"]:
+                    gray_blur, hough_vis, best = _detect_hough(
+                        frame, p["HOUGH_BLUR"], p["HOUGH_P2"],
+                        p["HOUGH_MINR"], p["HOUGH_MAXR"],
+                        exclude_top_frac=p["EXCL_TOP"]/100.0)
+                    p1 = _make_panel(frame,    "Original", _WEB_PW, _WEB_PH)
+                    p2 = _make_panel(gray_blur, f"Grayscale blur={p['HOUGH_BLUR']}px", _WEB_PW, _WEB_PH)
+                    p3 = _make_panel(hough_vis, f"Hough candidates (p2={p['HOUGH_P2']})", _WEB_PW, _WEB_PH)
+                    p4 = _draw_result(frame, best, _WEB_PW, _WEB_PH)
+                    mode_label = "HOUGH"
+                else:
+                    mask, merged, best = _detect(
+                        frame, p["H_LOW"], p["H_HIGH"], p["S_MIN"], p["V_MIN"],
+                        p["DILATION"], p["FILL_MIN"], p["MIN_R"],
+                        exclude_top_frac=p["EXCL_TOP"]/100.0,
+                        circ_min=p["CIRC_MIN"]/100.0)
+                    p1 = _make_panel(frame,  "Original", _WEB_PW, _WEB_PH)
+                    p2 = _make_panel(mask,   f"HSV mask H=[{p['H_LOW']},{p['H_HIGH']}] S>={p['S_MIN']} V>={p['V_MIN']}",
+                                     _WEB_PW, _WEB_PH)
+                    p3 = _make_panel(merged, f"Merged (dil={p['DILATION']}px)", _WEB_PW, _WEB_PH)
+                    p4 = _draw_result(frame, best, _WEB_PW, _WEB_PH)
+                    mode_label = "HSV"
+
                 canvas = np.vstack([np.hstack([p1, p2]), np.hstack([p3, p4])])
+                cv2.putText(canvas, f"[{mode_label}]",
+                            (8, canvas.shape[0] - 8), cv2.FONT_HERSHEY_SIMPLEX,
+                            0.5, (180, 180, 80), 1, cv2.LINE_AA)
                 _, jpg = cv2.imencode(".jpg", canvas, [cv2.IMWRITE_JPEG_QUALITY, 70])
                 with _WEB_LOCK:
                     global _WEB_FRAME, _WEB_STATUS
@@ -441,10 +537,12 @@ def run_web(port: int):
                     _WEB_STATUS = ({"detected": True,
                                     "r": round(best[3]), "fill": round(best[4]*100, 1),
                                     "circ": round(best[5], 2),
-                                    "cx": best[1], "cy": best[2]}
+                                    "cx": best[1], "cy": best[2],
+                                    "mode": mode_label}
                                    if best else
                                    {"detected": False, "r": 0, "fill": 0.0,
-                                    "circ": 0.0, "cx": 0, "cy": 0})
+                                    "circ": 0.0, "cx": 0, "cy": 0,
+                                    "mode": mode_label})
         finally:
             pipe.stop()
 
@@ -508,7 +606,9 @@ def run_web(port: int):
             elif path == "/params":
                 qs = parse_qs(parsed.query)
                 with _WEB_LOCK:
-                    for k in ("H_LOW","H_HIGH","S_MIN","V_MIN","DILATION","FILL_MIN","MIN_R","EXCL_TOP","CIRC_MIN"):
+                    for k in ("H_LOW","H_HIGH","S_MIN","V_MIN","DILATION","FILL_MIN","MIN_R",
+                              "EXCL_TOP","CIRC_MIN","HOUGH","HOUGH_P2","HOUGH_BLUR",
+                              "HOUGH_MINR","HOUGH_MAXR"):
                         if k in qs:
                             _WEB_PARAMS[k] = int(qs[k][0])
                 self._send(200, "application/json", '{"ok":true}')

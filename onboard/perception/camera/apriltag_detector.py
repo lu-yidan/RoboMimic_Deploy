@@ -470,8 +470,21 @@ def main():
     if args.list_cameras:
         return
 
+    # Drain incoming frames while ROS2/DDS initializes — the realsense pipeline
+    # streams at 30fps from this point and its internal queue will overflow (bad_alloc)
+    # if frames are not consumed during the several-second DDS setup.
+    _draining = True
+    def _drain_frames():
+        while _draining:
+            try:
+                pipeline.wait_for_frames(timeout_ms=50)
+            except Exception:
+                pass
+    threading.Thread(target=_drain_frames, daemon=True).start()
+
     rclpy.init()
     joint = _JointListener()
+    _draining = False
 
     def _spin_loop():
         while True:

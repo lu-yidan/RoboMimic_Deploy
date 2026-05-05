@@ -263,13 +263,79 @@ def run_camera():
         cv2.destroyAllWindows()
 
 
+def run_headless(n_frames: int, out_dir: str):
+    """Capture N frames from camera, save detection results as images (no display needed)."""
+    try:
+        import pyrealsense2 as rs
+    except ImportError:
+        print("[tuner] pyrealsense2 not available")
+        sys.exit(1)
+
+    os.makedirs(out_dir, exist_ok=True)
+    pipe = rs.pipeline()
+    cfg  = rs.config()
+    cfg.enable_stream(rs.stream.color, 1280, 720, rs.format.bgr8, 30)
+    pipe.start(cfg)
+    print(f"[tuner] Headless: capturing {n_frames} frame(s) → {out_dir}/")
+
+    # warm-up
+    for _ in range(5):
+        pipe.wait_for_frames()
+
+    p = DEFAULTS
+    h_low, h_high = p["H_LOW"], p["H_HIGH"]
+    s_min, v_min  = p["S_MIN"],  p["V_MIN"]
+    dil, fill, min_r = p["DILATION"], p["FILL_MIN"], p["MIN_R"]
+
+    try:
+        for i in range(n_frames):
+            frames = pipe.wait_for_frames()
+            cf = frames.get_color_frame()
+            if not cf:
+                continue
+            frame = np.asanyarray(cf.get_data()).copy()
+
+            mask, merged, best = _detect(frame, h_low, h_high, s_min, v_min, dil, fill, min_r)
+
+            p1 = _make_panel(frame,  f"Original  [frame {i}]")
+            p2 = _make_panel(mask,   f"HSV mask  H=[{h_low},{h_high}] S≥{s_min} V≥{v_min}")
+            p3 = _make_panel(merged, f"Merged (dilation={dil}px)")
+            p4 = _draw_result(frame, best)
+            canvas = np.vstack([np.hstack([p1, p2]), np.hstack([p3, p4])])
+
+            status = _params_str(h_low, h_high, s_min, v_min)
+            detected = "DETECTED" if best else "no ball"
+            cv2.putText(canvas, f"{detected}   {status}",
+                        (8, canvas.shape[0] - 8),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                        (200, 255, 200) if best else (80, 80, 255), 1, cv2.LINE_AA)
+
+            fname = os.path.join(out_dir, f"frame_{i:03d}.png")
+            cv2.imwrite(fname, canvas)
+            print(f"[tuner] {fname}  {detected}" + (f"  r={best[3]:.0f}px fill={best[4]*100:.0f}%" if best else ""))
+    finally:
+        pipe.stop()
+
+    print(f"\n[tuner] Done. scp unitree@<robot>:{os.path.abspath(out_dir)}/*.png .")
+
+
 def main():
     ap = argparse.ArgumentParser(description="Interactive HSV ball-detection tuner")
     ap.add_argument("path", nargs="?", default=None,
                     help="Image file or directory of images")
     ap.add_argument("--camera", action="store_true",
                     help="Use live RealSense D455 feed instead of images")
+    ap.add_argument("--headless", action="store_true",
+                    help="Camera mode without display: save N result images and exit")
+    ap.add_argument("--frames", type=int, default=5,
+                    help="Number of frames to capture in --headless mode (default: 5)")
+    ap.add_argument("--out-dir", default="/tmp/hsv_tuner_out",
+                    help="Output directory for --headless images (default: /tmp/hsv_tuner_out)")
     args = ap.parse_args()
+
+    if args.headless:
+        run_headless(args.frames, args.out_dir)
+        return
 
     if args.camera:
         run_camera()

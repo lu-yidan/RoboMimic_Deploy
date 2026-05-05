@@ -116,8 +116,8 @@ def main():
                         help="YOLO model path (default: models/yolo11m.pt; auto-uses .engine if found)")
     parser.add_argument("--imgsz", type=int, default=320,
                         help="YOLO input size in pixels (smaller = faster, default 320)")
-    parser.add_argument("--width",  type=int, default=640,
-                        help="camera capture width  (default 640)")
+    parser.add_argument("--width",  type=int, default=848,
+                        help="camera capture width  (default 848)")
     parser.add_argument("--height", type=int, default=480,
                         help="camera capture height (default 480)")
     parser.add_argument("--show", action="store_true",
@@ -179,9 +179,9 @@ def main():
     # pixel from color space to depth space via rs2_project_color_pixel_to_depth_pixel,
     # which is a O(1) operation (<0.1 ms).
     pipeline = rs.pipeline()
-    # D455 at 640×480: color supports 30/15/5 Hz, depth matches.
+    # D455 at 848×480: both color and depth support 60/30/15 Hz on USB 3.x.
     # Use equal FPS pairs and fall back on firmware rejection.
-    _FPS_TRIES = [(30, 30), (15, 15), (5, 5)]
+    _FPS_TRIES = [(60, 60), (30, 30), (15, 15), (5, 5)]
 
     def _start_pipeline():
         last_err = None

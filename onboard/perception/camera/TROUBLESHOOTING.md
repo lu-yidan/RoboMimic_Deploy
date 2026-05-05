@@ -1033,3 +1033,66 @@ USB 2.1 上限约 60 MB/s，librealsense 自动降帧率。
 ```bash
 rs-enumerate-devices | grep USB   # 应显示 USB 3.2
 ```
+
+---
+
+## 12. `--ball` 模式帧率降至 18 fps
+
+### 根因
+
+YOLO 线程在推理期间持有 librealsense **`frames` Python 对象引用**，时间约 25 ms。
+librealsense 的 DMA 帧缓冲区在对应 Python 对象引用计数归零之前无法被相机驱动回收。
+主线程 `pipeline.wait_for_frames()` 在缓冲池耗尽时阻塞，造成帧率从 30 fps 跌至 ~18 fps。
+
+### 诊断
+
+```python
+# 问题代码（错误示范）：YOLO 线程直接存储了 frames 引用
+self._yolo_input = (color_small, depth_frame)   # depth_frame 持有 librealsense 内部缓冲区
+```
+
+### 修复
+
+在主线程将数据传递给 YOLO 线程之前，先将 numpy 数组**复制**出来：
+
+```python
+# apriltag_detector.py 主循环
+depth_arr = np.asanyarray(depth_frame.get_data()).copy()   # ← copy() 释放 DMA 引用
+color_small = cv2.resize(color_bgr, (imgsz, imgsz))        # 已经是新数组
+self._yolo_input = (color_small, depth_arr)                # 传递纯 numpy，无 librealsense 引用
+```
+
+YOLO 线程持有的只是普通 numpy 数组，librealsense 可以立即回收帧缓冲区，主线程不再阻塞。
+
+---
+
+## 13. 启用 `--ball` 后帧率降至 15 fps（深度分辨率设为 424×240）
+
+### 根因
+
+D455 的 librealsense 流配置有严格的**有效组合**限制。
+`1280×720 color + 424×240 depth @ 30fps` **不是合法组合**；
+librealsense 无法匹配硬件模式，回退到最接近的合法帧率，即 15 fps。
+
+### 有效组合（截至 librealsense 2.54）
+
+| Color 分辨率 | Depth 分辨率 | 帧率 |
+|---|---|---|
+| 1280×720 | 848×480 | 30 fps ✅ |
+| 1280×720 | 640×360 | 30 fps ✅ |
+| 1280×720 | 424×240 | 15 fps（降帧）⚠️ |
+| 640×480  | 424×240 | 30 fps ✅ |
+
+### 修复
+
+将深度流分辨率改回 `848×480`：
+
+```python
+# apriltag_detector.py
+cfg.enable_stream(rs.stream.depth, 848, 480, rs.format.z16, 30)   # ✅
+# cfg.enable_stream(rs.stream.depth, 424, 240, rs.format.z16, 30) # ❌ 会降帧至 15fps
+```
+
+### 备注
+
+`--ball-hsv` 模式完全不开启深度流，因此不受此限制，始终 30 fps。

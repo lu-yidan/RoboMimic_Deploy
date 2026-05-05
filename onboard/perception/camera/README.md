@@ -31,28 +31,40 @@
 
 ```
 onboard/perception/camera/
-├── ball_detector.py        ← 单相机球检测：D435 + YOLO → DDS
-├── ball_detector_dual.py   ← 双相机球检测：2×D435 + 共享 YOLO → DDS
-├── target_detector.py      ← 胸前相机 target 检测：D435 + YOLO → rt/target_state
-├── apriltag_detector.py    ← 胸前相机 AprilTag 检测：D435 + tag pose → rt/target_state
-├── camera_to_base.py       ← 坐标变换：相机系 → pelvis 系（含胸部占位外参）
-├── run.sh                  ← 单相机球检测启动脚本（含 TRT 路径、GPU 解锁）
+├── apriltag_detector.py    ← 胸前相机主检测器：AprilTag + 可选球检测 → DDS
+│                              --ball       YOLO 球检测（后台线程，需 depth 流）
+│                              --ball-hsv   HSV 色块球检测（主循环，仅需彩色流）
+├── ball_detector.py        ← 单相机球检测（头部/外置 D435 + YOLO → rt/ball_state）
+├── ball_detector_dual.py   ← 双相机球检测：2×D435 + 共享 YOLO → rt/ball_state
+├── target_detector.py      ← 胸前相机 YOLO target 检测 → rt/target_state
+├── camera_to_base.py       ← 坐标变换：相机系 → pelvis 系（含胸部外参）
+├── run.sh                  ← 单相机球检测启动脚本
 ├── run_dual.sh             ← 双相机球检测启动脚本
-├── run_target.sh           ← 胸前相机 target 检测启动脚本
-├── run_apriltag_target.sh  ← 胸前相机 AprilTag 检测启动脚本
+├── run_target.sh           ← 胸前相机 YOLO target 检测启动脚本
+├── run_apriltag_target.sh  ← 胸前相机 AprilTag 检测启动脚本（支持 --ball/--ball-hsv）
 ├── debug/
-│   ├── generate_apriltag_template.py ← 生成可打印的 A4 AprilTag 模板
-│   ├── target_state_echo.py      ← 调试：打印 rt/target_state 最新值
-│   └── target_extrinsics_eval.py ← 调试：统计 target 位姿均值/方差，辅助外参标定
+│   ├── hsv_tuner.py              ← HSV 参数交互调试工具（滑条 + 4 格预览）
+│   ├── generate_apriltag_template.py ← 生成可打印 A4 AprilTag 模板
+│   ├── target_state_echo.py      ← 打印 rt/target_state 最新值
+│   └── target_extrinsics_eval.py ← 统计 target 位姿均值/方差，辅助外参标定
 ├── README.md               ← 本文档
-├── TROUBLESHOOTING.md      ← 性能优化全记录（GIL/DMA/TRT/Color-Depth 映射）
+├── TROUBLESHOOTING.md      ← 性能优化全记录（GIL/DMA/TRT/Color-Depth 映射等）
 └── models/
     ├── download_and_export.sh  ← 一键下载 .pt + 导出 TRT engine
     ├── README.md               ← 模型精度/速度对比
     └── .gitignore              ← 排除 *.pt / *.onnx / *.engine
 ```
 
-通用球位置网页可视化器位于 `onboard/perception/debug/ball_web_viewer.py`，启动脚本为 `onboard/perception/run_ball_web_viewer.sh`。它只订阅 `rt/ball_state`，可配合相机、LiDAR 或融合方案使用。
+相关感知模块（`onboard/perception/` 层）：
+
+| 文件 | 说明 |
+|------|------|
+| `ball_fuser.py` | 融合 `rt/lidar_ball_state` + `rt/cam_ball_state` → `rt/ball_state` |
+| `run_ball_fuser.sh` | 启动融合器 |
+| `run_sensor_dashboard.sh` | 启动传感器全览仪表盘（port 8091） |
+| `run_ball_web_viewer.sh` | 启动单 topic 球位置可视化（port 8090） |
+| `debug/sensor_dashboard.py` | 订阅 4 路 DDS topic，浏览器显示 target + 各 sensor 球位置 |
+| `debug/ball_web_viewer.py` | 订阅单 topic 球位置 |
 
 ---
 
@@ -215,6 +227,108 @@ conda run -n robomimic --no-capture-output \
 - 打印时选择 `100%` / `actual size`，禁止 `fit to page` / `shrink to printable area`
 - 用尺子实测黑色外框边长；检测代码里的 `--tag-size` 应填写这个黑框边长
 - 打印后最好贴到硬纸板上，避免纸张弯曲带来的姿态抖动
+
+---
+
+### 2.1d 胸前相机同时检测 AprilTag + 球（推荐方式）
+
+`apriltag_detector.py` 支持在同一进程、同一彩色流上**同时**做 AprilTag 目标检测和球检测，无需额外进程或第二台相机。
+
+#### 方案 A：HSV 色块匹配（推荐，无 YOLO 依赖，30fps）
+
+适合：球有明显区别于背景的颜色（如蓝/紫色花纹），不需要 GPU 推理。
+
+```bash
+# 基本启动
+bash onboard/perception/camera/run_apriltag_target.sh --ball-hsv --show
+
+# 调试时加 --ball-hsv-show-mask，在 MJPEG 画面上画出检测到的圆
+bash onboard/perception/camera/run_apriltag_target.sh --ball-hsv --show --ball-hsv-show-mask
+
+# 指定 HSV 范围（用 hsv_tuner.py 离线调好后粘贴）
+bash onboard/perception/camera/run_apriltag_target.sh --ball-hsv \
+  --ball-hsv-h-low 95 --ball-hsv-h-high 135 \
+  --ball-hsv-s-min 30 --ball-hsv-v-min 130
+```
+
+**HSV 参数调试**（不需要机器人在线）：
+
+```bash
+# 对图片目录调参（n/p 切换图片，s 保存参数）
+conda run -n robomimic python onboard/perception/camera/debug/hsv_tuner.py \
+    onboard/perception/camera/debug/test/
+
+# 或连接 D455 实时调参
+conda run -n robomimic python onboard/perception/camera/debug/hsv_tuner.py --camera
+```
+
+界面显示 4 格面板：原图 / HSV mask / 合并后 / 检测结果，7 个滑条实时调整。按 `s` 将参数保存为 `hsv_params.txt`，直接粘贴到启动命令中。
+
+**深度说明**：HSV 模式**不开 depth 流**，球的深度用视觉测距（`depth = fx × R_ball / r_px`），精度约 ±10%，1–5m 范围内满足控制需求。这也是为什么 HSV 模式能稳定保持 30fps——不受 USB 带宽限制。
+
+**默认 HSV 范围**（蓝/紫色足球花纹，H=90–150, S≥30, V≥130）：
+
+| 参数 | 默认值 | 含义 |
+|------|--------|------|
+| `--ball-hsv-h-low` | 90 | HSV Hue 下界（OpenCV 0-180） |
+| `--ball-hsv-h-high` | 150 | HSV Hue 上界 |
+| `--ball-hsv-s-min` | 40 | 饱和度下界（越高越严格） |
+| `--ball-hsv-v-min` | 50 | 亮度下界（提高可减少暗背景误检） |
+| `--ball-hsv-topic` | `rt/cam_ball_state` | 发布 topic |
+
+**调参建议**：
+- 先用 `hsv_tuner.py` 在机器人运行环境的照片上确认 HSV 范围
+- 误检多：提高 `--ball-hsv-v-min`（如 130）或 `--ball-hsv-s-min`（如 50）
+- 检测不到：降低 `--ball-hsv-s-min`（如 25）或扩大 Hue 范围
+
+#### 方案 B：YOLO（适合多类别目标，需 GPU）
+
+```bash
+bash onboard/perception/camera/run_apriltag_target.sh --ball --show
+```
+
+YOLO 在后台线程运行，需要 depth 流，会额外占用 GPU 和 ~10ms GIL/帧。TRT engine 需提前导出（见 `models/download_and_export.sh`）。
+
+| 对比项 | `--ball-hsv` | `--ball` (YOLO) |
+|--------|-------------|-----------------|
+| 算法 | HSV mask + 圆形验证 | YOLO11m TRT |
+| 是否需要 depth 流 | 否 | 是 |
+| 对 FPS 影响 | 几乎无（~2ms 主循环） | 轻微（~5ms GIL） |
+| 对球颜色的依赖 | 强（需调参） | 弱（COCO 泛化） |
+| 常见球的适配 | 蓝紫花纹足球效果好 | 标准黑白足球效果好 |
+
+#### 方案 A+B 同时运行
+
+```bash
+bash onboard/perception/camera/run_apriltag_target.sh --ball --ball-hsv --show
+```
+
+两种检测共用一次 depth 拷贝，发布到同一个 `rt/cam_ball_state` topic（互相覆盖，不需要 fuser）。一般不建议同时启用，除非用于对比调试。
+
+---
+
+### 2.1e 传感器全览仪表盘（sensor dashboard）
+
+相比 MJPEG 视频叠加，仪表盘是**纯数据** web UI，不闪烁，可在电脑浏览器上看机器人上的实时状态。
+
+```bash
+# 启动仪表盘（通常已在 tmux 左下角自动启动）
+bash onboard/perception/run_sensor_dashboard.sh
+
+# 然后在电脑浏览器访问
+http://<robot-ip>:8091/
+```
+
+订阅 4 个 DDS topic，显示在同一俯视图画布上：
+
+| 符号 | 颜色 | 含义 |
+|------|------|------|
+| 金色菱形 | `--target` | AprilTag 目标（rt/target_state） |
+| 蓝色圆 | `cam` | 相机球估计（rt/cam_ball_state） |
+| 橙色圆 | `lidar` | 雷达球估计（rt/lidar_ball_state） |
+| 绿色圆 | `fused` | 融合球（rt/ball_state） |
+
+右侧面板显示每个传感器的 x/y/z、距离、消息频率（Hz）、数据时效。
 
 ---
 

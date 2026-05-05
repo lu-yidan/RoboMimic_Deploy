@@ -466,25 +466,11 @@ def main():
     print(f"[INFO] AprilTag family: {family_name}")
     print(f"[INFO] Tag size: {args.tag_size:.4f} m")
 
-    pipeline, profile = _start_camera_pipeline(args)
-    if args.list_cameras:
-        return
-
-    # Drain incoming frames while ROS2/DDS initializes — the realsense pipeline
-    # streams at 30fps from this point and its internal queue will overflow (bad_alloc)
-    # if frames are not consumed during the several-second DDS setup.
-    _draining = True
-    def _drain_frames():
-        while _draining:
-            try:
-                pipeline.wait_for_frames(timeout_ms=50)
-            except Exception:
-                pass
-    threading.Thread(target=_drain_frames, daemon=True).start()
-
+    # Init ROS2 + DDS before the camera pipeline — mirroring ball_detector.py.
+    # Starting the camera first lets the frame queue fill during DDS setup
+    # (several seconds), which overflows librealsense's frame pool → bad_alloc.
     rclpy.init()
     joint = _JointListener()
-    _draining = False
 
     def _spin_loop():
         while True:
@@ -496,6 +482,10 @@ def main():
 
     dds = TargetStatePublisher(domain_id=0, topic_name=args.dds_topic)
     print(f"[INFO] DDS publisher ready on '{args.dds_topic}'")
+
+    pipeline, profile = _start_camera_pipeline(args)
+    if args.list_cameras:
+        return
 
     default_xyz, default_rpy = get_default_chest_extrinsics()
     chest_xyz = tuple(args.chest_xyz) if args.chest_xyz is not None else default_xyz

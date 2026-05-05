@@ -179,9 +179,9 @@ def main():
     # pixel from color space to depth space via rs2_project_color_pixel_to_depth_pixel,
     # which is a O(1) operation (<0.1 ms).
     pipeline = rs.pipeline()
-    # D455: supports up to 90 Hz at 640×480 for both color and depth.
+    # D455 at 640×480: color supports 30/15/5 Hz, depth matches.
     # Use equal FPS pairs and fall back on firmware rejection.
-    _FPS_TRIES = [(90, 90), (60, 60), (30, 30), (15, 15)]
+    _FPS_TRIES = [(30, 30), (15, 15), (5, 5)]
 
     def _start_pipeline():
         last_err = None

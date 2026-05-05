@@ -157,7 +157,7 @@ def _start_camera_pipeline(args):
     print(f"[INFO] CHEST AprilTag camera -> serial {serial}")
 
     pipeline = rs.pipeline()
-    fps_tries = [60, 30, 15]
+    fps_tries = [90, 60, 30, 15]
     last_err = None
     for color_fps in fps_tries:
         rs_cfg = rs.config()
@@ -369,9 +369,9 @@ def _fuse_target_points_optical(detections):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Chest D435 + AprilTag target detector -> rt/target_state"
+        description="Chest D455 + AprilTag target detector -> rt/target_state"
     )
-    parser.add_argument("--width", type=int, default=640)
+    parser.add_argument("--width", type=int, default=848)
     parser.add_argument("--height", type=int, default=480)
     parser.add_argument(
         "--camera-serial",

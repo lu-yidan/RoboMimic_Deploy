@@ -1,4 +1,4 @@
-"""Ball detector service — RealSense D435 + YOLOv8, runs on G1 onboard computer.
+"""Ball detector service — RealSense D455 + YOLOv8/v11, runs on G1 onboard computer.
 
 Subscribes to:
   /lowstate   (Unitree G1 joint states via ROS2, for waist/head angles)
@@ -110,7 +110,7 @@ class _JointListener(Node):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="RealSense D435 + YOLO ball detector → rt/ball_state"
+        description="RealSense D455 + YOLO ball detector → rt/ball_state"
     )
     parser.add_argument("--model", default="onboard/perception/camera/models/yolo11m.pt",
                         help="YOLO model path (default: models/yolo11m.pt; auto-uses .engine if found)")
@@ -179,10 +179,9 @@ def main():
     # pixel from color space to depth space via rs2_project_color_pixel_to_depth_pixel,
     # which is a O(1) operation (<0.1 ms).
     pipeline = rs.pipeline()
-    # D435/D435I: requesting color@60 Hz + depth@90 Hz together often fails with
-    # RuntimeError: Couldn't resolve requests — the firmware cannot satisfy
-    # mismatched rates.  Use equal FPS (60/60 preferred), then fall back.
-    _FPS_TRIES = [(60, 60), (30, 30), (15, 15)]
+    # D455: supports up to 90 Hz at 640×480 for both color and depth.
+    # Use equal FPS pairs and fall back on firmware rejection.
+    _FPS_TRIES = [(90, 90), (60, 60), (30, 30), (15, 15)]
 
     def _start_pipeline():
         last_err = None
@@ -235,15 +234,13 @@ def main():
     profile = _start_pipeline()
 
     # ── Intrinsics and extrinsics ─────────────────────────────────────────
-    # The D435 has SEPARATE color and depth sensors (measured at 640×480):
-    #   Color camera:  FOV ~55.6°H,  fx ≈ 607  ppx ≈ 317
-    #   Depth camera:  FOV ~79.3°H,  fx ≈ 386  ppx ≈ 320  ← wider FOV!
-    #   Color→Depth baseline: tx ≈ -14.5 mm horizontal
+    # The D455 has SEPARATE color and depth sensors with different intrinsics
+    # and a small baseline between them.  Exact values vary by firmware/resolution
+    # and are read from the SDK below — do not hardcode them.
     #
-    # Naively using color pixel (cx,cy) directly in depth_arr[cy,cx] is WRONG:
-    #   - FOV scale error: at cx=500 (183px from center), depth px offset=436 vs naive 500 → 64px error
-    #   - Baseline parallax at 1m: 14.5mm/1000mm * 386 ≈ 6px additional error
-    #   Total error at image edge: ~70 pixels = ~18cm lateral error at 1m!
+    # Naively using color pixel (cx,cy) directly in depth_arr[cy,cx] is WRONG
+    # due to FOV scale mismatch and baseline parallax (can cause >10cm lateral
+    # error at 1m range near image edges).
     #
     # Correct approach:
     #   1. Map color pixel → depth pixel via intrinsics + extrinsics
@@ -400,8 +397,8 @@ def main():
                 cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
 
                 # ── Color pixel → Depth pixel mapping ──────────────────────
-                # The D435 color and depth sensors have different FOV and a
-                # ~55mm physical baseline.  We must map (cx,cy) in color space
+                # The D455 color and depth sensors have different FOV and a
+                # small physical baseline.  We must map (cx,cy) in color space
                 # to (dx,dy) in depth space before reading depth_arr.
                 #
                 # Step 1 — first-pass depth estimate (use current depth_arr at

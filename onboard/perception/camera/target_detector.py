@@ -208,7 +208,7 @@ def _start_camera_pipeline(args):
     print(f"[INFO] CHEST target camera → serial {serial}")
 
     pipeline = rs.pipeline()
-    fps_tries = [(60, 60), (30, 30), (15, 15)]
+    fps_tries = [(90, 90), (60, 60), (30, 30), (15, 15)]
     last_err = None
     for color_fps, depth_fps in fps_tries:
         rs_cfg = rs.config()
@@ -320,11 +320,11 @@ def _get_stream_url(port=8080, path="/stream"):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Chest D435 + YOLO target detector -> rt/target_state"
+        description="Chest D455 + YOLO target detector -> rt/target_state"
     )
     parser.add_argument("--model", default="onboard/perception/camera/models/yolo11m.pt")
     parser.add_argument("--imgsz", type=int, default=320)
-    parser.add_argument("--width", type=int, default=640)
+    parser.add_argument("--width", type=int, default=848)
     parser.add_argument("--height", type=int, default=480)
     parser.add_argument("--camera-serial", default=None,
                         help="RealSense serial for the chest camera.")

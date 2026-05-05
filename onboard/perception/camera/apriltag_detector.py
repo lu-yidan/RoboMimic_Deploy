@@ -845,7 +845,8 @@ def main():
     dds = TargetStatePublisher(domain_id=0, topic_name=args.dds_topic)
     print(f"[INFO] DDS publisher ready on '{args.dds_topic}'")
 
-    pipeline, profile = _start_camera_pipeline(args, with_depth=args.ball or args.ball_hsv)
+    # Depth stream only needed for YOLO mode; HSV mode uses visual depth (apparent ball size).
+    pipeline, profile = _start_camera_pipeline(args, with_depth=args.ball)
     if args.list_cameras:
         return
 
@@ -869,11 +870,11 @@ def main():
     # are atomic in CPython; stale-by-one-frame reads are acceptable).
     _ball_overlay = {"bbox": None, "pelvis": None, "depth": 0.0, "valid": False, "miss": 0}
 
-    # Depth stream resources (shared by YOLO and HSV modes).
+    # Depth stream resources (YOLO mode only; HSV mode uses visual depth).
     depth_intrin        = None
     color_to_depth_extr = None
     depth_scale         = 1.0
-    if args.ball or args.ball_hsv:
+    if args.ball:
         depth_profile       = profile.get_stream(rs.stream.depth).as_video_stream_profile()
         depth_intrin        = depth_profile.get_intrinsics()
         color_to_depth_extr = color_profile.get_extrinsics_to(depth_profile)
@@ -938,15 +939,10 @@ def main():
 
             color = np.asanyarray(color_frame.get_data()).copy()
 
-            # Copy depth once for any ball mode that needs it; release frame buffer ASAP.
-            _ball_depth_np = None
-            if args.ball or args.ball_hsv:
-                _df = frames.get_depth_frame()
-                if _df:
-                    _ball_depth_np = np.asanyarray(_df.get_data()).copy()
-
-            # YOLO thread: share pre-copied arrays (never the frameset object).
+            # YOLO thread: pre-copy depth + downscaled color; release frame buffer ASAP.
             if args.ball:
+                _df = frames.get_depth_frame()
+                _ball_depth_np = np.asanyarray(_df.get_data()).copy() if _df else None
                 _color_small = cv2.resize(color, (args.ball_imgsz, args.ball_imgsz))
                 with _yolo_buf_lock:
                     _yolo_buf_frames[0] = (_color_small, _ball_depth_np)
@@ -960,16 +956,10 @@ def main():
                 if _hsv_cx is not None:
                     _hsv_miss_count = 0
 
-                    # Depth: sensor first, visual-size fallback.
-                    _hsv_depth = 0.0
-                    if _ball_depth_np is not None and depth_intrin is not None:
-                        _hsv_depth = _sample_ball_depth(
-                            _hsv_cx, _hsv_cy, _ball_depth_np, depth_scale,
-                            color_intrin, depth_intrin, color_to_depth_extr,
-                        )
-                    if _hsv_depth <= 0 and _hsv_r > 0:
-                        # Apparent-size estimate: depth = fx * R_physical / r_px
-                        _hsv_depth = color_intrin.fx * _BALL_RADIUS / _hsv_r
+                    # Visual depth from apparent ball radius (no depth stream needed).
+                    # depth = fx * R_physical / r_px  (accurate to ±10% for r_px > 10)
+                    _hsv_depth = (color_intrin.fx * _BALL_RADIUS / _hsv_r
+                                  if _hsv_r > 0 else 0.0)
 
                     if _hsv_depth > 0:
                         _p_opt = rs.rs2_deproject_pixel_to_point(

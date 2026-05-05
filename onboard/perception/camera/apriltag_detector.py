@@ -470,27 +470,21 @@ def main():
     if args.list_cameras:
         return
 
-    print("[DEBUG] calling rclpy.init()", flush=True)
     rclpy.init()
-    print("[DEBUG] rclpy.init() done", flush=True)
+    joint = None
     try:
         joint = _JointListener()
+        print("[INFO] ROS2 joint listener started (/lowstate)")
+
+        def _spin_loop():
+            while True:
+                rclpy.spin_once(joint, timeout_sec=0.0)
+                time.sleep(0.02)
+
+        threading.Thread(target=_spin_loop, daemon=True).start()
     except Exception as e:
-        import traceback
-        print(f"[ERROR] _JointListener failed: {e}", flush=True)
-        traceback.print_exc()
-        raise
-    print("[DEBUG] _JointListener created", flush=True)
+        print(f"[WARN] ROS2 joint listener failed ({e}), using neutral joint angles", flush=True)
 
-    def _spin_loop():
-        while True:
-            rclpy.spin_once(joint, timeout_sec=0.0)
-            time.sleep(0.02)
-
-    threading.Thread(target=_spin_loop, daemon=True).start()
-    print("[INFO] ROS2 joint listener started (/lowstate)")
-
-    print("[DEBUG] creating DDS publisher", flush=True)
     dds = TargetStatePublisher(domain_id=0, topic_name=args.dds_topic)
     print(f"[INFO] DDS publisher ready on '{args.dds_topic}'")
 
@@ -618,11 +612,14 @@ def main():
                     else:
                         center_ema = p_cam_arr.copy()
 
+                q_wy = joint.q_wy if joint is not None else 0.0
+                q_wr = joint.q_wr if joint is not None else 0.0
+                q_wp = joint.q_wp if joint is not None else 0.0
                 p_base = transform_point_chest_camera_to_base_with_extrinsics(
                     center_ema,
-                    joint.q_wy,
-                    joint.q_wr,
-                    joint.q_wp,
+                    q_wy,
+                    q_wr,
+                    q_wp,
                     chest_xyz=chest_xyz,
                     chest_rpy=chest_rpy,
                 )
@@ -780,7 +777,8 @@ def main():
         pipeline.stop()
         if httpd is not None:
             httpd.shutdown()
-        rclpy.shutdown()
+        if joint is not None:
+            rclpy.shutdown()
         print("[INFO] Done.")
 
 

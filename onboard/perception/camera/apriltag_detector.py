@@ -470,8 +470,11 @@ def main():
     if args.list_cameras:
         return
 
+    print("[DEBUG] calling rclpy.init()", flush=True)
     rclpy.init()
+    print("[DEBUG] rclpy.init() done", flush=True)
     joint = _JointListener()
+    print("[DEBUG] _JointListener created", flush=True)
 
     def _spin_loop():
         while True:
@@ -481,6 +484,7 @@ def main():
     threading.Thread(target=_spin_loop, daemon=True).start()
     print("[INFO] ROS2 joint listener started (/lowstate)")
 
+    print("[DEBUG] creating DDS publisher", flush=True)
     dds = TargetStatePublisher(domain_id=0, topic_name=args.dds_topic)
     print(f"[INFO] DDS publisher ready on '{args.dds_topic}'")
 

@@ -38,6 +38,7 @@ DEFAULTS = {
     "H_LOW":       100,
     "H_HIGH":      135,
     "S_MIN":        70,
+    "S_MAX":       255,   # upper sat limit: 255=off; ~40 for gray/white ball detection
     "V_MIN":        80,
     "DILATION":     17,
     "FILL_MIN":     10,
@@ -60,10 +61,10 @@ PANEL_H = 360
 
 
 def _detect(frame, h_low, h_high, s_min, v_min, dilation, fill_min_pct, min_r,
-            exclude_top_frac=0.0, circ_min=0.0):
+            exclude_top_frac=0.0, circ_min=0.0, s_max=255):
     """Run the same algorithm as _detect_ball_hsv() in apriltag_detector.py."""
     hsv_low  = np.array([h_low,  s_min, v_min], dtype=np.uint8)
-    hsv_high = np.array([h_high, 255,   255  ], dtype=np.uint8)
+    hsv_high = np.array([h_high, s_max, 255  ], dtype=np.uint8)
 
     hsv  = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     mask = cv2.inRange(hsv, hsv_low, hsv_high)
@@ -430,7 +431,8 @@ _HTML_PAGE = """\
 <br><button onclick="saveParams()">💾 Save params → hsv_params.txt</button>
 <br><img src="/stream" alt="live stream">
 <script>
-const DEFS = {H_LOW:__H_LOW__,H_HIGH:__H_HIGH__,S_MIN:__S_MIN__,V_MIN:__V_MIN__,
+const DEFS = {H_LOW:__H_LOW__,H_HIGH:__H_HIGH__,S_MIN:__S_MIN__,S_MAX:__S_MAX__,
+              V_MIN:__V_MIN__,
               DILATION:__DILATION__,FILL_MIN:__FILL_MIN__,MIN_R:__MIN_R__,
               EXCL_TOP:__EXCL_TOP__,CIRC_MIN:__CIRC_MIN__,
               HOUGH:__HOUGH__,HOUGH_P2:__HOUGH_P2__,HOUGH_BLUR:__HOUGH_BLUR__,
@@ -440,7 +442,8 @@ const DEFS = {H_LOW:__H_LOW__,H_HIGH:__H_HIGH__,S_MIN:__S_MIN__,V_MIN:__V_MIN__,
 const META_HSV = [
   {k:"H_LOW",    label:"H_LOW  颜色下限",    max:179, hint:"颜色色相最小值（蓝=100，紫=120，绿=40）"},
   {k:"H_HIGH",   label:"H_HIGH 颜色上限",    max:179, hint:"颜色色相最大值，范围越窄越精准"},
-  {k:"S_MIN",    label:"S_MIN  饱和度",      max:255, hint:"★最重要★ 过低会把灰色/白色误判；建议>=60"},
+  {k:"S_MIN",    label:"S_MIN  饱和度下限",   max:255, hint:"彩色球用>=60；灰白球设0"},
+  {k:"S_MAX",    label:"S_MAX  饱和度上限",   max:255, hint:"★灰白球关键★ 设40可只捕捉低饱和度灰白色；255=不限"},
   {k:"V_MIN",    label:"V_MIN  亮度",        max:255, hint:"过低会抓阴影；光线好时可调高"},
   {k:"DILATION", label:"DILATION 膨胀",      max:51,  hint:"把散碎色块合并成圆；太大会合并噪点"},
   {k:"FILL_MIN", label:"FILL_MIN 填充率%",   max:30,  hint:"越高越严格，要求圆内颜色覆盖越多"},
@@ -565,7 +568,8 @@ def run_web(port: int):
                 mask, merged, best_hsv = _detect(
                     frame, p["H_LOW"], p["H_HIGH"], p["S_MIN"], p["V_MIN"],
                     p["DILATION"], p["FILL_MIN"], p["MIN_R"],
-                    exclude_top_frac=excl, circ_min=p["CIRC_MIN"]/100.0)
+                    exclude_top_frac=excl, circ_min=p["CIRC_MIN"]/100.0,
+                    s_max=p["S_MAX"])
                 gray_blur, hough_vis, best_hough = _detect_hough(
                     frame, p["HOUGH_BLUR"], p["HOUGH_P2"],
                     p["HOUGH_MINR"], p["HOUGH_MAXR"],
@@ -599,9 +603,10 @@ def run_web(port: int):
                                 (best_hough[1] - 40, best_hough[2] + int(best_hough[3]) + 18),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
 
+                smax_str = f"<={p['S_MAX']}" if p['S_MAX'] < 255 else ""
                 r0 = np.hstack([
                     _make_panel(frame,       "Original", pw, ph),
-                    _make_panel(mask,        f"HSV mask S>={p['S_MIN']} V>={p['V_MIN']}", pw, ph),
+                    _make_panel(mask,        f"HSV mask S{smax_str}>={p['S_MIN']} V>={p['V_MIN']}", pw, ph),
                     _make_panel(merged,      f"Merged dil={p['DILATION']}px", pw, ph),
                 ])
                 r1 = np.hstack([
@@ -686,8 +691,8 @@ def run_web(port: int):
             elif path == "/params":
                 qs = parse_qs(parsed.query)
                 with _WEB_LOCK:
-                    for k in ("H_LOW","H_HIGH","S_MIN","V_MIN","DILATION","FILL_MIN","MIN_R",
-                              "EXCL_TOP","CIRC_MIN","HOUGH","HOUGH_P2","HOUGH_BLUR",
+                    for k in ("H_LOW","H_HIGH","S_MIN","S_MAX","V_MIN","DILATION","FILL_MIN",
+                              "MIN_R","EXCL_TOP","CIRC_MIN","HOUGH","HOUGH_P2","HOUGH_BLUR",
                               "HOUGH_MINR","HOUGH_MAXR","HOUGH_MIN_CONTRAST","HOUGH_MAX_TEXTURE"):
                         if k in qs:
                             _WEB_PARAMS[k] = int(qs[k][0])

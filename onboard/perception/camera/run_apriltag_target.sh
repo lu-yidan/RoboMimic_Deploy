@@ -40,6 +40,9 @@ echo "123" | sudo -S jetson_clocks 2>/dev/null || true
 export LD_LIBRARY_PATH=/usr/local/cuda-12.1/compat:${LD_LIBRARY_PATH:-}
 export PYTHONPATH=/usr/lib/python3.8/dist-packages:${PYTHONPATH:-}
 
+# Initialize conda for non-interactive shells (e.g. SSH)
+source /home/unitree/miniconda3/etc/profile.d/conda.sh 2>/dev/null || true
+
 source /opt/ros/foxy/setup.bash
 source ~/yixuan/yichao-deploy/ws_livox/install/setup.sh 2>/dev/null || true
 

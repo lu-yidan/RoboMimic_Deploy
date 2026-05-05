@@ -374,6 +374,12 @@ def main():
     parser.add_argument("--width", type=int, default=1280)
     parser.add_argument("--height", type=int, default=720)
     parser.add_argument(
+        "--detect-scale", type=float, default=0.5,
+        help="Scale factor applied to gray frame before ArUco detection "
+             "(default 0.5 = half-size; workaround for bad_alloc on Jetson OpenCV). "
+             "Corners are scaled back so pose estimation uses original intrinsics.",
+    )
+    parser.add_argument(
         "--camera-serial",
         default=None,
         help="RealSense serial for the chest camera.",
@@ -514,7 +520,19 @@ def main():
 
             color = np.asanyarray(color_frame.get_data()).copy()
             gray = cv2.cvtColor(color, cv2.COLOR_BGR2GRAY)
-            corners_list, ids, _ = detector.detectMarkers(gray)
+            # Downscale before ArUco to avoid bad_alloc in OpenCV C++ on Jetson
+            # at high resolutions/fps. Corners are scaled back so pose estimation
+            # uses the original camera_matrix unchanged.
+            if args.detect_scale != 1.0:
+                h, w = gray.shape
+                gray_det = cv2.resize(
+                    gray, (int(w * args.detect_scale), int(h * args.detect_scale))
+                )
+            else:
+                gray_det = gray
+            corners_list, ids, _ = detector.detectMarkers(gray_det)
+            if args.detect_scale != 1.0 and corners_list:
+                corners_list = tuple(c / args.detect_scale for c in corners_list)
             ids_flat = ids.reshape(-1).tolist() if ids is not None else []
             all_detections = []
             target_detections = []

@@ -731,9 +731,9 @@ def main():
         help="Stream annotated video via MJPEG on port 8080.",
     )
     parser.add_argument(
-        "--no-record",
+        "--record",
         action="store_true",
-        help="Disable video recording (recording is on by default).",
+        help="Record annotated camera view to MP4 (saved to --record-dir).",
     )
     parser.add_argument(
         "--record-dir",
@@ -948,7 +948,7 @@ def main():
         mjpeg_lock = None
 
     video_writer = None
-    if not args.no_record:
+    if args.record:
         rec_fps = color_profile.fps()
         rec_dir = Path(args.record_dir)
         rec_dir.mkdir(parents=True, exist_ok=True)

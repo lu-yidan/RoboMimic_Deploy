@@ -76,6 +76,7 @@ default_board_args=(
 cmd=(
     conda run -n robomimic --no-capture-output
     python -u onboard/perception/camera/apriltag_detector.py
+    --record
 )
 
 if [[ "$use_default_board_layout" -eq 1 ]]; then

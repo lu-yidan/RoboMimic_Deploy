@@ -731,6 +731,16 @@ def main():
         help="Stream annotated video via MJPEG on port 8080.",
     )
     parser.add_argument(
+        "--no-record",
+        action="store_true",
+        help="Disable video recording (recording is on by default).",
+    )
+    parser.add_argument(
+        "--record-dir",
+        default="recordings",
+        help="Directory for recorded MP4 files, relative to repo root (default: recordings/).",
+    )
+    parser.add_argument(
         "--dds-topic",
         default="rt/target_state",
         help="DDS topic name to publish to.",
@@ -936,6 +946,19 @@ def main():
         httpd = None
         mjpeg_frame = None
         mjpeg_lock = None
+
+    video_writer = None
+    if not args.no_record:
+        rec_fps = color_profile.fps()
+        rec_dir = Path(args.record_dir)
+        rec_dir.mkdir(parents=True, exist_ok=True)
+        ts = time.strftime("%Y%m%d_%H%M%S")
+        rec_path = rec_dir / f"apriltag_{ts}.mp4"
+        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        video_writer = cv2.VideoWriter(
+            str(rec_path), fourcc, rec_fps, (args.width, args.height)
+        )
+        print(f"[INFO] Recording -> {rec_path}  ({args.width}×{args.height} @ {rec_fps:.0f}fps)")
 
     center_ema = None
     last_detection = None
@@ -1191,7 +1214,7 @@ def main():
                         flush=True,
                     )
 
-            if args.show:
+            if args.show or video_writer is not None:
                 vis = color.copy()
                 for det in all_detections:
                     corners = det["corners"].astype(np.int32)
@@ -1293,10 +1316,14 @@ def main():
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, box_color, 2,
                             )
 
-                ok, jpg_buf = cv2.imencode(".jpg", vis, [cv2.IMWRITE_JPEG_QUALITY, 60])
-                if ok:
-                    with mjpeg_lock:
-                        mjpeg_frame[0] = jpg_buf.tobytes()
+                if video_writer is not None:
+                    video_writer.write(vis)
+
+                if args.show:
+                    ok, jpg_buf = cv2.imencode(".jpg", vis, [cv2.IMWRITE_JPEG_QUALITY, 60])
+                    if ok:
+                        with mjpeg_lock:
+                            mjpeg_frame[0] = jpg_buf.tobytes()
 
             fps.tick()
 
@@ -1304,6 +1331,9 @@ def main():
         print("\n[INFO] Interrupted.")
     finally:
         pipeline.stop()
+        if video_writer is not None:
+            video_writer.release()
+            print(f"[INFO] Recording saved.")
         if httpd is not None:
             httpd.shutdown()
         rclpy.shutdown()

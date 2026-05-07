@@ -75,6 +75,11 @@ HTML = r"""<!doctype html>
     }
     .sbox-bias { border-color: #fb923c44; background: rgba(251,146,60,.05); }
     .sbox-bias .title { color: var(--bias); }
+    kbd {
+      display: inline-block; padding: 0 4px; border-radius: 3px;
+      background: #1e293b; border: 1px solid #475569;
+      font-family: ui-monospace, monospace; font-size: 10px; color: var(--text);
+    }
     * { box-sizing: border-box; }
     body {
       margin: 0; min-height: 100vh;
@@ -167,6 +172,10 @@ HTML = r"""<!doctype html>
         <div class="kv" id="kv-bias">
           <div class="k">target Y</div><div class="v">+0.000 m</div>
           <div class="k">ball Y</div><div class="v">+0.000 m</div>
+        </div>
+        <div style="margin-top:7px;font-size:10px;color:var(--muted);line-height:1.6">
+          <div><kbd>L1</kbd> + ◀▶ &nbsp;target Y &nbsp;(±5 cm/step)</div>
+          <div><kbd>L2</kbd> + ◀▶ &nbsp;ball Y &nbsp;&nbsp;&nbsp;(±5 cm/step, real)</div>
         </div>
       </div>
       <div class="sbox" id="box-target">

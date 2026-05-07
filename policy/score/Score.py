@@ -638,9 +638,7 @@ class Score(FSMState):
         R_pelvis = _quat_to_matrix(self.state_cmd.pelvis_quat_w.astype(np.float64))
         ball_rel_w = self.state_cmd.ball_pos_w.astype(np.float64) - robot_pelvis_pos_w
         target_rel_w = self.target_pos_w.astype(np.float64) - robot_pelvis_pos_w
-        ball_pos_b = np.clip(
-            (R_pelvis.T @ ball_rel_w).astype(np.float32) + ball_bias_vec, -8.0, 8.0
-        ).astype(np.float32)
+        ball_pos_b = np.clip(R_pelvis.T @ ball_rel_w, -8.0, 8.0).astype(np.float32)
         target_pos_b = np.clip(
             (R_pelvis.T @ target_rel_w).astype(np.float32) + target_bias_vec, -8.0, 8.0
         ).astype(np.float32)

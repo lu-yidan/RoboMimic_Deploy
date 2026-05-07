@@ -612,10 +612,11 @@ class Score(FSMState):
 
     def _compute_ball_target_obs_b(self, ball_b_effective):
         """Compute pelvis-frame ball / target observations for the policy."""
-        bias_vec = np.array([0.0, self.state_cmd.target_y_bias, 0.0], dtype=np.float32)
+        target_bias_vec = np.array([0.0, self.state_cmd.target_y_bias, 0.0], dtype=np.float32)
+        ball_bias_vec   = np.array([0.0, self.state_cmd.ball_y_bias,   0.0], dtype=np.float32)
 
         if self.runtime_mode == "real":
-            ball_pos_b = ball_b_effective
+            ball_pos_b = np.clip(ball_b_effective + ball_bias_vec, -8.0, 8.0).astype(np.float32)
             pelvis_quat = self.state_cmd.pelvis_quat_w.astype(np.float64)
             current_yaw_mat = _quat_to_matrix(_yaw_quat(pelvis_quat))
             if self.target_source == "apriltag":
@@ -626,7 +627,7 @@ class Score(FSMState):
                 self.state_cmd.pelvis_pos_w.astype(np.float64)
                 + current_yaw_mat @ target_pos_b.astype(np.float64)
             ).astype(np.float32)
-            target_pos_b = np.clip(target_pos_b + bias_vec, -8.0, 8.0).astype(np.float32)
+            target_pos_b = np.clip(target_pos_b + target_bias_vec, -8.0, 8.0).astype(np.float32)
             self._debug_target_corrected_pos_w = (
                 self.state_cmd.pelvis_pos_w.astype(np.float64)
                 + current_yaw_mat @ target_pos_b.astype(np.float64)
@@ -637,9 +638,11 @@ class Score(FSMState):
         R_pelvis = _quat_to_matrix(self.state_cmd.pelvis_quat_w.astype(np.float64))
         ball_rel_w = self.state_cmd.ball_pos_w.astype(np.float64) - robot_pelvis_pos_w
         target_rel_w = self.target_pos_w.astype(np.float64) - robot_pelvis_pos_w
-        ball_pos_b = np.clip(R_pelvis.T @ ball_rel_w, -8.0, 8.0).astype(np.float32)
+        ball_pos_b = np.clip(
+            (R_pelvis.T @ ball_rel_w).astype(np.float32) + ball_bias_vec, -8.0, 8.0
+        ).astype(np.float32)
         target_pos_b = np.clip(
-            (R_pelvis.T @ target_rel_w).astype(np.float32) + bias_vec, -8.0, 8.0
+            (R_pelvis.T @ target_rel_w).astype(np.float32) + target_bias_vec, -8.0, 8.0
         ).astype(np.float32)
         self._debug_target_pos_w = self.target_pos_w.astype(np.float32)  # raw (no bias)
         self._debug_target_corrected_pos_w = (

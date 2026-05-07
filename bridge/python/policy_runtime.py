@@ -11,7 +11,7 @@ from common.rotation_helper import (
     transform_pelvis_to_torso_complete,
 )
 from common.remote_controller import RemoteController, KeyMap
-from common.ball_state_dds import BallStateSubscriber
+from common.ball_state_dds import BallStateSubscriber, BallStatePublisher
 from common.target_state_dds import TargetStateSubscriber, TargetStatePublisher
 from bridge.python.bridge_state_dds import BridgeStateSubscriber
 from common.logger import Logger
@@ -54,9 +54,14 @@ class PolicyRuntime:
         self._corrected_target_pub = TargetStatePublisher(
             topic_name="rt/target_state_corrected"
         )
+        self._corrected_ball_pub = BallStatePublisher(
+            topic_name="rt/ball_state_corrected"
+        )
 
-        self._prev_right_pressed = False
-        self._prev_left_pressed  = False
+        self._prev_right_pressed    = False
+        self._prev_left_pressed     = False
+        self._prev_l2_right_pressed = False
+        self._prev_l2_left_pressed  = False
 
         self._log_step = 0
         self._log_start = time.time()
@@ -114,6 +119,22 @@ class PolicyRuntime:
         self._prev_right_pressed = right_now
         self._prev_left_pressed  = left_now
 
+        # Ball Y-bias: L2 held + D-pad Right/Left (edge-triggered, ±5 cm)
+        l2_held    = self.remote_controller.is_button_pressed(KeyMap.L2)
+        l2_right   = self.remote_controller.is_button_pressed(KeyMap.right)
+        l2_left    = self.remote_controller.is_button_pressed(KeyMap.left)
+        if l2_held:
+            if l2_right and not self._prev_l2_right_pressed:
+                self.state_cmd.ball_y_bias = float(np.clip(
+                    self.state_cmd.ball_y_bias - 0.05, -1.50, 1.50))
+                print(f"\n[BALL BIAS] ball_y_bias = {self.state_cmd.ball_y_bias:+.2f} m", flush=True)
+            elif l2_left and not self._prev_l2_left_pressed:
+                self.state_cmd.ball_y_bias = float(np.clip(
+                    self.state_cmd.ball_y_bias + 0.05, -1.50, 1.50))
+                print(f"\n[BALL BIAS] ball_y_bias = {self.state_cmd.ball_y_bias:+.2f} m", flush=True)
+        self._prev_l2_right_pressed = l2_right
+        self._prev_l2_left_pressed  = l2_left
+
         if self.remote_controller.is_button_pressed(KeyMap.F1):
             self.state_cmd.skill_cmd = FSMCommand.PASSIVE
 
@@ -167,12 +188,20 @@ class PolicyRuntime:
         self.state_cmd.target_confidence = float(target.confidence)
 
         # Publish corrected target = raw + Y-bias (pelvis frame)
-        corrected_b = self.state_cmd.target_pos_b.copy()
-        corrected_b[1] += self.state_cmd.target_y_bias
+        corrected_t = self.state_cmd.target_pos_b.copy()
+        corrected_t[1] += self.state_cmd.target_y_bias
         self._corrected_target_pub.publish(
-            float(corrected_b[0]), float(corrected_b[1]), float(corrected_b[2]),
+            float(corrected_t[0]), float(corrected_t[1]), float(corrected_t[2]),
             valid=self.state_cmd.target_valid,
             confidence=self.state_cmd.target_confidence,
+        )
+
+        # Publish corrected ball = raw + Y-bias (pelvis frame)
+        corrected_b = self.state_cmd.ball_pos_b.copy()
+        corrected_b[1] += self.state_cmd.ball_y_bias
+        self._corrected_ball_pub.publish(
+            float(corrected_b[0]), float(corrected_b[1]), float(corrected_b[2]),
+            valid=self.state_cmd.ball_valid,
         )
 
     def step(self) -> PolicyCommandFrame:

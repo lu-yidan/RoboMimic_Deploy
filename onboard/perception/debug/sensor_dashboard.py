@@ -63,8 +63,9 @@ HTML = r"""<!doctype html>
       --muted:   #94a3b8;
       --grid:    #334155;
       --target:    #fbbf24;
-      --corrected: #6ee7b7;
-      --cam:       #38bdf8;
+      --corrected:      #6ee7b7;
+      --ball-corrected: #c084fc;
+      --cam:            #38bdf8;
       --lidar:   #fb923c;
       --fused:   #4ade80;
       --stale:   #475569;
@@ -152,6 +153,7 @@ HTML = r"""<!doctype html>
       <div class="legendRow"><span class="dot" style="background:var(--cam)"></span>cam ball</div>
       <div class="legendRow"><span class="dot" style="background:var(--lidar)"></span>lidar ball</div>
       <div class="legendRow"><span class="dot" style="background:var(--fused)"></span>fused ball</div>
+      <div class="legendRow"><span class="dot" style="background:var(--ball-corrected)"></span>ball (corrected)</div>
     </div>
     <div class="sensors">
       <div class="sbox" id="box-target">
@@ -198,6 +200,15 @@ HTML = r"""<!doctype html>
           <span class="hz" id="hz-fused"></span>
         </div>
         <div class="kv" id="kv-fused"></div>
+      </div>
+      <div class="sbox" id="box-ball-corrected">
+        <div class="title">
+          <span class="dot" style="background:var(--ball-corrected)"></span>
+          Ball (corrected)
+          <span class="badge stale" id="badge-ball-corrected">wait</span>
+          <span class="hz" id="hz-ball-corrected"></span>
+        </div>
+        <div class="kv" id="kv-ball-corrected"></div>
       </div>
     </div>
   </aside>
@@ -354,6 +365,24 @@ function draw() {
     ballDot(px, py, col, s.fused.valid ? 14 : 9, s.fused.valid ? 0.55 : 0.25,
             null, false);
   }
+  // dashed line fused → corrected ball (only when bias non-zero)
+  if (s.fused && s.fused.valid && s.ballCorrected && s.ballCorrected.valid) {
+    const dy = s.ballCorrected.y - s.fused.y;
+    if (Math.abs(dy) > 0.01) {
+      const [px1, py1] = proj(s.fused.x, s.fused.y);
+      const [px2, py2] = proj(s.ballCorrected.x, s.ballCorrected.y);
+      ctx.save();
+      ctx.strokeStyle = cssVar("--ball-corrected");
+      ctx.lineWidth = 1.5; ctx.setLineDash([4, 4]); ctx.globalAlpha = 0.55;
+      ctx.beginPath(); ctx.moveTo(px1, py1); ctx.lineTo(px2, py2); ctx.stroke();
+      ctx.restore();
+    }
+  }
+  // corrected ball
+  if (s.ballCorrected && s.ballCorrected.has_sample && s.ballCorrected.fresh && s.ballCorrected.valid) {
+    const [px, py] = proj(s.ballCorrected.x, s.ballCorrected.y);
+    ballDot(px, py, cssVar("--ball-corrected"), 9, 0.9, "Bc", true);
+  }
   // lidar ball
   if (s.lidar && s.lidar.has_sample && s.lidar.fresh && s.lidar.valid) {
     const [px, py] = proj(s.lidar.x, s.lidar.y);
@@ -474,6 +503,15 @@ function updatePanel(s) {
   document.getElementById("kv-fused").innerHTML = kvHtml(
     sensorRows(f, ["source", f && f.has_sample ? (srcName[f.source] || "?") : "--"])
   );
+
+  // corrected ball
+  badge("ball-corrected", s.ballCorrected);
+  const bc = s.ballCorrected;
+  const ballBiasY = (bc && bc.has_sample && f && f.has_sample)
+    ? bc.y - f.y : null;
+  document.getElementById("kv-ball-corrected").innerHTML = kvHtml(
+    sensorRows(bc, ["bias y", ballBiasY !== null ? fmt(ballBiasY) : "--"])
+  );
 }
 
 // ── SSE ──────────────────────────────────────────────────────────────────────
@@ -572,16 +610,18 @@ class SensorStore:
         self._lock = threading.Lock()
         self._stale_ball   = stale_ms_ball
         self._stale_target = stale_ms_target
-        self._target    = None; self._target_at    = None
-        self._corrected = None; self._corrected_at = None
-        self._cam       = None; self._cam_at       = None
-        self._lidar     = None; self._lidar_at     = None
-        self._fused     = None; self._fused_at     = None
-        self._rate_target    = _RateCounter()
-        self._rate_corrected = _RateCounter()
-        self._rate_cam       = _RateCounter()
-        self._rate_lidar     = _RateCounter()
-        self._rate_fused     = _RateCounter()
+        self._target         = None; self._target_at         = None
+        self._corrected      = None; self._corrected_at      = None
+        self._cam            = None; self._cam_at            = None
+        self._lidar          = None; self._lidar_at          = None
+        self._fused          = None; self._fused_at          = None
+        self._ball_corrected = None; self._ball_corrected_at = None
+        self._rate_target         = _RateCounter()
+        self._rate_corrected      = _RateCounter()
+        self._rate_cam            = _RateCounter()
+        self._rate_lidar          = _RateCounter()
+        self._rate_fused          = _RateCounter()
+        self._rate_ball_corrected = _RateCounter()
 
     def update_target(self, s: TargetState):
         self._rate_target.tick()
@@ -592,6 +632,11 @@ class SensorStore:
         self._rate_corrected.tick()
         with self._lock:
             self._corrected = s; self._corrected_at = time.monotonic()
+
+    def update_ball_corrected(self, s: BallState):
+        self._rate_ball_corrected.tick()
+        with self._lock:
+            self._ball_corrected = s; self._ball_corrected_at = time.monotonic()
 
     def update_cam(self, s: BallState):
         self._rate_cam.tick()
@@ -618,9 +663,12 @@ class SensorStore:
                                 self._stale_ball, self._rate_cam.hz)
             l  = _ball_snapshot(self._lidar, self._lidar_at,
                                 self._stale_ball, self._rate_lidar.hz)
-            f  = _ball_snapshot(self._fused, self._fused_at,
+            f  = _ball_snapshot(self._fused,          self._fused_at,
                                 self._stale_ball, self._rate_fused.hz)
-        return {"target": t, "corrected": tc, "cam": c, "lidar": l, "fused": f}
+            bc = _ball_snapshot(self._ball_corrected, self._ball_corrected_at,
+                                self._stale_ball, self._rate_ball_corrected.hz)
+        return {"target": t, "corrected": tc, "cam": c, "lidar": l, "fused": f,
+                "ballCorrected": bc}
 
 
 # ── HTTP ──────────────────────────────────────────────────────────────────────
@@ -694,8 +742,9 @@ def main():
     parser.add_argument("--port",        type=int,   default=8091)
     parser.add_argument("--domain-id",   type=int,   default=0)
     parser.add_argument("--target-topic",    default="rt/target_state")
-    parser.add_argument("--corrected-topic", default="rt/target_state_corrected")
-    parser.add_argument("--cam-topic",       default="rt/cam_ball_state")
+    parser.add_argument("--corrected-topic",      default="rt/target_state_corrected")
+    parser.add_argument("--ball-corrected-topic", default="rt/ball_state_corrected")
+    parser.add_argument("--cam-topic",            default="rt/cam_ball_state")
     parser.add_argument("--lidar-topic", default="rt/lidar_ball_state")
     parser.add_argument("--fused-topic", default="rt/ball_state")
     parser.add_argument("--stale-ms",    type=float, default=float(BALL_STALE_MS))
@@ -717,6 +766,10 @@ def main():
         domain_id=args.domain_id, callback=store.update_corrected_target,
         topic_name=args.corrected_topic,
     )
+    ball_corrected_sub = BallStateSubscriber(
+        domain_id=args.domain_id, callback=store.update_ball_corrected,
+        topic_name=args.ball_corrected_topic,
+    )
     cam_sub = BallStateSubscriber(
         domain_id=args.domain_id, callback=store.update_cam,
         topic_name=args.cam_topic,
@@ -729,7 +782,7 @@ def main():
         domain_id=args.domain_id, callback=store.update_fused,
         topic_name=args.fused_topic,
     )
-    for sub in (target_sub, corrected_sub, cam_sub, lidar_sub, fused_sub):
+    for sub in (target_sub, corrected_sub, cam_sub, lidar_sub, fused_sub, ball_corrected_sub):
         sub.start()
 
     html = HTML.replace("__RANGE_M__", str(float(args.range_m))).encode("utf-8")
@@ -742,8 +795,9 @@ def main():
 
     url = _guess_url(args.host, args.port)
     print(f"[dashboard] target     -> {args.target_topic}")
-    print(f"[dashboard] corrected  -> {args.corrected_topic}")
-    print(f"[dashboard] cam        -> {args.cam_topic}")
+    print(f"[dashboard] corrected      -> {args.corrected_topic}")
+    print(f"[dashboard] ball-corrected -> {args.ball_corrected_topic}")
+    print(f"[dashboard] cam            -> {args.cam_topic}")
     print(f"[dashboard] lidar   -> {args.lidar_topic}")
     print(f"[dashboard] fused   -> {args.fused_topic}")
     print(f"[dashboard] open    -> {url}")

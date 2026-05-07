@@ -1,10 +1,10 @@
 # onnx_path:   "policy-obs-33.onnx"
-# onnx_path:   "policy-obs-a2c.onnx"
+onnx_path:   "policy-obs-a2c.onnx"
 # onnx_path:   "policy-obs-54-vhh.onnx"
 # onnx_path:   "policy-obs-325-uz8.onnx"
 # onnx_path:   "policy-stop.onnx"
 # onnx_path:   "policy-obs-410-vvj.onnx"
-onnx_path:   "policy-obs-54-vhh.onnx"
+# onnx_path:   "policy-obs-54-vhh.onnx"
 # onnx_path:   "policy-obs-54-4s.onnx"
 motion_path: "score_motion.npz"
 
@@ -41,7 +41,7 @@ zero_anchor_pos: false
 # If true, anchor_pos_b is set to the ball position expressed in the torso body frame,
 # instead of the reference-motion anchor position.
 # Has no effect when zero_anchor_pos is true (zero_anchor_pos takes priority).
-ball_as_anchor_pos: true
+ball_as_anchor_pos: false
 
 # If true, anchor_ori_6d is computed so its +X axis always points toward the ball
 # (world-frame direction from torso to ball, with Z = ref-anchor height - torso height).
@@ -73,7 +73,7 @@ target_pos: [5.0, 0.0, -0.5]
 # [trigger_frame, trigger_play_end_frame], then return to frame 0 and wait
 # (ball must leave the trigger zone once before the next trigger).
 # If `trigger_play_end_frame` is omitted, plays from `trigger_frame` to clip end (one-shot).
-wait_for_ball:   true
+wait_for_ball:   false
 trigger_play_once: true
 trigger_radius:  0.3    # metres
 trigger_horizon: 0.5    # look-ahead seconds

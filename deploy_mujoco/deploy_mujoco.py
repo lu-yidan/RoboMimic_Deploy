@@ -223,10 +223,10 @@ def main(cfg: DictConfig):
                 # Target Y-bias: L1 held + D-pad Right/Left (edge-triggered, ±5 cm)
                 if joystick.is_button_pressed(JoystickButton.L1):
                     if hat_just_pressed(1, 0):    # D-pad Right → target moves right (pelvis -Y)
-                        state_cmd.target_y_bias = float(np.clip(state_cmd.target_y_bias - 0.05, -0.30, 0.30))
+                        state_cmd.target_y_bias = float(np.clip(state_cmd.target_y_bias - 0.05, -1.50, 1.50))
                         print(f"\n[BIAS] target_y_bias = {state_cmd.target_y_bias:+.2f} m", flush=True)
                     elif hat_just_pressed(-1, 0):  # D-pad Left → target moves left (pelvis +Y)
-                        state_cmd.target_y_bias = float(np.clip(state_cmd.target_y_bias + 0.05, -0.30, 0.30))
+                        state_cmd.target_y_bias = float(np.clip(state_cmd.target_y_bias + 0.05, -1.50, 1.50))
                         print(f"\n[BIAS] target_y_bias = {state_cmd.target_y_bias:+.2f} m", flush=True)
 
                 # PASSIVE: safety command — L2 release

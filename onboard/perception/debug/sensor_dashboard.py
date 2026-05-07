@@ -75,6 +75,17 @@ HTML = r"""<!doctype html>
     }
     .sbox-bias { border-color: #fb923c44; background: rgba(251,146,60,.05); }
     .sbox-bias .title { color: var(--bias); }
+    .col-toggle {
+      font-size: 11px; padding: 2px 8px; border-radius: 5px;
+      background: var(--panel2); border: 1px solid var(--grid);
+      color: var(--muted); cursor: pointer; white-space: nowrap;
+    }
+    .col-toggle:hover { color: var(--text); border-color: var(--muted); }
+    .layout.wide-side { grid-template-columns: 1fr 400px; }
+    .sensors.two-col { grid-template-columns: 1fr 1fr; }
+    .sensors.two-col .sbox-bias { grid-column: span 2; }
+    .sensors.two-col .sbox .title { font-size: 10px; }
+    .sensors.two-col .hz { display: none; }
     kbd {
       display: inline-block; padding: 0 4px; border-radius: 3px;
       background: #1e293b; border: 1px solid #475569;
@@ -162,6 +173,9 @@ HTML = r"""<!doctype html>
       <div class="legendRow"><span class="dot" style="background:var(--lidar)"></span>lidar ball</div>
       <div class="legendRow"><span class="dot" style="background:var(--fused)"></span>fused ball</div>
       <div class="legendRow"><span class="dot" style="background:var(--ball-corrected)"></span>ball (corrected)</div>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:flex-end;margin-bottom:-2px">
+      <button class="col-toggle" id="col-toggle" onclick="toggleCols()">⊞ 2 col</button>
     </div>
     <div class="sensors">
       <div class="sbox sbox-bias" id="box-bias">
@@ -557,6 +571,25 @@ es.onmessage = (e) => {
   latest = JSON.parse(e.data);
   updatePanel(latest);
 };
+
+// ── Column layout toggle ──────────────────────────────────────────────────────
+
+function applyTwoCols(on) {
+  document.querySelector(".sensors").classList.toggle("two-col", on);
+  document.querySelector(".layout").classList.toggle("wide-side", on);
+  const btn = document.getElementById("col-toggle");
+  if (btn) btn.textContent = on ? "⊟ 1 col" : "⊞ 2 col";
+}
+
+function toggleCols() {
+  const on = !document.querySelector(".sensors").classList.contains("two-col");
+  applyTwoCols(on);
+  try { localStorage.setItem("sdb_cols", on ? "2" : "1"); } catch(e) {}
+}
+
+(function() {
+  try { if (localStorage.getItem("sdb_cols") === "2") applyTwoCols(true); } catch(e) {}
+})();
 </script>
 </body>
 </html>

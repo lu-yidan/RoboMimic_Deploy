@@ -264,6 +264,7 @@ class Score(FSMState):
         self._entry_yaw_mat = np.eye(3, dtype=np.float64)
         self._target_world_yaw_vec = None
         self._debug_target_pos_w = np.zeros(3, dtype=np.float32)
+        self._debug_target_corrected_pos_w = np.zeros(3, dtype=np.float32)
         self._debug_ball_pos_b = np.zeros(3, dtype=np.float32)
         self._debug_target_pos_b = np.zeros(3, dtype=np.float32)
         self._debug_anchor_x_axis_w = np.array([1.0, 0.0, 0.0], dtype=np.float32)
@@ -333,6 +334,7 @@ class Score(FSMState):
             self.target_pos_b_entry = np.zeros(3, dtype=np.float32)
         self._target_world_yaw_vec = None
         self._debug_target_pos_w = np.zeros(3, dtype=np.float32)
+        self._debug_target_corrected_pos_w = np.zeros(3, dtype=np.float32)
         self._debug_ball_pos_b = np.zeros(3, dtype=np.float32)
         self._debug_target_pos_b = np.zeros(3, dtype=np.float32)
         self._debug_anchor_x_axis_w = np.array([1.0, 0.0, 0.0], dtype=np.float32)
@@ -610,6 +612,8 @@ class Score(FSMState):
 
     def _compute_ball_target_obs_b(self, ball_b_effective):
         """Compute pelvis-frame ball / target observations for the policy."""
+        bias_vec = np.array([0.0, self.state_cmd.target_y_bias, 0.0], dtype=np.float32)
+
         if self.runtime_mode == "real":
             ball_pos_b = ball_b_effective
             pelvis_quat = self.state_cmd.pelvis_quat_w.astype(np.float64)
@@ -622,6 +626,11 @@ class Score(FSMState):
                 self.state_cmd.pelvis_pos_w.astype(np.float64)
                 + current_yaw_mat @ target_pos_b.astype(np.float64)
             ).astype(np.float32)
+            target_pos_b = np.clip(target_pos_b + bias_vec, -8.0, 8.0).astype(np.float32)
+            self._debug_target_corrected_pos_w = (
+                self.state_cmd.pelvis_pos_w.astype(np.float64)
+                + current_yaw_mat @ target_pos_b.astype(np.float64)
+            ).astype(np.float32)
             return ball_pos_b, target_pos_b
 
         robot_pelvis_pos_w = self.state_cmd.pelvis_pos_w.astype(np.float64)
@@ -629,8 +638,13 @@ class Score(FSMState):
         ball_rel_w = self.state_cmd.ball_pos_w.astype(np.float64) - robot_pelvis_pos_w
         target_rel_w = self.target_pos_w.astype(np.float64) - robot_pelvis_pos_w
         ball_pos_b = np.clip(R_pelvis.T @ ball_rel_w, -8.0, 8.0).astype(np.float32)
-        target_pos_b = np.clip(R_pelvis.T @ target_rel_w, -8.0, 8.0).astype(np.float32)
-        self._debug_target_pos_w = self.target_pos_w.astype(np.float32)
+        target_pos_b = np.clip(
+            (R_pelvis.T @ target_rel_w).astype(np.float32) + bias_vec, -8.0, 8.0
+        ).astype(np.float32)
+        self._debug_target_pos_w = self.target_pos_w.astype(np.float32)  # raw (no bias)
+        self._debug_target_corrected_pos_w = (
+            robot_pelvis_pos_w + R_pelvis @ target_pos_b.astype(np.float64)
+        ).astype(np.float32)
         self._target_debug_source = "fixed_sim"
         return ball_pos_b, target_pos_b
 
@@ -906,6 +920,14 @@ class Score(FSMState):
             {"pos": target_marker_pos, "size": np.array([0.002, 0.15, 0.15]),
              "rgba": np.array([1.0, 0.4, 0.8, 0.85], dtype=np.float32)},
         ]
+        # Corrected target (green disc) — only shown when bias is active
+        if abs(self.state_cmd.target_y_bias) > 1e-4:
+            corrected_marker_pos = np.array(
+                [self._debug_target_corrected_pos_w[0], self._debug_target_corrected_pos_w[1], 0.15],
+                dtype=np.float64,
+            )
+            viz.append({"pos": corrected_marker_pos, "size": np.array([0.002, 0.15, 0.15]),
+                        "rgba": np.array([0.0, 1.0, 0.4, 0.90], dtype=np.float32)})
         # While waiting for the ball: show a semi-transparent cyan sphere indicating
         # the trigger circle radius around the pelvis.
         if self.wait_for_ball and not self._motion_triggered:
@@ -945,6 +967,8 @@ class Score(FSMState):
         status_line = progress_bar(bar_prog, bar_total)
         status_line += f" ball_b={self._fmt_vec3(self._debug_ball_pos_b)}"
         status_line += f" target_b={self._fmt_vec3(self._debug_target_pos_b)}"
+        if abs(self.state_cmd.target_y_bias) > 1e-4:
+            status_line += f" bias_y={self.state_cmd.target_y_bias:+.3f}m"
         if self.runtime_mode == "real":
             status_line += f" target_src={self._target_debug_source}"
         print(status_line, end="", flush=True)

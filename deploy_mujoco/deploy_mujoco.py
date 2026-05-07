@@ -185,6 +185,7 @@ def main(cfg: DictConfig):
     joystick = JoyStick()
     prev_hat = (0, 0)
     prev_r2_pressed = False
+    _l1_bias_used = False   # True when L1 was consumed for bias; suppresses PASSIVE on release
     Running = True
     with mujoco.viewer.launch_passive(m, d) as viewer:
         sim_start_time = time.time()
@@ -217,9 +218,22 @@ def main(cfg: DictConfig):
                     else:
                         print("[Ball] Reset requested, but no ball body exists in this scene.")
 
-                # PASSIVE: safety command — always overrides any pending command
+                # Target Y-bias: L1 held + D-pad Right/Left (edge-triggered, ±5 cm)
+                if joystick.is_button_pressed(JoystickButton.L1):
+                    if hat_just_pressed(1, 0):    # D-pad Right → target Y+ (left)
+                        state_cmd.target_y_bias = float(np.clip(state_cmd.target_y_bias + 0.05, -0.30, 0.30))
+                        _l1_bias_used = True
+                        print(f"\n[BIAS] target_y_bias = {state_cmd.target_y_bias:+.2f} m", flush=True)
+                    elif hat_just_pressed(-1, 0):  # D-pad Left → target Y- (right)
+                        state_cmd.target_y_bias = float(np.clip(state_cmd.target_y_bias - 0.05, -0.30, 0.30))
+                        _l1_bias_used = True
+                        print(f"\n[BIAS] target_y_bias = {state_cmd.target_y_bias:+.2f} m", flush=True)
+
+                # PASSIVE: safety command — only when L1 was not used for bias
                 if joystick.is_button_released(JoystickButton.L1):                                                    # 阻尼保护, L1
-                    state_cmd.skill_cmd = FSMCommand.PASSIVE
+                    if not _l1_bias_used:
+                        state_cmd.skill_cmd = FSMCommand.PASSIVE
+                    _l1_bias_used = False
 
                 # All other skill commands: latched — only accepted when FSM has cleared the previous one.
                 # This prevents a fast START → policy switch sequence from overwriting POS_RESET before the FSM

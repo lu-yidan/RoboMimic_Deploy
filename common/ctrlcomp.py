@@ -35,6 +35,9 @@ class StateAndCmd:
         self.target_valid  = False
         self.target_class_id = -1
         self.target_confidence = 0.0
+        # manual target Y-bias (metres, + = pelvis +Y = left)
+        # Adjusted by L1+right/left; published to rt/target_y_bias when DDS is wired up.
+        self.target_y_bias = 0.0
         # joy cmd
         self.vel_cmd = np.zeros(3)
         self.skill_cmd = FSMCommand.INVALID

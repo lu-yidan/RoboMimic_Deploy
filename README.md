@@ -88,17 +88,30 @@ python deploy_mujoco/deploy_mujoco.py --config-name mujoco_score
 ```
 
 ## 2. Policy Descriptions
-| Mode Name           | Trigger Keys      | Description                                                                              |
-|---------------------|-------------------|------------------------------------------------------------------------------------------|
-| **PassiveMode**     | L1                | Damping protection mode                                                                  |
-| **FixedPose**       | Start             | Position control reset to default joint values                                           |
-| **LocoMode**        | B                 | Stable walking control mode                                                              |
-| **AMP**             | A                 | AMP locomotion policy (enters run mode by default)                                      |
-| **Score**           | R1                | Ball-kicking/scoring policy (547-dim obs, 5-frame history, requires onboard LiDAR)      |
-| **BeyondMimicMJ**   | D-pad DOWN        | Fall-and-get-up imitation policy (MuJoCo-trained, with reference motion tracking)       |
-| **StandUpMJ**       | D-pad UP          | Stand-up imitation policy (MuJoCo-trained, with reference motion tracking)              |
-| **Pinocchio1.6MJ**  | R2                | MuJoCo imitation policy backed by `g1_result_pinocchio_1_6_mj.yaml`                     |
-| **BeyondMimic**     | —                 | Still kept in the repo, but not bound to a default controller shortcut                  |
+| Mode Name           | Trigger Keys                  | Description                                                                              |
+|---------------------|-------------------------------|------------------------------------------------------------------------------------------|
+| **PassiveMode**     | F1 (real) / L2 release (sim)  | Damping protection mode                                                                  |
+| **FixedPose**       | Start                         | Position control reset to default joint values                                           |
+| **LocoMode**        | B                             | Stable walking control mode                                                              |
+| **AMP**             | A                             | AMP locomotion policy (enters run mode by default)                                       |
+| **Score**           | R1                            | Ball-kicking/scoring policy (547-dim obs, 5-frame history, requires onboard LiDAR)      |
+| **BeyondMimicMJ**   | D-pad DOWN                    | Fall-and-get-up imitation policy (MuJoCo-trained, with reference motion tracking)       |
+| **StandUpMJ**       | D-pad UP                      | Stand-up imitation policy (MuJoCo-trained, with reference motion tracking)              |
+| **Pinocchio1.6MJ**  | R2                            | MuJoCo imitation policy backed by `g1_result_pinocchio_1_6_mj.yaml`                     |
+| **BeyondMimic**     | —                             | Still kept in the repo, but not bound to a default controller shortcut                  |
+
+### Manual Bias Adjustments
+
+Both sim and real support runtime Y-axis bias to correct perception offsets without restarting:
+
+| Action | Keys | Range | Notes |
+|--------|------|-------|-------|
+| Target Y +5 cm (left) | Hold **L1** + tap **D-pad Left** | ±1.5 m | Sim + real |
+| Target Y −5 cm (right) | Hold **L1** + tap **D-pad Right** | ±1.5 m | Sim + real |
+| Ball Y +5 cm (left) | Hold **L2** + tap **D-pad Left** | ±1.5 m | Real only |
+| Ball Y −5 cm (right) | Hold **L2** + tap **D-pad Right** | ±1.5 m | Real only |
+
+Bias is in the pelvis body frame (+Y = robot's left). It shifts the position fed to the policy without affecting the raw sensor reading. Each change prints to the terminal and is always visible in the **Sensor Dashboard** orange "Current Bias" card.
 
 
 ---
@@ -119,7 +132,7 @@ python deploy_mujoco/deploy_mujoco.py
    - **R1** -> Score
 6. Use `--config-name mujoco_score` when entering **Score** so the simulation loads the ball scene.
 7. **BeyondMimicMJ / StandUpMJ / Pinocchio1.6MJ** can switch directly between each other with the same single-button bindings.
-8. Press **L1** at any time for damping protection, or **Start** to return to **FixedPose**.
+8. Release **L2** at any time for damping protection (PassiveMode), or press **Start** to return to **FixedPose**.
 9. **BeyondMimic** is still present in the repository, but it is intentionally left without a default controller shortcut. Unused legacy policies such as Dance / Kick / KungFu / ASAP / HOST have been deleted from the repository.
 
 ---
@@ -127,31 +140,37 @@ python deploy_mujoco/deploy_mujoco.py
 
 1. Power on the robot and suspend it (e.g., with a harness), then hold **L2+R2** to enter debug mode.
 
-2. Run the deploy_real program:
-```bash
-python deploy_real/deploy_real.py
-```
-3. Press the **Start** button to enter position control mode.
-4. The same simplified single-button mapping is used on the real robot: **A / B / D-pad DOWN / D-pad UP / R2 / R1**.
-5. **Score policy (R1) — additional real-robot steps**: The Score policy depends on onboard LiDAR for real-time ball detection. The perception service must be started before running `deploy_real.py`, publishing ball state via DDS topic `rt/ball_state`. Do **not** activate the Score policy on the real robot without the perception service running.
-
-6. If you are deploying on an onboard Orin/G1 computer, prefer the bridge-based deployment flow under `bridge/` instead of running `deploy_real.py` directly. See:
-   - `bridge/README.md`
-   - `bridge/VALIDATION.md`
-
-   Python prototype:
+2. **Recommended (onboard Orin):** Use the tmux launcher, which starts the C++ bridge, policy runtime, perception services and sensor dashboard in one shot:
    ```bash
-   python bridge/python/deploy_bridge_py.py
-   python bridge/python/deploy_policy.py
+   bash tools/start_tmux_layout.sh
+   ```
+   Then in the `deploy_policy` pane, press **Start** to enter position control mode.
+
+   Alternatively, run the C++ bridge and Python policy manually:
+   ```bash
+   BRIDGE_NETWORK_INTERFACE=eth0 bridge/build/cpp_bridge_main   # terminal 1
+   python bridge/python/deploy_policy.py                          # terminal 2
    ```
 
-   C++ bridge flow:
+   For quick testing without the C++ bridge (Python bridge prototype):
    ```bash
-   cmake -S bridge -B bridge/build
-   cmake --build bridge/build -j2
-   BRIDGE_NETWORK_INTERFACE=eth0 bridge/build/cpp_bridge_main
-   python bridge/python/deploy_policy.py
+   python bridge/python/deploy_bridge_py.py   # terminal 1
+   python bridge/python/deploy_policy.py       # terminal 2
    ```
+
+   **Simple mode (no Orin / direct USB):** `python deploy_real/deploy_real.py`
+
+3. The same single-button mapping applies on the real robot: **A / B / D-pad DOWN / D-pad UP / R2 / R1**.
+   Press **F1** at any time for damping protection (PassiveMode).
+
+4. **Score policy (R1) — additional real-robot steps**: The Score policy depends on onboard LiDAR for real-time ball detection. Start the perception service before activating Score, which publishes ball state to DDS topic `rt/ball_state`. Do **not** activate the Score policy without the perception service running.
+
+5. **Sensor Dashboard**: After starting `tools/start_tmux_layout.sh`, open `http://<robot-ip>:8091/` in a browser. The dashboard shows all sensor positions (target, cam/lidar/fused ball, corrected positions) and the active bias values in the orange "Current Bias" card. To start it manually:
+   ```bash
+   python onboard/perception/debug/sensor_dashboard.py
+   ```
+
+   See `bridge/README.md` and `bridge/VALIDATION.md` for full bridge setup details.
 
 ---
 ## Important Notes

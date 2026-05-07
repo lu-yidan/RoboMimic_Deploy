@@ -57,6 +57,7 @@ class PolicyRuntime:
         self._corrected_ball_pub = BallStatePublisher(
             topic_name="rt/ball_state_corrected"
         )
+        self._bias_pub = TargetStatePublisher(topic_name="rt/bias_values")
 
         self._prev_right_pressed    = False
         self._prev_left_pressed     = False
@@ -202,6 +203,14 @@ class PolicyRuntime:
         self._corrected_ball_pub.publish(
             float(corrected_b[0]), float(corrected_b[1]), float(corrected_b[2]),
             valid=self.state_cmd.ball_valid,
+        )
+
+        # Publish current bias values for dashboard display (x=target_y_bias, y=ball_y_bias)
+        self._bias_pub.publish(
+            float(self.state_cmd.target_y_bias),
+            float(self.state_cmd.ball_y_bias),
+            0.0,
+            valid=True,
         )
 
     def step(self) -> PolicyCommandFrame:

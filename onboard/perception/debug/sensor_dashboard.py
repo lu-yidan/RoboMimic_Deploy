@@ -71,7 +71,10 @@ HTML = r"""<!doctype html>
       --stale:   #475569;
       --axis-x:  #38bdf8;
       --axis-y:  #f472b6;
+      --bias:    #fb923c;
     }
+    .sbox-bias { border-color: #fb923c44; background: rgba(251,146,60,.05); }
+    .sbox-bias .title { color: var(--bias); }
     * { box-sizing: border-box; }
     body {
       margin: 0; min-height: 100vh;
@@ -156,6 +159,16 @@ HTML = r"""<!doctype html>
       <div class="legendRow"><span class="dot" style="background:var(--ball-corrected)"></span>ball (corrected)</div>
     </div>
     <div class="sensors">
+      <div class="sbox sbox-bias" id="box-bias">
+        <div class="title">
+          <span style="font-size:14px">●</span>
+          Current Bias
+        </div>
+        <div class="kv" id="kv-bias">
+          <div class="k">target Y</div><div class="v">+0.000 m</div>
+          <div class="k">ball Y</div><div class="v">+0.000 m</div>
+        </div>
+      </div>
       <div class="sbox" id="box-target">
         <div class="title">
           <span class="dot" style="background:var(--target)"></span>
@@ -452,6 +465,15 @@ function fmtAge(ms) {
 function updatePanel(s) {
   if (!s) return;
 
+  // bias values card (always shown, independent of sensor validity)
+  const b = s.biasValues;
+  if (b) {
+    document.getElementById("kv-bias").innerHTML = kvHtml([
+      ["target Y", fmt(b.target_y)],
+      ["ball Y",   fmt(b.ball_y)],
+    ]);
+  }
+
   // helper: same 6-row layout for all sensors to keep panel heights identical
   function sensorRows(s, extra) {
     const h = s && s.has_sample;
@@ -616,6 +638,7 @@ class SensorStore:
         self._lidar          = None; self._lidar_at          = None
         self._fused          = None; self._fused_at          = None
         self._ball_corrected = None; self._ball_corrected_at = None
+        self._bias           = None
         self._rate_target         = _RateCounter()
         self._rate_corrected      = _RateCounter()
         self._rate_cam            = _RateCounter()
@@ -637,6 +660,10 @@ class SensorStore:
         self._rate_ball_corrected.tick()
         with self._lock:
             self._ball_corrected = s; self._ball_corrected_at = time.monotonic()
+
+    def update_bias(self, s: TargetState):
+        with self._lock:
+            self._bias = {"target_y": float(s.x), "ball_y": float(s.y)}
 
     def update_cam(self, s: BallState):
         self._rate_cam.tick()
@@ -667,8 +694,9 @@ class SensorStore:
                                 self._stale_ball, self._rate_fused.hz)
             bc = _ball_snapshot(self._ball_corrected, self._ball_corrected_at,
                                 self._stale_ball, self._rate_ball_corrected.hz)
+            bias = self._bias.copy() if self._bias is not None else {"target_y": 0.0, "ball_y": 0.0}
         return {"target": t, "corrected": tc, "cam": c, "lidar": l, "fused": f,
-                "ballCorrected": bc}
+                "ballCorrected": bc, "biasValues": bias}
 
 
 # ── HTTP ──────────────────────────────────────────────────────────────────────
@@ -744,6 +772,7 @@ def main():
     parser.add_argument("--target-topic",    default="rt/target_state")
     parser.add_argument("--corrected-topic",      default="rt/target_state_corrected")
     parser.add_argument("--ball-corrected-topic", default="rt/ball_state_corrected")
+    parser.add_argument("--bias-topic",           default="rt/bias_values")
     parser.add_argument("--cam-topic",            default="rt/cam_ball_state")
     parser.add_argument("--lidar-topic", default="rt/lidar_ball_state")
     parser.add_argument("--fused-topic", default="rt/ball_state")
@@ -770,6 +799,10 @@ def main():
         domain_id=args.domain_id, callback=store.update_ball_corrected,
         topic_name=args.ball_corrected_topic,
     )
+    bias_sub = TargetStateSubscriber(
+        domain_id=args.domain_id, callback=store.update_bias,
+        topic_name=args.bias_topic,
+    )
     cam_sub = BallStateSubscriber(
         domain_id=args.domain_id, callback=store.update_cam,
         topic_name=args.cam_topic,
@@ -782,7 +815,7 @@ def main():
         domain_id=args.domain_id, callback=store.update_fused,
         topic_name=args.fused_topic,
     )
-    for sub in (target_sub, corrected_sub, cam_sub, lidar_sub, fused_sub, ball_corrected_sub):
+    for sub in (target_sub, corrected_sub, cam_sub, lidar_sub, fused_sub, ball_corrected_sub, bias_sub):
         sub.start()
 
     html = HTML.replace("__RANGE_M__", str(float(args.range_m))).encode("utf-8")
@@ -797,6 +830,7 @@ def main():
     print(f"[dashboard] target     -> {args.target_topic}")
     print(f"[dashboard] corrected      -> {args.corrected_topic}")
     print(f"[dashboard] ball-corrected -> {args.ball_corrected_topic}")
+    print(f"[dashboard] bias           -> {args.bias_topic}")
     print(f"[dashboard] cam            -> {args.cam_topic}")
     print(f"[dashboard] lidar   -> {args.lidar_topic}")
     print(f"[dashboard] fused   -> {args.fused_topic}")
@@ -807,7 +841,8 @@ def main():
     except KeyboardInterrupt:
         print("\n[dashboard] Stopped.")
     finally:
-        for sub in (target_sub, cam_sub, lidar_sub, fused_sub):
+        for sub in (target_sub, corrected_sub, cam_sub, lidar_sub, fused_sub,
+                    ball_corrected_sub, bias_sub):
             sub.stop()
         httpd.shutdown()
         httpd.server_close()

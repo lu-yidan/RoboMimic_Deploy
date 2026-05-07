@@ -12,7 +12,7 @@ from common.rotation_helper import (
 )
 from common.remote_controller import RemoteController, KeyMap
 from common.ball_state_dds import BallStateSubscriber
-from common.target_state_dds import TargetStateSubscriber
+from common.target_state_dds import TargetStateSubscriber, TargetStatePublisher
 from bridge.python.bridge_state_dds import BridgeStateSubscriber
 from common.logger import Logger
 
@@ -51,6 +51,12 @@ class PolicyRuntime:
         self.ball_sub.start()
         self.target_sub = TargetStateSubscriber(domain_id=0)
         self.target_sub.start()
+        self._corrected_target_pub = TargetStatePublisher(
+            topic_name="rt/target_state_corrected"
+        )
+
+        self._prev_right_pressed = False
+        self._prev_left_pressed  = False
 
         self._log_step = 0
         self._log_start = time.time()
@@ -91,6 +97,22 @@ class PolicyRuntime:
         if self.remote_controller.is_button_pressed(KeyMap.select):
             self.exit_requested = True
             return
+
+        # Target Y-bias: L1 held + D-pad Right/Left (edge-triggered, ±5 cm)
+        l1_held   = self.remote_controller.is_button_pressed(KeyMap.L1)
+        right_now = self.remote_controller.is_button_pressed(KeyMap.right)
+        left_now  = self.remote_controller.is_button_pressed(KeyMap.left)
+        if l1_held:
+            if right_now and not self._prev_right_pressed:
+                self.state_cmd.target_y_bias = float(np.clip(
+                    self.state_cmd.target_y_bias - 0.05, -1.50, 1.50))
+                print(f"\n[BIAS] target_y_bias = {self.state_cmd.target_y_bias:+.2f} m", flush=True)
+            elif left_now and not self._prev_left_pressed:
+                self.state_cmd.target_y_bias = float(np.clip(
+                    self.state_cmd.target_y_bias + 0.05, -1.50, 1.50))
+                print(f"\n[BIAS] target_y_bias = {self.state_cmd.target_y_bias:+.2f} m", flush=True)
+        self._prev_right_pressed = right_now
+        self._prev_left_pressed  = left_now
 
         if self.remote_controller.is_button_pressed(KeyMap.F1):
             self.state_cmd.skill_cmd = FSMCommand.PASSIVE
@@ -143,6 +165,15 @@ class PolicyRuntime:
         self.state_cmd.target_valid = bool(target.valid)
         self.state_cmd.target_class_id = int(target.class_id)
         self.state_cmd.target_confidence = float(target.confidence)
+
+        # Publish corrected target = raw + Y-bias (pelvis frame)
+        corrected_b = self.state_cmd.target_pos_b.copy()
+        corrected_b[1] += self.state_cmd.target_y_bias
+        self._corrected_target_pub.publish(
+            float(corrected_b[0]), float(corrected_b[1]), float(corrected_b[2]),
+            valid=self.state_cmd.target_valid,
+            confidence=self.state_cmd.target_confidence,
+        )
 
     def step(self) -> PolicyCommandFrame:
         bridge_state = self.bridge_state_sub.latest()

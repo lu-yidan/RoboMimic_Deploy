@@ -1,5 +1,5 @@
 # onnx_path:   "policy-obs-33.onnx"
-onnx_path:   "policy-obs-a2c.onnx"
+# onnx_path:   "policy-obs-a2c.onnx"
 # onnx_path:   "policy-obs-54-vhh.onnx"
 # onnx_path:   "policy-obs-325-uz8.onnx"
 onnx_path:   "policy-obs-utf8-486.onnx"
@@ -42,12 +42,12 @@ zero_anchor_pos: false
 # If true, anchor_pos_b is set to the ball position expressed in the torso body frame,
 # instead of the reference-motion anchor position.
 # Has no effect when zero_anchor_pos is true (zero_anchor_pos takes priority).
-ball_as_anchor_pos: false
+ball_as_anchor_pos: true
 
 # If true, anchor_ori_6d is computed so its +X axis always points toward the ball
 # (world-frame direction from torso to ball, with Z = ref-anchor height - torso height).
 # Overrides the default reference-motion orientation.
-ball_facing_anchor_ori: true
+ball_facing_anchor_ori: false
 
 # Target source:
 # - fixed:    use `target_pos`
@@ -75,14 +75,11 @@ target_pos: [5.0, 0.0, 0.115]
 # (ball must leave the trigger zone once before the next trigger).
 # If `trigger_play_end_frame` is omitted, plays from `trigger_frame` to clip end (one-shot).
 wait_for_ball:   true
-trigger_play_once: false
+trigger_play_once: true
 trigger_radius:  0.25    # metres
 trigger_horizon: 0.4    # look-ahead seconds
-trigger_base_offset_xy: [0.1, -0.1]  # torso frame: +x forward, +y left; right is negative y
-wait_for_ball:   false
-trigger_play_once: true
-trigger_radius:  0.3    # metres
-trigger_horizon: 0.5    # look-ahead seconds
+trigger_base_offset_xy: [0.15, -0.1]  # torso frame: +x forward, +y left; right is negative y
+
 trigger_frame:            250   # first motion frame on trigger (loaded clip indices)
 trigger_play_end_frame:   300   # last motion frame inclusive (252..302 = 51 frames)
 # Default settings:

@@ -34,7 +34,7 @@ RIGHT_BOTTOM="$(tmux split-window -v -P -F '#{pane_id}' -t "${RIGHT_MID}" -c "${
 
 # Pre-fill commands — press Enter in each pane to start
 tmux send-keys -t "${RIGHT_TOP}"    -l "cd ${REPO_DIR} && ./onboard/perception/camera/run_apriltag_target.sh --show"
-tmux send-keys -t "${RIGHT_MID}"    -l "cd ${REPO_DIR} && ./onboard/perception/lidar/run.sh --show --base-y-bias 0.05 --dds-topic rt/ball_state"
+tmux send-keys -t "${RIGHT_MID}"    -l "cd ${REPO_DIR} && ./onboard/perception/lidar/run.sh --show --base-y-bias 0.00 --dds-topic rt/ball_state"
 tmux send-keys -t "${LEFT_TOP}"     -l "cd ${REPO_DIR} && cmake -S bridge -B bridge/build && cmake --build bridge/build -j2 && BRIDGE_NETWORK_INTERFACE=eth0 bridge/build/cpp_bridge_main"
 tmux send-keys -t "${LEFT_MID}"     -l "cd ${REPO_DIR} && python bridge/python/deploy_policy.py"
 tmux send-keys -t "${LEFT_BOTTOM}"  -l "cd ${REPO_DIR} && bash onboard/perception/run_sensor_dashboard.sh"

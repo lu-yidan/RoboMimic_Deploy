@@ -228,6 +228,12 @@ class Score(FSMState):
         self.wait_for_ball    = bool(cfg.get("wait_for_ball",    False))
         self.trigger_radius   = float(cfg.get("trigger_radius",  0.5))
         self.trigger_horizon  = float(cfg.get("trigger_horizon", 0.5))
+        self.trigger_base_offset_xy = np.array(
+            cfg.get("trigger_base_offset_xy", [0.0, 0.0]),
+            dtype=np.float64,
+        )
+        if self.trigger_base_offset_xy.shape != (2,):
+            raise ValueError("trigger_base_offset_xy must be a 2D list, e.g. [-0.1, 0.1]")
         self.trigger_frame    = int(cfg.get("trigger_frame",     252))
         _tpe = cfg.get("trigger_play_end_frame", None)
         self.trigger_play_end_frame = int(_tpe) if _tpe is not None else None
@@ -679,21 +685,29 @@ class Score(FSMState):
         return np.zeros(3, dtype=np.float32)
 
     def _get_trigger_ball_state_b(self):
-        """Return `(ball_pos_b, ball_vel_b, anchor_xy)` for trigger gating."""
+        """Return `(ball_pos_b, ball_vel_b, anchor_xy)` in torso frame for trigger gating."""
+        R_torso_w = _quat_to_matrix(self.state_cmd.torso_quat_w.astype(np.float64))
         if self.runtime_mode == "real":
-            ball_pos_b = self.state_cmd.ball_pos_b.astype(np.float64)
-            ball_vel_b = self._estimate_ball_vel_b().astype(np.float64)
+            ball_pos_b = self._get_ball_pos_torso_b(
+                self.state_cmd.ball_pos_b.astype(np.float32),
+                self.state_cmd.torso_pos_w.astype(np.float64),
+                R_torso_w,
+            ).astype(np.float64)
+            R_pelvis_w = _quat_to_matrix(self.state_cmd.pelvis_quat_w.astype(np.float64))
+            ball_vel_b = (
+                R_torso_w.T @ (R_pelvis_w @ self._estimate_ball_vel_b().astype(np.float64))
+            )
         else:
             R_pelvis = _quat_to_matrix(self.state_cmd.pelvis_quat_w.astype(np.float64))
-            ball_pos_b = R_pelvis.T @ (
+            ball_pos_b = R_torso_w.T @ (
                 self.state_cmd.ball_pos_w.astype(np.float64)
-                - self.state_cmd.pelvis_pos_w.astype(np.float64)
+                - self.state_cmd.torso_pos_w.astype(np.float64)
             )
             ball_vel_b = (
-                R_pelvis.T @ self.state_cmd.ball_vel_w.astype(np.float64)
-                - self.state_cmd.root_lin_vel_b.astype(np.float64)
+                R_torso_w.T @ self.state_cmd.ball_vel_w.astype(np.float64)
+                - R_torso_w.T @ (R_pelvis @ self.state_cmd.root_lin_vel_b.astype(np.float64))
             )
-        return ball_pos_b, ball_vel_b, np.zeros(2, dtype=np.float64)
+        return ball_pos_b, ball_vel_b, self.trigger_base_offset_xy.copy()
 
     def _update_motion_trigger_state(self, policy_step: int):
         """Update finite-burst state machine before trigger evaluation."""
@@ -900,13 +914,14 @@ class Score(FSMState):
             self._target_debug_source, 0.0
         )
 
-        # ---- Visualization: anchor sphere + line from torso to anchor + target square ----
+        # ---- Visualization: anchor, anchor orientation, target, and trigger circle ----
         anchor_ori_arrow_to = (
             self._debug_anchor_pos_w.astype(np.float64)
             + 0.45 * self._debug_anchor_x_axis_w.astype(np.float64)
         )
+        target_pos_w = self._debug_target_pos_w.astype(np.float64)
         target_marker_pos = np.array(
-            [self._debug_target_pos_w[0], self._debug_target_pos_w[1], 0.15],
+            [target_pos_w[0], target_pos_w[1], 0.15],
             dtype=np.float64,
         )
         viz = [
@@ -918,6 +933,11 @@ class Score(FSMState):
             {"from": self._debug_anchor_pos_w.copy(),
              "to":   anchor_ori_arrow_to, "radius": 0.025, "geom": "arrow",
              "rgba": np.array([0.6, 0.0, 1.0, 0.9], dtype=np.float32)},
+            {"pos": target_pos_w, "radius": 0.07,
+             "rgba": np.array([1.0, 0.0, 1.0, 0.95], dtype=np.float32)},
+            {"from": self._debug_torso_pos_w.copy(),
+             "to":   target_pos_w, "radius": 0.006,
+             "rgba": np.array([1.0, 0.0, 1.0, 0.45], dtype=np.float32)},
             {"pos": target_marker_pos, "size": np.array([0.002, 0.15, 0.15]),
              "rgba": np.array([1.0, 0.4, 0.8, 0.85], dtype=np.float32)},
         ]
@@ -930,11 +950,18 @@ class Score(FSMState):
             viz.append({"pos": corrected_marker_pos, "size": np.array([0.002, 0.15, 0.15]),
                         "rgba": np.array([0.0, 1.0, 0.4, 0.90], dtype=np.float32)})
         # While waiting for the ball: show a semi-transparent cyan sphere indicating
-        # the trigger circle radius around the pelvis.
+        # the trigger circle radius around the configured torso-frame offset.
         if self.wait_for_ball and not self._motion_triggered:
+            R_torso_yaw_w = _quat_to_matrix(
+                _yaw_quat(self.state_cmd.torso_quat_w.astype(np.float64))
+            )
+            trigger_offset_w = R_torso_yaw_w @ np.array(
+                [self.trigger_base_offset_xy[0], self.trigger_base_offset_xy[1], 0.0],
+                dtype=np.float64,
+            )
             trigger_center = np.array([
-                self.state_cmd.pelvis_pos_w[0],
-                self.state_cmd.pelvis_pos_w[1],
+                self.state_cmd.torso_pos_w[0] + trigger_offset_w[0],
+                self.state_cmd.torso_pos_w[1] + trigger_offset_w[1],
                 0.1,
             ], dtype=np.float64)
             viz.append({"pos": trigger_center, "radius": self.trigger_radius,

@@ -42,6 +42,38 @@ MUJOCO_TO_ISAAC = np.array([
 
 ISAAC_TO_MUJOCO = np.argsort(MUJOCO_TO_ISAAC).astype(np.int64)
 
+ISAAC_JOINT_NAMES = [
+    "left_hip_pitch_joint",
+    "right_hip_pitch_joint",
+    "waist_yaw_joint",
+    "left_hip_roll_joint",
+    "right_hip_roll_joint",
+    "waist_roll_joint",
+    "left_hip_yaw_joint",
+    "right_hip_yaw_joint",
+    "waist_pitch_joint",
+    "left_knee_joint",
+    "right_knee_joint",
+    "left_shoulder_pitch_joint",
+    "right_shoulder_pitch_joint",
+    "left_ankle_pitch_joint",
+    "right_ankle_pitch_joint",
+    "left_shoulder_roll_joint",
+    "right_shoulder_roll_joint",
+    "left_ankle_roll_joint",
+    "right_ankle_roll_joint",
+    "left_shoulder_yaw_joint",
+    "right_shoulder_yaw_joint",
+    "left_elbow_joint",
+    "right_elbow_joint",
+    "left_wrist_roll_joint",
+    "right_wrist_roll_joint",
+    "left_wrist_pitch_joint",
+    "right_wrist_pitch_joint",
+    "left_wrist_yaw_joint",
+    "right_wrist_yaw_joint",
+]
+
 # torso_link body index in Isaac Lab BFS NPZ (29 joints, base=0, torso_link=9)
 NPZ_ANCHOR_IDX = 9
 
@@ -130,6 +162,46 @@ def _quat_apply_inverse(q, v):
     return _quat_to_matrix(q).T @ v
 
 
+def _compile_action_clip_bounds(cfg, fallback_clip):
+    """Build per-joint raw action clip bounds in Isaac Lab joint order."""
+    fallback_clip = float(fallback_clip)
+    lo = np.full(29, -fallback_clip, dtype=np.float32)
+    hi = np.full(29, fallback_clip, dtype=np.float32)
+
+    clip_cfg = cfg.get("action_clip", None)
+    if clip_cfg is None:
+        return lo, hi
+
+    if not isinstance(clip_cfg, dict):
+        raise ValueError("action_clip must be a mapping from joint names/patterns to [min, max]")
+
+    matched = set()
+    for pattern, bounds in clip_cfg.items():
+        if not isinstance(bounds, (list, tuple)) or len(bounds) != 2:
+            raise ValueError(f"action_clip entry for '{pattern}' must be [min, max]")
+
+        lower, upper = float(bounds[0]), float(bounds[1])
+        if lower > upper:
+            raise ValueError(f"action_clip entry for '{pattern}' has min > max")
+
+        matched_this_pattern = False
+        for i, joint_name in enumerate(ISAAC_JOINT_NAMES):
+            if pattern == joint_name or (
+                pattern.startswith(".*_") and joint_name.endswith(pattern[3:])
+            ):
+                if i in matched:
+                    raise ValueError(f"action_clip patterns overlap at joint '{joint_name}'")
+                lo[i] = lower
+                hi[i] = upper
+                matched.add(i)
+                matched_this_pattern = True
+
+        if not matched_this_pattern:
+            raise ValueError(f"action_clip pattern '{pattern}' did not match any Score joint")
+
+    return lo, hi
+
+
 # ---------------------------------------------------------------------------
 # Policy
 # ---------------------------------------------------------------------------
@@ -190,7 +262,17 @@ class Score(FSMState):
         self.default_q_mj    = np.array(cfg["default_joint_pos"], dtype=np.float32)  # MuJoCo order
         self.action_scale_mj = np.array(cfg["action_scale"],      dtype=np.float32)  # MuJoCo order
         self.clip_actions      = float(cfg.get("clip_actions", 3.0))
+        self.action_clip_lo_il, self.action_clip_hi_il = _compile_action_clip_bounds(
+            cfg,
+            self.clip_actions,
+        )
         self.WARMUP_STEPS     = int(cfg.get("warmup_steps", 10))
+        self.warmup_target_q_mj = np.array(
+            cfg.get("warmup_target_joint_pos", self.motion_joint_pos[0][MUJOCO_TO_ISAAC]),
+            dtype=np.float32,
+        )
+        if self.warmup_target_q_mj.shape != (29,):
+            raise ValueError("warmup_target_joint_pos must contain 29 joint values in MuJoCo order")
         self.freeze_motion_at_first_frame = bool(cfg.get("freeze_motion_at_first_frame", False))
         self.zero_anchor_pos        = bool(cfg.get("zero_anchor_pos",        False))
         self.ball_as_anchor_pos     = bool(cfg.get("ball_as_anchor_pos",     False))
@@ -348,8 +430,7 @@ class Score(FSMState):
 
         # ---- Warm-up interpolation targets ----
         self._entry_q     = self.state_cmd.q.copy()
-        # motion_joint_pos is in Isaac Lab order; convert to MuJoCo for warmup
-        self._t0_target_q = self.motion_joint_pos[0][MUJOCO_TO_ISAAC].copy()
+        self._t0_target_q = self.warmup_target_q_mj.copy()
 
         # ---- Trigger gate ----
         # If wait_for_ball is on, hold at frame 0 until ball enters the circle.
@@ -889,7 +970,7 @@ class Score(FSMState):
             {"obs": obs[None, :]},
         )
         actions_il = out[0].squeeze(0)   # (29,) Isaac Lab order
-        actions_il = np.clip(actions_il, -self.clip_actions, self.clip_actions)
+        actions_il = np.clip(actions_il, self.action_clip_lo_il, self.action_clip_hi_il)
         self.last_action_il = actions_il.copy()
 
         # Isaac Lab order -> MuJoCo order, then scale + offset

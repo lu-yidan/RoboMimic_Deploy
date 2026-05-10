@@ -19,7 +19,8 @@
 |----|------|------|
 | `control_dt` | 必填 | 控制周期（秒），与部署循环一致；用于把 `motion_start_s` / `motion_end_s` 换成帧索引。 |
 | `warmup_steps` | `10` | 进入策略后，先用若干步在「当前关节姿态」与「参考动作第 0 帧姿态」之间插值，再开始跑网络。 |
-| `clip_actions` | `3.0` | 网络输出（Isaac 关节顺序）在送入反归一化前的限幅，防止发散。 |
+| `clip_actions` | `3.0` | 网络输出（Isaac 关节顺序）在送入反归一化前的 fallback 限幅，防止发散。 |
+| `action_clip` | 可选 | 逐关节 raw action 限幅，键为 Isaac 关节名或 `.*_joint_suffix` 模式；配置后覆盖对应关节的 `clip_actions` fallback。 |
 
 ---
 

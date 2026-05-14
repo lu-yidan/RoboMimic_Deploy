@@ -34,7 +34,10 @@ import pyrealsense2 as rs
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
-from unitree_hg.msg import LowState
+try:
+    from unitree_hg.msg import LowState
+except ModuleNotFoundError:
+    LowState = None
 
 sys.path.append(str(Path(__file__).parent.parent.parent.parent.absolute()))
 
@@ -77,6 +80,17 @@ _HSV_DILATION       = 17    # px — merges scattered color patches into one blo
 _HSV_MIN_R          = 4     # px — smallest allowed ball radius (~8m max range)
 _HSV_MAX_R          = 280   # px — largest allowed ball radius
 _HSV_FILL_MIN       = 0.05  # fraction of enclosing circle covered by original mask pixels
+
+# Bright-ball detection constants (for RealSense IR/greyscale UVC stream).
+_BRIGHT_MIN_R       = 12    # px
+_BRIGHT_MAX_R       = 180   # px
+_BRIGHT_MIN_FILL    = 0.18  # white pixels inside enclosing circle
+_BRIGHT_MIN_CIRC    = 0.35  # contour circularity
+_BRIGHT_ROI_Y_FRAC  = 0.45  # ignore bright wall/ceiling in the upper image
+_BRIGHT_MIN_ASPECT  = 0.65  # reject elongated bright blobs such as shoes
+_BRIGHT_MAX_ASPECT  = 1.55
+_BRIGHT_MAX_CENTER_OFFSET = 0.35  # contour centroid offset / enclosing radius
+_BRIGHT_RADIUS_CORRECTION = 6.0  # px added by the 13x13 dilation used to merge dots
 
 
 def _detect_ball_hsv(
@@ -144,6 +158,134 @@ def _detect_ball_hsv(
         return None, None, 0.0
     _, cx, cy, r_est = best
     return cx, cy, r_est
+
+
+def _detect_ball_bright(
+    color_bgr: np.ndarray,
+    threshold: int = 180,
+    min_r: int = _BRIGHT_MIN_R,
+    max_r: int = _BRIGHT_MAX_R,
+    min_fill: float = _BRIGHT_MIN_FILL,
+    min_circularity: float = _BRIGHT_MIN_CIRC,
+    roi_y_frac: float = _BRIGHT_ROI_Y_FRAC,
+    min_aspect: float = _BRIGHT_MIN_ASPECT,
+    max_aspect: float = _BRIGHT_MAX_ASPECT,
+    max_center_offset: float = _BRIGHT_MAX_CENTER_OFFSET,
+) -> tuple:
+    """Detect a bright, mostly round ball in the IR/greyscale camera stream.
+
+    This is intended for the D435I UVC stream, where the soccer ball appears as
+    a bright object but normal HSV color segmentation is meaningless.
+    Returns (cx_px, cy_px, r_px) or (None, None, 0.0).
+    """
+    candidates = _detect_ball_bright_candidates(
+        color_bgr,
+        threshold=threshold,
+        min_r=min_r,
+        max_r=max_r,
+        min_fill=min_fill,
+        min_circularity=min_circularity,
+        roi_y_frac=roi_y_frac,
+        min_aspect=min_aspect,
+        max_aspect=max_aspect,
+        max_center_offset=max_center_offset,
+    )
+    if not candidates:
+        return None, None, 0.0
+    best = candidates[0]
+    return best["cx"], best["cy"], best["r"]
+
+
+def _detect_ball_bright_candidates(
+    color_bgr: np.ndarray,
+    threshold: int = 180,
+    min_r: int = _BRIGHT_MIN_R,
+    max_r: int = _BRIGHT_MAX_R,
+    min_fill: float = _BRIGHT_MIN_FILL,
+    min_circularity: float = _BRIGHT_MIN_CIRC,
+    roi_y_frac: float = _BRIGHT_ROI_Y_FRAC,
+    min_aspect: float = _BRIGHT_MIN_ASPECT,
+    max_aspect: float = _BRIGHT_MAX_ASPECT,
+    max_center_offset: float = _BRIGHT_MAX_CENTER_OFFSET,
+) -> list:
+    """Return bright round candidates sorted by visual confidence."""
+    gray = cv2.cvtColor(color_bgr, cv2.COLOR_BGR2GRAY)
+    h, w = gray.shape
+    y_min = int(max(0.0, min(0.95, roi_y_frac)) * h)
+    roi = gray[y_min:, :]
+    if roi.size == 0:
+        return []
+
+    # Use a fixed lower bound but adapt upward gently in overexposed scenes.
+    # A high percentile makes dotted/reflective balls flicker, so cap its effect.
+    dyn_thr = int(max(threshold, min(np.percentile(roi, 90), threshold + 20)))
+    _, mask = cv2.threshold(roi, dyn_thr, 255, cv2.THRESH_BINARY)
+    k_clean = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+    k_merge = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (13, 13))
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, k_clean)
+    # Merge separate reflective dots on the ball into one candidate blob.
+    mask = cv2.dilate(mask, k_merge, iterations=1)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, k_merge)
+
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    candidates = []
+    for cnt in contours:
+        area = float(cv2.contourArea(cnt))
+        if area < 40:
+            continue
+        (cx, cy_roi), r = cv2.minEnclosingCircle(cnt)
+        r = float(r)
+        if not (min_r <= r <= max_r):
+            continue
+        perimeter = float(cv2.arcLength(cnt, True))
+        if perimeter <= 1e-6:
+            continue
+        circularity = 4.0 * np.pi * area / (perimeter * perimeter)
+        circle_area = np.pi * r * r
+        fill = area / circle_area if circle_area > 1e-6 else 0.0
+        if circularity < min_circularity or fill < min_fill:
+            continue
+
+        rect = cv2.minAreaRect(cnt)
+        rw, rh = rect[1]
+        if rw <= 1e-6 or rh <= 1e-6:
+            continue
+        aspect = min(rw, rh) / max(rw, rh)
+        if not (min_aspect <= aspect <= max_aspect):
+            continue
+
+        moments = cv2.moments(cnt)
+        if abs(moments["m00"]) <= 1e-6:
+            continue
+        centroid_x = float(moments["m10"] / moments["m00"])
+        centroid_y = float(moments["m01"] / moments["m00"])
+        center_offset = float(np.hypot(centroid_x - cx, centroid_y - cy_roi) / max(r, 1.0))
+        if center_offset > max_center_offset:
+            continue
+
+        cy = cy_roi + y_min
+        # Prefer solid, symmetric, round blobs in the lower image. White shoes
+        # tend to be elongated or have an off-centre contour centroid.
+        lower_bonus = 0.25 * (cy / max(1, h))
+        symmetry = 1.0 - center_offset
+        score = fill * 1.5 + circularity + aspect + symmetry + lower_bonus + min(r / 80.0, 1.0)
+        candidates.append(
+            {
+                "score": float(score),
+                "cx": int(cx),
+                "cy": int(cy),
+                "r": float(r),
+                "r_depth": float(max(min_r, r - _BRIGHT_RADIUS_CORRECTION)),
+                "fill": float(fill),
+                "circularity": float(circularity),
+                "aspect": float(aspect),
+                "center_offset": float(center_offset),
+                "area": float(area),
+            }
+        )
+
+    candidates.sort(key=lambda item: item["score"], reverse=True)
+    return candidates
 
 
 def _sample_ball_depth(
@@ -218,8 +360,13 @@ class _JointListener(Node):
         self.q_wy = 0.0
         self.q_wr = 0.0
         self.q_wp = 0.0
-        self.create_subscription(LowState, "/lowstate", self._cb, qos_profile_sensor_data)
-        self.get_logger().info("camera_apriltag_detector: subscribed to /lowstate")
+        if LowState is not None:
+            self.create_subscription(LowState, "/lowstate", self._cb, qos_profile_sensor_data)
+            self.get_logger().info("camera_apriltag_detector: subscribed to /lowstate")
+        else:
+            self.get_logger().warn(
+                "unitree_hg ROS msg not found; using default waist angles"
+            )
 
     def _cb(self, msg: LowState):
         q = [m.q for m in msg.motor_state]
@@ -280,6 +427,7 @@ def _start_camera_pipeline(args, with_depth: bool = False):
     devs = ctx.query_devices()
     all_sns = [d.get_info(rs.camera_info.serial_number) for d in devs]
     all_names = [d.get_info(rs.camera_info.name) for d in devs]
+    all_usb = []
 
     print("[INFO] Connected RealSense devices:")
     for idx, (d, sn, nm) in enumerate(zip(devs, all_sns, all_names)):
@@ -287,6 +435,7 @@ def _start_camera_pipeline(args, with_depth: bool = False):
             usb = d.get_info(rs.camera_info.usb_type_descriptor)
         except Exception:
             usb = "?"
+        all_usb.append(usb)
         usb_warn = "  ⚠ USB2 – frame drops likely!" if usb.startswith("2") else ""
         print(f"  [{idx}] serial={sn}  {nm}  USB {usb}{usb_warn}")
 
@@ -296,16 +445,17 @@ def _start_camera_pipeline(args, with_depth: bool = False):
         raise RuntimeError("No RealSense device found.")
 
     serial = args.camera_serial or all_sns[0]
-    # Print USB speed for the selected device so frame-drop issues are easy to spot.
-    sel_dev = next((d for d, s in zip(devs, all_sns) if s == serial), None)
-    if sel_dev is not None:
-        try:
-            usb = sel_dev.get_info(rs.camera_info.usb_type_descriptor)
-        except Exception:
-            usb = "?"
-        usb_ok = usb.startswith("3")
-        tag = "OK" if usb_ok else "WARN – frame drops likely if USB2!"
-        print(f"[INFO] CHEST AprilTag camera -> serial {serial}  USB {usb}  [{tag}]")
+    if serial not in all_sns:
+        raise RuntimeError(
+            f"Requested RealSense serial {serial} not found. Available: {all_sns}"
+        )
+    # Use cached enumeration data here. On some Jetson/librealsense builds,
+    # touching the same device handle again can raise "failed to set power state".
+    sel_idx = all_sns.index(serial)
+    usb = all_usb[sel_idx] if sel_idx < len(all_usb) else "?"
+    usb_ok = usb.startswith("3")
+    tag = "OK" if usb_ok else "WARN – frame drops likely if USB2!"
+    print(f"[INFO] CHEST AprilTag camera -> serial {serial}  USB {usb}  [{tag}]")
 
     pipeline = rs.pipeline()
     fps_tries = [30, 15, 10, 5]
@@ -356,7 +506,214 @@ def _start_camera_pipeline(args, with_depth: bool = False):
     raise RuntimeError(msg)
 
 
-def _start_mjpeg_server():
+def _start_depth_pipeline(args):
+    """Start a depth-only RealSense pipeline for V4L2 bright-ball validation."""
+    serial = args.camera_serial
+    if serial is None:
+        ctx = rs.context()
+        devs = ctx.query_devices()
+        if len(devs) == 0:
+            raise RuntimeError("No RealSense device found for depth stream.")
+        serial = devs[0].get_info(rs.camera_info.serial_number)
+
+    pipeline = rs.pipeline()
+    tries = [
+        (args.width, args.height, 30),
+        (848, 480, 30),
+        (640, 480, 30),
+        (848, 480, 15),
+    ]
+    last_err = None
+    for width, height, fps in tries:
+        cfg = rs.config()
+        cfg.enable_device(serial)
+        cfg.enable_stream(rs.stream.depth, width, height, rs.format.z16, fps)
+        try:
+            print(f"[INFO] Starting RealSense depth-only serial={serial} ({width}x{height}@{fps})...")
+            profile = pipeline.start(cfg)
+            pipeline.wait_for_frames(timeout_ms=5000)
+            depth_profile = profile.get_stream(rs.stream.depth).as_video_stream_profile()
+            depth_intrin = depth_profile.get_intrinsics()
+            depth_scale = profile.get_device().first_depth_sensor().get_depth_scale()
+            print(
+                f"[INFO] Depth-only pipeline OK ({depth_intrin.width}x{depth_intrin.height}) "
+                f"scale={depth_scale:.4f}"
+            )
+            return pipeline, profile, depth_intrin, depth_scale
+        except RuntimeError as exc:
+            last_err = exc
+            try:
+                pipeline.stop()
+            except Exception:
+                pass
+            print(f"[WARN] Depth-only stream failed: {exc}")
+    raise RuntimeError(f"Failed to start depth-only RealSense stream: {last_err!r}")
+
+
+def _start_v4l2_color_capture(args):
+    """Open the RealSense RGB UVC node via V4L2.
+
+    On this G1 Jetson, librealsense can return all-zero RGB frames while the
+    UVC RGB node is healthy. This fallback is for AprilTag-only mode.
+    """
+    from glob import glob
+    import subprocess
+
+    def _device_candidates():
+        devices = [args.v4l2_device]
+        devices.extend(sorted(glob("/dev/video*")))
+        out = []
+        seen = set()
+        for item in devices:
+            if item in seen:
+                continue
+            seen.add(item)
+            out.append(item)
+        return out
+
+    def _device_supports_fourcc(device):
+        requested = str(args.v4l2_fourcc).upper()
+        try:
+            proc = subprocess.run(
+                ["v4l2-ctl", "-d", device, "--list-formats-ext"],
+                text=True,
+                capture_output=True,
+                timeout=2,
+                check=False,
+            )
+        except Exception:
+            return True  # If v4l2-ctl is unavailable, let OpenCV try.
+        out = proc.stdout.upper()
+        if requested == "GREY":
+            return "'GREY'" in out or "8-BIT GREYSCALE" in out
+        if requested in ("YUYV", "UYVY"):
+            return f"'{requested}'" in out
+        return f"'{requested}'" in out
+
+    last_err = None
+    for device in _device_candidates():
+        if isinstance(device, str) and device.startswith("/dev/video") and not _device_supports_fourcc(device):
+            continue
+        try:
+            return _try_open_v4l2_color_device(args, device)
+        except RuntimeError as exc:
+            last_err = exc
+            print(f"[WARN] V4L2 color open failed on {device}: {exc}")
+    raise RuntimeError(f"Failed to open any V4L2 color camera. Last error: {last_err}")
+
+
+def _try_open_v4l2_color_device(args, device):
+    """Open one V4L2 color/IR device node."""
+    # OpenCV's V4L2 backend on Jetson can fail when passed "/dev/videoN" as a
+    # string even though the same node works by numeric index.
+    if isinstance(device, str) and device.startswith("/dev/video"):
+        try:
+            device_for_cv = int(device.removeprefix("/dev/video"))
+        except ValueError:
+            device_for_cv = device
+    else:
+        device_for_cv = device
+    cap = cv2.VideoCapture(device_for_cv, cv2.CAP_V4L2)
+    if not cap.isOpened():
+        raise RuntimeError("OpenCV VideoCapture failed")
+    fourcc = str(args.v4l2_fourcc).upper()
+    if len(fourcc) != 4:
+        raise RuntimeError(f"invalid --v4l2-fourcc '{args.v4l2_fourcc}'")
+    cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*fourcc))
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, args.width)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, args.height)
+    cap.set(cv2.CAP_PROP_FPS, args.v4l2_fps)
+    frame = None
+    for _ in range(10):
+        ok, candidate = cap.read()
+        if not ok or candidate is None:
+            time.sleep(0.03)
+            continue
+        if candidate.ndim == 2:
+            candidate = cv2.cvtColor(candidate, cv2.COLOR_GRAY2BGR)
+        if candidate.ndim != 3 or candidate.shape[2] != 3:
+            cap.release()
+            raise RuntimeError(
+                f"not a 3-channel color/IR frame: shape={getattr(candidate, 'shape', None)}"
+            )
+        if float(candidate.std()) >= 1.0:
+            frame = candidate
+            break
+        time.sleep(0.03)
+    if frame is None:
+        cap.release()
+        raise RuntimeError("only received empty/constant frames during warmup")
+    actual_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or args.width)
+    actual_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or args.height)
+    actual_fps = float(cap.get(cv2.CAP_PROP_FPS) or args.v4l2_fps)
+    print(
+        f"[INFO] V4L2 camera OK -> {device} fourcc={fourcc} "
+        f"({actual_w}x{actual_h} @ {actual_fps:.0f}fps)"
+    )
+    return cap, frame, actual_fps, device
+
+
+class _ApproxIntrinsics:
+    def __init__(self, width, height, fx, fy, ppx, ppy):
+        self.width = int(width)
+        self.height = int(height)
+        self.fx = float(fx)
+        self.fy = float(fy)
+        self.ppx = float(ppx)
+        self.ppy = float(ppy)
+        self.coeffs = [0.0, 0.0, 0.0, 0.0, 0.0]
+
+
+def _deproject_pixel_to_point(intrin, pixel, depth_m: float):
+    """Project pixel + depth to the optical camera frame.
+
+    pyrealsense2 only accepts native rs.intrinsics. V4L2 fallback uses
+    _ApproxIntrinsics, so keep the pinhole math in Python for both paths.
+    """
+    u, v = float(pixel[0]), float(pixel[1])
+    z = float(depth_m)
+    x = (u - intrin.ppx) / intrin.fx * z
+    y = (v - intrin.ppy) / intrin.fy * z
+    return [x, y, z]
+
+
+def _sample_depth_patch_for_color_pixel(
+    cx: int,
+    cy: int,
+    depth_arr: np.ndarray,
+    depth_scale: float,
+    color_intrin,
+    depth_intrin,
+    sample_r: int = _BALL_DEPTH_SAMPLE_R,
+) -> float:
+    """Approximate depth lookup for V4L2 IR/color pixel.
+
+    The V4L2 stream is an IR-like UVC node, not a librealsense color stream, so
+    exact color->depth extrinsics are unavailable. On D435I this IR stream is
+    close enough to depth image geometry for candidate validation; use normalized
+    pinhole coordinates to map into the depth image, then take a median patch.
+    """
+    if depth_arr is None or depth_intrin is None:
+        return 0.0
+    dh, dw = depth_arr.shape
+    ndcx = (float(cx) - color_intrin.ppx) / color_intrin.fx
+    ndcy = (float(cy) - color_intrin.ppy) / color_intrin.fy
+    dx = int(ndcx * depth_intrin.fx + depth_intrin.ppx + 0.5)
+    dy = int(ndcy * depth_intrin.fy + depth_intrin.ppy + 0.5)
+    dx = max(0, min(dw - 1, dx))
+    dy = max(0, min(dh - 1, dy))
+    patch = (
+        depth_arr[max(0, dy - sample_r):dy + sample_r + 1,
+                  max(0, dx - sample_r):dx + sample_r + 1]
+        .astype(np.float32) * depth_scale
+    )
+    valid_d = patch[(patch > _BALL_DEPTH_MIN) & (patch < _BALL_DEPTH_MAX)]
+    if len(valid_d) == 0:
+        return 0.0
+    return float(np.median(valid_d))
+
+
+def _start_mjpeg_server(port: int = 8080):
     import http.server
     import socketserver
 
@@ -396,7 +753,15 @@ def _start_mjpeg_server():
                 pass
 
     socketserver.ThreadingTCPServer.allow_reuse_address = True
-    httpd = socketserver.ThreadingTCPServer(("0.0.0.0", 8080), _MJPEGHandler)
+    try:
+        httpd = socketserver.ThreadingTCPServer(("0.0.0.0", port), _MJPEGHandler)
+    except OSError as exc:
+        if exc.errno == 98:
+            raise RuntimeError(
+                f"MJPEG port {port} is already in use. Stop the old preview process "
+                f"or restart with --show-port {port + 1}."
+            ) from exc
+        raise
     httpd.daemon_threads = True
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     return httpd, mjpeg_frame, mjpeg_lock
@@ -651,7 +1016,7 @@ def _make_yolo_ball_thread(
                 depth_m = depth_surface + _BALL_RADIUS if depth_surface > 0 else 0.0
 
                 if depth_m > 0:
-                    p_opt = rs.rs2_deproject_pixel_to_point(color_intrin, [cx, cy], depth_m)
+                    p_opt = _deproject_pixel_to_point(color_intrin, [cx, cy], depth_m)
                     p_cam = optical_to_body(p_opt)
 
                     if center_ema is None:
@@ -726,9 +1091,45 @@ def main():
         help="Print connected RealSense serials and exit.",
     )
     parser.add_argument(
+        "--color-backend",
+        choices=("realsense", "v4l2"),
+        default="realsense",
+        help="Color capture backend. Use v4l2 if librealsense RGB is black.",
+    )
+    parser.add_argument(
+        "--v4l2-device",
+        default="/dev/video2",
+        help="V4L2 RGB camera node used when --color-backend=v4l2.",
+    )
+    parser.add_argument(
+        "--v4l2-fps",
+        type=float,
+        default=15.0,
+        help="V4L2 RGB capture FPS used when --color-backend=v4l2.",
+    )
+    parser.add_argument(
+        "--v4l2-fourcc",
+        default="UYVY",
+        help="V4L2 pixel format, e.g. GREY for IR grayscale or UYVY/YUYV for color.",
+    )
+    parser.add_argument("--fx", type=float, default=None,
+                        help="Override color camera fx; useful with --color-backend=v4l2.")
+    parser.add_argument("--fy", type=float, default=None,
+                        help="Override color camera fy; useful with --color-backend=v4l2.")
+    parser.add_argument("--cx", type=float, default=None,
+                        help="Override color camera principal point x.")
+    parser.add_argument("--cy", type=float, default=None,
+                        help="Override color camera principal point y.")
+    parser.add_argument(
         "--show",
         action="store_true",
         help="Stream annotated video via MJPEG on port 8080.",
+    )
+    parser.add_argument(
+        "--show-port",
+        type=int,
+        default=8080,
+        help="MJPEG preview port used with --show (default: 8080).",
     )
     parser.add_argument(
         "--record",
@@ -816,6 +1217,38 @@ def main():
     parser.add_argument("--ball-hsv-show-mask", action="store_true",
                         help="Draw HSV mask outline on the MJPEG stream for tuning.")
 
+    # ── Bright ball detection for IR/greyscale V4L2 stream ────────────────
+    parser.add_argument(
+        "--ball-bright", action="store_true",
+        help="Detect the white soccer ball in the bright IR/greyscale stream. "
+             "Uses apparent ball radius for monocular distance and publishes to "
+             "--ball-bright-topic (default rt/cam_ball_state).",
+    )
+    parser.add_argument("--ball-bright-topic", default="rt/cam_ball_state")
+    parser.add_argument("--ball-bright-threshold", type=int, default=180,
+                        help="Minimum grayscale threshold for bright ball detection.")
+    parser.add_argument("--ball-bright-roi-y", type=float, default=_BRIGHT_ROI_Y_FRAC,
+                        help="Ignore image rows above this fraction (default 0.45).")
+    parser.add_argument("--ball-bright-min-depth", type=float, default=0.4,
+                        help="Reject apparent-radius depth below this value in metres.")
+    parser.add_argument("--ball-bright-max-depth", type=float, default=6.0,
+                        help="Reject apparent-radius depth above this value in metres.")
+    parser.add_argument("--ball-bright-max-abs-y", type=float, default=2.5,
+                        help="Reject pelvis-frame lateral ball positions outside +/- this value.")
+    parser.add_argument("--ball-bright-z-min", type=float, default=-1.4,
+                        help="Reject pelvis-frame ball z below this value.")
+    parser.add_argument("--ball-bright-z-max", type=float, default=0.3,
+                        help="Reject pelvis-frame ball z above this value.")
+    parser.add_argument("--ball-bright-radius-correction", type=float,
+                        default=_BRIGHT_RADIUS_CORRECTION,
+                        help="Pixels subtracted from the dilated bright blob radius before depth estimation.")
+    parser.add_argument("--ball-bright-use-depth", action="store_true",
+                        help="Use RealSense depth to verify physical radius and publish ball center.")
+    parser.add_argument("--ball-bright-radius-tol", type=float, default=0.08,
+                        help="Allowed physical-radius error in metres when --ball-bright-use-depth is active.")
+    parser.add_argument("--ball-bright-show-mask", action="store_true",
+                        help="Draw the detected bright-ball circle on the input frame.")
+
     parser.add_argument(
         "--chest-xyz",
         type=float,
@@ -857,22 +1290,55 @@ def main():
     # (several seconds), which overflows librealsense's frame pool → bad_alloc.
     rclpy.init()
     joint = _JointListener()
+    ros_stop = threading.Event()
 
     def _spin_loop():
-        while True:
-            rclpy.spin_once(joint, timeout_sec=0.0)
+        while not ros_stop.is_set() and rclpy.ok():
+            try:
+                rclpy.spin_once(joint, timeout_sec=0.0)
+            except Exception:
+                if not rclpy.ok() or ros_stop.is_set():
+                    break
+                raise
             time.sleep(0.02)
 
-    threading.Thread(target=_spin_loop, daemon=True).start()
+    ros_thread = threading.Thread(target=_spin_loop, daemon=True)
+    ros_thread.start()
     print("[INFO] ROS2 joint listener started (/lowstate)")
 
     dds = TargetStatePublisher(domain_id=0, topic_name=args.dds_topic)
     print(f"[INFO] DDS publisher ready on '{args.dds_topic}'")
 
+    if args.color_backend == "v4l2" and args.ball:
+        raise RuntimeError("--color-backend=v4l2 supports AprilTag/HSV only, not --ball depth mode.")
+
     # Depth stream only needed for YOLO mode; HSV mode uses visual depth (apparent ball size).
-    pipeline, profile = _start_camera_pipeline(args, with_depth=args.ball)
-    if args.list_cameras:
-        return
+    pipeline = None
+    profile = None
+    depth_pipeline = None
+    depth_profile = None
+    v4l2_cap = None
+    v4l2_first_frame = None
+    v4l2_device_active = None
+    if args.color_backend == "v4l2":
+        v4l2_cap, v4l2_first_frame, v4l2_fps, v4l2_device_active = _start_v4l2_color_capture(args)
+        if args.ball_bright and args.ball_bright_use_depth:
+            try:
+                depth_pipeline, depth_profile, depth_intrin, depth_scale = _start_depth_pipeline(args)
+            except RuntimeError as exc:
+                print(
+                    "[WARN] Depth validation unavailable while V4L2 color is active; "
+                    f"falling back to monocular bright-ball radius estimate. ({exc})"
+                )
+                depth_pipeline = None
+                depth_profile = None
+                depth_intrin = None
+                depth_scale = 1.0
+                args.ball_bright_use_depth = False
+    else:
+        pipeline, profile = _start_camera_pipeline(args, with_depth=args.ball)
+        if args.list_cameras:
+            return
 
     default_xyz, default_rpy = get_default_chest_extrinsics()
     chest_xyz = tuple(args.chest_xyz) if args.chest_xyz is not None else default_xyz
@@ -880,8 +1346,19 @@ def main():
     print(f"[INFO] Chest extrinsics xyz={tuple(round(v, 5) for v in chest_xyz)}")
     print(f"[INFO] Chest extrinsics rpy={tuple(round(v, 5) for v in chest_rpy)}")
 
-    color_profile = profile.get_stream(rs.stream.color).as_video_stream_profile()
-    color_intrin = color_profile.get_intrinsics()
+    if args.color_backend == "v4l2":
+        color_intrin = _ApproxIntrinsics(
+            args.width, args.height,
+            args.fx if args.fx is not None else args.width * 0.712,
+            args.fy if args.fy is not None else args.width * 0.712,
+            args.cx if args.cx is not None else args.width * 0.5,
+            args.cy if args.cy is not None else args.height * 0.5,
+        )
+        rec_fps = v4l2_fps
+    else:
+        color_profile = profile.get_stream(rs.stream.color).as_video_stream_profile()
+        color_intrin = color_profile.get_intrinsics()
+        rec_fps = color_profile.fps()
     camera_matrix = _build_camera_matrix(color_intrin)
     dist_coeffs = _build_dist_coeffs(color_intrin)
     print(f"[INFO] Color intrinsics fx={color_intrin.fx:.1f} fy={color_intrin.fy:.1f}")
@@ -894,10 +1371,11 @@ def main():
     # are atomic in CPython; stale-by-one-frame reads are acceptable).
     _ball_overlay = {"bbox": None, "pelvis": None, "depth": 0.0, "valid": False, "miss": 0}
 
-    # Depth stream resources (YOLO mode only; HSV mode uses visual depth).
-    depth_intrin        = None
+    # Depth stream resources. YOLO uses color+depth RealSense; V4L2 bright mode
+    # can optionally use a depth-only RealSense stream to validate physical radius.
+    depth_intrin        = locals().get("depth_intrin", None)
     color_to_depth_extr = None
-    depth_scale         = 1.0
+    depth_scale         = locals().get("depth_scale", 1.0)
     if args.ball:
         depth_profile       = profile.get_stream(rs.stream.depth).as_video_stream_profile()
         depth_intrin        = depth_profile.get_intrinsics()
@@ -939,9 +1417,20 @@ def main():
         print(f"[INFO] HSV ball detection active  H=[{args.ball_hsv_h_low},{args.ball_hsv_h_high}] "
               f"S≥{args.ball_hsv_s_min} V≥{args.ball_hsv_v_min} -> topic '{args.ball_hsv_topic}'")
 
+    # Bright IR/greyscale ball detection state (main-loop, no thread).
+    _bright_ball_dds = None
+    _bright_center_ema = None
+    _bright_miss_count = 0
+    if args.ball_bright:
+        _bright_ball_dds = BallStatePublisher(domain_id=0, topic_name=args.ball_bright_topic)
+        print(
+            f"[INFO] Bright ball detection active  threshold≥{args.ball_bright_threshold} "
+            f"roi_y≥{args.ball_bright_roi_y:.2f} -> topic '{args.ball_bright_topic}'"
+        )
+
     if args.show:
-        httpd, mjpeg_frame, mjpeg_lock = _start_mjpeg_server()
-        print(f"[INFO] MJPEG stream started -> open {_get_stream_url()}")
+        httpd, mjpeg_frame, mjpeg_lock = _start_mjpeg_server(args.show_port)
+        print(f"[INFO] MJPEG stream started -> open {_get_stream_url(args.show_port)}")
     else:
         httpd = None
         mjpeg_frame = None
@@ -949,7 +1438,6 @@ def main():
 
     video_writer = None
     if args.record:
-        rec_fps = color_profile.fps()
         rec_dir = Path(args.record_dir)
         rec_dir.mkdir(parents=True, exist_ok=True)
         ts = time.strftime("%Y%m%d_%H%M%S")
@@ -965,16 +1453,44 @@ def main():
     last_pelvis_xyz = None
     miss_count = 0
     fps = _FPS()
+    v4l2_fail_count = 0
 
     print("[INFO] Camera running. Press Ctrl+C to stop.")
     try:
         while True:
-            frames = pipeline.wait_for_frames()
-            color_frame = frames.get_color_frame()
-            if not color_frame:
-                continue
-
-            color = np.asanyarray(color_frame.get_data()).copy()
+            frames = None
+            if args.color_backend == "v4l2":
+                if v4l2_first_frame is not None:
+                    color = v4l2_first_frame
+                    v4l2_first_frame = None
+                else:
+                    ok, color = v4l2_cap.read()
+                    if not ok or color is None:
+                        v4l2_fail_count += 1
+                        if v4l2_fail_count >= 5:
+                            print(
+                                f"\n[WARN] V4L2 read timeout on {v4l2_device_active}; "
+                                "reopening/scanning video devices..."
+                            )
+                            try:
+                                v4l2_cap.release()
+                            except Exception:
+                                pass
+                            v4l2_cap, v4l2_first_frame, v4l2_fps, v4l2_device_active = (
+                                _start_v4l2_color_capture(args)
+                            )
+                            rec_fps = v4l2_fps
+                            v4l2_fail_count = 0
+                        continue
+                    if color.ndim == 2:
+                        color = cv2.cvtColor(color, cv2.COLOR_GRAY2BGR)
+                    v4l2_fail_count = 0
+            else:
+                frames = pipeline.wait_for_frames()
+                color_frame = frames.get_color_frame()
+                if not color_frame:
+                    continue
+                color = np.asanyarray(color_frame.get_data()).copy()
 
             # YOLO thread: pre-copy depth + downscaled color; release frame buffer ASAP.
             if args.ball:
@@ -984,6 +1500,20 @@ def main():
                 with _yolo_buf_lock:
                     _yolo_buf_frames[0] = (_color_small, _ball_depth_np)
                 _yolo_buf_event.set()
+
+            _bright_depth_np = None
+            if args.ball_bright and args.ball_bright_use_depth:
+                if depth_pipeline is not None:
+                    try:
+                        _depth_frames = depth_pipeline.wait_for_frames(timeout_ms=5)
+                    except RuntimeError:
+                        _depth_frames = None
+                    if _depth_frames is not None:
+                        _df = _depth_frames.get_depth_frame()
+                        _bright_depth_np = np.asanyarray(_df.get_data()).copy() if _df else None
+                elif frames is not None:
+                    _df = frames.get_depth_frame()
+                    _bright_depth_np = np.asanyarray(_df.get_data()).copy() if _df else None
 
             # HSV ball detection runs synchronously here — pure OpenCV, no thread needed.
             if args.ball_hsv:
@@ -999,7 +1529,7 @@ def main():
                                   if _hsv_r > 0 else 0.0)
 
                     if _hsv_depth > 0:
-                        _p_opt = rs.rs2_deproject_pixel_to_point(
+                        _p_opt = _deproject_pixel_to_point(
                             color_intrin, [_hsv_cx, _hsv_cy], _hsv_depth)
                         _p_cam = optical_to_body(_p_opt)
                         _p_arr = np.array(_p_cam, dtype=np.float32)
@@ -1060,6 +1590,134 @@ def main():
                             _ball_overlay["bbox"] = None
                         _hsv_ball_dds.publish(0.0, 0.0, 0.0,
                                               valid=False, source=SOURCE_NONE)
+
+            # Bright IR/greyscale ball detection: useful when V4L2 exposes an
+            # IR-like stream where the white ball is bright but color is absent.
+            if args.ball_bright:
+                _br_candidates = _detect_ball_bright_candidates(
+                    color,
+                    threshold=args.ball_bright_threshold,
+                    roi_y_frac=args.ball_bright_roi_y,
+                )
+                _br_selected = None
+                for _cand in _br_candidates:
+                    _surface_depth = 0.0
+                    _physical_radius = 0.0
+                    if args.ball_bright_use_depth:
+                        _surface_depth = _sample_depth_patch_for_color_pixel(
+                            _cand["cx"], _cand["cy"],
+                            _bright_depth_np, depth_scale,
+                            color_intrin, depth_intrin,
+                        )
+                        if _surface_depth <= 0:
+                            continue
+                        _physical_radius = float(_cand["r"] * _surface_depth / color_intrin.fx)
+                        if abs(_physical_radius - _BALL_RADIUS) > args.ball_bright_radius_tol:
+                            continue
+                        # Depth image measures the visible front surface. Publish ball center.
+                        _cand_depth = _surface_depth + _BALL_RADIUS
+                        _cand["r_depth"] = float(_cand["r"])
+                    else:
+                        _radius_for_depth = max(
+                            _BRIGHT_MIN_R,
+                            _cand["r"] - args.ball_bright_radius_correction,
+                        )
+                        _cand["r_depth"] = float(_radius_for_depth)
+                        _cand_depth = (color_intrin.fx * _BALL_RADIUS / _radius_for_depth
+                                       if _radius_for_depth > 0 else 0.0)
+                        _physical_radius = _BALL_RADIUS
+                    if not (args.ball_bright_min_depth <= _cand_depth <= args.ball_bright_max_depth):
+                        continue
+                    _cand_opt = _deproject_pixel_to_point(
+                        color_intrin, [_cand["cx"], _cand["cy"]], _cand_depth)
+                    _cand_cam = optical_to_body(_cand_opt)
+                    _cand_base = transform_point_chest_camera_to_base_with_extrinsics(
+                        np.array(_cand_cam, dtype=np.float32),
+                        joint.q_wy, joint.q_wr, joint.q_wp,
+                        chest_xyz=chest_xyz, chest_rpy=chest_rpy,
+                    )
+                    _cx_b, _cy_b, _cz_b = (float(_cand_base[0]),
+                                           float(_cand_base[1]),
+                                           float(_cand_base[2]))
+                    if abs(_cy_b) > args.ball_bright_max_abs_y:
+                        continue
+                    if not (args.ball_bright_z_min <= _cz_b <= args.ball_bright_z_max):
+                        continue
+                    _cand["depth"] = float(_cand_depth)
+                    _cand["surface_depth"] = float(_surface_depth)
+                    _cand["physical_radius"] = float(_physical_radius)
+                    _cand["p_cam"] = np.array(_cand_cam, dtype=np.float32)
+                    _cand["p_base"] = (_cx_b, _cy_b, _cz_b)
+                    _br_selected = _cand
+                    break
+
+                if _br_selected is not None:
+                    _bright_miss_count = 0
+                    _br_cx = int(_br_selected["cx"])
+                    _br_cy = int(_br_selected["cy"])
+                    _br_r = float(_br_selected["r"])
+                    _br_r_depth = float(_br_selected.get("r_depth", _br_r))
+                    _br_depth = float(_br_selected["depth"])
+                    _br_radius_m = float(_br_selected.get("physical_radius", _BALL_RADIUS))
+                    _p_arr = _br_selected["p_cam"]
+
+                    if _bright_center_ema is None:
+                        _bright_center_ema = _p_arr.copy()
+                    elif np.linalg.norm(_p_arr - _bright_center_ema) < _BALL_EMA_GATE:
+                        _bright_center_ema = (_BALL_EMA_ALPHA * _p_arr
+                                              + (1 - _BALL_EMA_ALPHA) * _bright_center_ema)
+                    else:
+                        _bright_center_ema = _p_arr.copy()
+
+                    _p_base = transform_point_chest_camera_to_base_with_extrinsics(
+                        _bright_center_ema,
+                        joint.q_wy, joint.q_wr, joint.q_wp,
+                        chest_xyz=chest_xyz, chest_rpy=chest_rpy,
+                    )
+                    _bbx, _bby, _bbz = (float(_p_base[0]),
+                                         float(_p_base[1]),
+                                         float(_p_base[2]))
+                    _bright_ball_dds.publish(_bbx, _bby, _bbz,
+                                             valid=True, source=SOURCE_CAM)
+
+                    _r_int = int(_br_r)
+                    _ball_overlay["bbox"]   = (_br_cx - _r_int, _br_cy - _r_int,
+                                               _br_cx + _r_int, _br_cy + _r_int)
+                    _ball_overlay["pelvis"] = (_bbx, _bby, _bbz)
+                    _ball_overlay["depth"]  = _br_depth
+                    _ball_overlay["valid"]  = True
+                    _ball_overlay["miss"]   = 0
+
+                    if args.ball_bright_show_mask:
+                        cv2.circle(color, (_br_cx, _br_cy), _r_int,
+                                   (0, 255, 180), 2)
+
+                    print(f"\r[BRGT] cam_ball "
+                          f"pelvis=({_bbx:+.3f},{_bby:+.3f},{_bbz:+.3f}) "
+                          f"center={_br_depth:.2f}m r={_br_r:.1f}/{_br_r_depth:.1f}px "
+                          f"R={_br_radius_m:.3f}m",
+                          end="", flush=True)
+                else:
+                    _bright_miss_count += 1
+                    if _bright_miss_count <= _BALL_COAST and _bright_center_ema is not None:
+                        _p_base = transform_point_chest_camera_to_base_with_extrinsics(
+                            _bright_center_ema,
+                            joint.q_wy, joint.q_wr, joint.q_wp,
+                            chest_xyz=chest_xyz, chest_rpy=chest_rpy,
+                        )
+                        _bbx, _bby, _bbz = (float(_p_base[0]),
+                                             float(_p_base[1]),
+                                             float(_p_base[2]))
+                        _bright_ball_dds.publish(_bbx, _bby, _bbz,
+                                                 valid=False, source=SOURCE_CAM)
+                        _ball_overlay["miss"]  = _bright_miss_count
+                        _ball_overlay["valid"] = False
+                    else:
+                        if _bright_miss_count > _BALL_COAST:
+                            _bright_center_ema = None
+                            _ball_overlay["bbox"] = None
+                        _bright_ball_dds.publish(0.0, 0.0, 0.0,
+                                                 valid=False, source=SOURCE_NONE)
 
             gray = cv2.cvtColor(color, cv2.COLOR_BGR2GRAY)
             # Downscale before ArUco to avoid bad_alloc in OpenCV C++ on Jetson
@@ -1292,8 +1950,8 @@ def main():
                     cv2.putText(vis, info, (10, vis.shape[0] - 12),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 0), 2)
 
-                # Draw ball detection overlay (from YOLO thread, if --ball active)
-                if args.ball:
+                # Draw ball detection overlay (YOLO, HSV, or bright-ball mode).
+                if args.ball or args.ball_hsv or args.ball_bright:
                     bo = _ball_overlay
                     if bo["bbox"] is not None:
                         bx1, by1, bx2, by2 = bo["bbox"]
@@ -1330,13 +1988,22 @@ def main():
     except KeyboardInterrupt:
         print("\n[INFO] Interrupted.")
     finally:
-        pipeline.stop()
+        ros_stop.set()
+        if pipeline is not None:
+            pipeline.stop()
+        if depth_pipeline is not None:
+            depth_pipeline.stop()
+        if v4l2_cap is not None:
+            v4l2_cap.release()
         if video_writer is not None:
             video_writer.release()
             print(f"[INFO] Recording saved.")
         if httpd is not None:
             httpd.shutdown()
-        rclpy.shutdown()
+        if ros_thread.is_alive():
+            ros_thread.join(timeout=1.0)
+        if rclpy.ok():
+            rclpy.shutdown()
         print("[INFO] Done.")
 
 

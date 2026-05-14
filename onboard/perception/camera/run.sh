@@ -21,15 +21,17 @@ echo "123" | sudo -S nvpmodel -m 0  2>/dev/null || true
 echo "123" | sudo -S jetson_clocks  2>/dev/null || true
 
 # ── 2. 加载 TensorRT 所需的 libnvcudla ──────────────────
-#    TRT 8.5.2 on JetPack 5.1.2 needs CUDA 12.1 compat stub
-export LD_LIBRARY_PATH=/usr/local/cuda-12.1/compat:${LD_LIBRARY_PATH:-}
-
-# ── 3. 让 conda Python 能 import tensorrt ───────────────
-export PYTHONPATH=/usr/lib/python3.8/dist-packages:${PYTHONPATH:-}
+#    Also sets JetPack 6 TensorRT Python path and CycloneDDS 0.10.5.
+source onboard/perception/setup_runtime_env.sh
 
 # ── 4. ROS2 + livox 环境 ─────────────────────────────────
-source /opt/ros/foxy/setup.bash
+source /opt/ros/foxy/setup.bash 2>/dev/null || true
 source ~/yixuan/yichao-deploy/ws_livox/install/setup.sh 2>/dev/null || true
+
+source /home/unitree/miniconda3/etc/profile.d/conda.sh 2>/dev/null || true
+
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+export CYCLONEDDS_URI='<CycloneDDS><Domain><General><Interfaces><NetworkInterface name="eth0" priority="default" multicast="default" /></Interfaces></General></Domain></CycloneDDS>'
 
 # ── 5. 启动 ───────────────────────────────────────────────
 conda run -n robomimic --no-capture-output \

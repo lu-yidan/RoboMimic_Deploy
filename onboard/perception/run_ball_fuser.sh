@@ -16,7 +16,9 @@
 set -e
 cd "$(dirname "$0")/../.."
 
-source /opt/ros/foxy/setup.bash
+source onboard/perception/setup_runtime_env.sh
+
+source /opt/ros/foxy/setup.bash 2>/dev/null || true
 source ~/yixuan/yichao-deploy/ws_livox/install/setup.sh 2>/dev/null || true
 
 source /home/unitree/miniconda3/etc/profile.d/conda.sh 2>/dev/null || true

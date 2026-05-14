@@ -19,11 +19,11 @@ echo "[run_yolo_web.sh] Unlocking Jetson clocks..."
 echo "123" | sudo -S nvpmodel -m 0 2>/dev/null || true
 echo "123" | sudo -S jetson_clocks 2>/dev/null || true
 
-export LD_LIBRARY_PATH=/usr/local/cuda-12.1/compat:${LD_LIBRARY_PATH:-}
-export PYTHONPATH=/usr/lib/python3.8/dist-packages:${PYTHONPATH:-}
+source onboard/perception/setup_runtime_env.sh
 
-source /opt/ros/foxy/setup.bash
+source /opt/ros/foxy/setup.bash 2>/dev/null || true
 source ~/yixuan/yichao-deploy/ws_livox/install/setup.sh 2>/dev/null || true
+source /home/unitree/miniconda3/etc/profile.d/conda.sh 2>/dev/null || true
 
 conda run -n robomimic --no-capture-output \
     python -u onboard/perception/camera/debug/yolo_web_viewer.py "$@"

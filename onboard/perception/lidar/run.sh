@@ -12,14 +12,49 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
 # ── ROS2 + Livox 环境 ────────────────────────────────────────────────────────
-source /opt/ros/foxy/setup.bash
-source ~/yixuan/yichao-deploy/ws_livox/install/setup.sh 2>/dev/null || true
+ROS_DISTRO="${ROS_DISTRO:-humble}"
+if [[ -f "/opt/ros/${ROS_DISTRO}/setup.bash" ]]; then
+    source "/opt/ros/${ROS_DISTRO}/setup.bash"
+elif [[ -f /opt/ros/foxy/setup.bash ]]; then
+    source /opt/ros/foxy/setup.bash
+elif [[ -f /opt/ros/humble/setup.bash ]]; then
+    source /opt/ros/humble/setup.bash
+else
+    echo "[run_lidar] ERROR: ROS2 setup.bash not found under /opt/ros"
+    exit 1
+fi
+
+LIVOX_WS="${LIVOX_WS:-$HOME/ws_livox}"
+if [[ -f "$LIVOX_WS/install/setup.bash" ]]; then
+    source "$LIVOX_WS/install/setup.bash"
+else
+    echo "[run_lidar] WARN: Livox workspace setup not found: $LIVOX_WS/install/setup.bash"
+fi
+
+LIVOX_CONFIG="${LIVOX_CONFIG:-$LIVOX_WS/src/livox_ros_driver2/config/MID360_config.json}"
+if [[ ! -f "$LIVOX_CONFIG" ]]; then
+    echo "[run_lidar] ERROR: MID360 config not found: $LIVOX_CONFIG"
+    exit 1
+fi
+
+LIVOX_SDK2_LIB="${LIVOX_SDK2_LIB:-$HOME/Livox-SDK2/build/sdk_core}"
+PY_CYCLONEDDS_LIB="${PY_CYCLONEDDS_LIB:-$HOME/share/opt/cyclonedds-0.10.5/lib}"
+_extra_ld_paths=()
+[[ -d "$PY_CYCLONEDDS_LIB" ]] && _extra_ld_paths+=("$PY_CYCLONEDDS_LIB")
+[[ -d "$LIVOX_SDK2_LIB" ]] && _extra_ld_paths+=("$LIVOX_SDK2_LIB")
+if (( ${#_extra_ld_paths[@]} )); then
+    export LD_LIBRARY_PATH="$(IFS=:; echo "${_extra_ld_paths[*]}"):${LD_LIBRARY_PATH:-}"
+fi
+unset _extra_ld_paths
 
 source /home/unitree/miniconda3/etc/profile.d/conda.sh 2>/dev/null || true
 
 # Use CycloneDDS — Unitree's intended RMW (FastDDS OOM-kills on 16 GB Jetson).
 export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
-export CYCLONEDDS_URI='<CycloneDDS><Domain><General><Interfaces><NetworkInterface name="eth0" priority="default" multicast="default" /></Interfaces></General></Domain></CycloneDDS>'
+CYCLONEDDS_IFACE="${CYCLONEDDS_IFACE:-$(ip -o -4 addr show scope global 2>/dev/null | awk '/192\.168\.123\./ {print $2; exit}')}"
+CYCLONEDDS_IFACE="${CYCLONEDDS_IFACE:-enP8p1s0}"
+export CYCLONEDDS_URI="<CycloneDDS><Domain><General><Interfaces><NetworkInterface name=\"$CYCLONEDDS_IFACE\" priority=\"default\" multicast=\"default\" /></Interfaces></General></Domain></CycloneDDS>"
+echo "[run_lidar] CycloneDDS interface: $CYCLONEDDS_IFACE"
 
 cd "$ROOT_DIR"
 
@@ -45,7 +80,7 @@ ros2 run livox_ros_driver2 livox_ros_driver2_node \
     -p publish_freq:=10.0 \
     -p output_data_type:=0 \
     -p frame_id:=livox_frame \
-    -p user_config_path:=/home/unitree/yixuan/yichao-deploy/ws_livox/src/livox_ros_driver2/config/MID360_config.json \
+    -p user_config_path:="$LIVOX_CONFIG" \
     -p cmdline_input_bd_code:=livox0000000001 > /tmp/livox_driver.log 2>&1 &
 sleep 3
 echo "[run_lidar] Livox driver started"
@@ -54,5 +89,5 @@ echo "[run_lidar] Livox driver started"
 echo "[run_lidar] Starting lidar ball detector..."
 echo "──────────────────────────────────────────────────────────────────────────"
 
-conda run -n robomimic --no-capture-output \
-    python -u onboard/perception/lidar/ball_detector.py --msg-type pc2 "$@"
+PYTHON_BIN="${PYTHON_BIN:-/home/unitree/miniconda3/envs/robomimic/bin/python}"
+"$PYTHON_BIN" -u onboard/perception/lidar/ball_detector.py --msg-type pc2 "$@"

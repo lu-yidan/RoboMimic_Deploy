@@ -9,7 +9,7 @@ dist/
 build/
 .eggs/
 bridge/generated/
-
+.tmp_pkg/
 # Virtual environments
 .venv/
 venv/
@@ -44,3 +44,9 @@ Thumbs.db
 *.pt
 *.onnx
 *.engine
+
+*.mp4
+
+.tmp_pkg/
+recordings/*.mp4
+*.mp4

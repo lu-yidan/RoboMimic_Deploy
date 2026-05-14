@@ -34,7 +34,10 @@ from rclpy.qos import qos_profile_sensor_data
 
 from livox_ros_driver2.msg import CustomMsg
 from sensor_msgs.msg import PointCloud2, PointField
-from unitree_hg.msg import LowState
+try:
+    from unitree_hg.msg import LowState
+except ModuleNotFoundError:
+    LowState = None
 
 from onboard.perception.lidar.center_kalman_filter import CenterKalmanFilter
 from onboard.perception.lidar.mid360_to_base import compute_mid360_to_base_transform
@@ -184,8 +187,13 @@ class BallDetector(Node):
         else:
             self.create_subscription(CustomMsg, "/livox/lidar",
                                      self.cb_lidar, 5)
-        self.create_subscription(LowState, "/lowstate",
-                                 self.cb_lowstate, qos_profile_sensor_data)
+        if LowState is not None:
+            self.create_subscription(LowState, "/lowstate",
+                                    self.cb_lowstate, qos_profile_sensor_data)
+        else:
+            self.get_logger().warn(
+                "unitree_hg ROS msg not found; using default waist/head angles"
+            )
 
         # ---- Worker thread: heavy processing decoupled from ROS callback ----
         # cb_lidar() just swaps the message reference (O(1), non-blocking).
@@ -253,6 +261,8 @@ class BallDetector(Node):
             with self._buf_lock:
                 msg       = self._buf_msg
                 recv_wall = self._buf_recv_wall
+            if msg is None:
+                continue
 
             t0    = time.perf_counter()
             stamp = msg.header.stamp

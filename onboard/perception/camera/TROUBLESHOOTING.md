@@ -7,6 +7,460 @@
 
 ---
 
+## 0. 现场速查手册（AprilTag + IR 白球）
+
+这一节记录 2026-05-14 在 G1 机载电脑上调 chest camera 的实际处理流程。现场先看这里，后面章节是历史性能调优细节。
+
+### 0.1 当前推荐启动命令
+
+```bash
+pkill -f "onboard/perception/camera/apriltag_detector.py" 2>/dev/null || true
+./onboard/perception/camera/run_apriltag_gray_ball.sh --show
+```
+
+默认脚本会做这些事：
+
+- 使用 V4L2 读取 RealSense 的 IR/灰度 UVC 流：`/dev/video3` + `GREY`
+- AprilTag 发布到 `rt/target_state`
+- 白球 bright detector 发布到 `rt/cam_ball_state`
+- 浏览器预览端口：`8080`
+- 默认四 tag 板：id `0/1/2/3`
+
+如果需要彩色画面：
+
+```bash
+./onboard/perception/camera/run_apriltag_color_ball.sh --show
+```
+
+两个接口不要混用：
+
+- 灰度/IR：`run_apriltag_gray_ball.sh`，默认 `/dev/video3` + `GREY`
+- 彩色：`run_apriltag_color_ball.sh`，默认 `/dev/video4` + `YUYV`
+
+打开预览：
+
+```text
+http://192.168.123.164:8080/stream
+```
+
+如果端口被占用：
+
+```bash
+./onboard/perception/camera/run_apriltag_target.sh --show --show-port 8081
+```
+
+### 0.2 现在这路相机到底是什么模式？
+
+灰度入口看到的是 RealSense 的 **IR/灰度 UVC 流**；彩色入口看到的是普通 V4L2 彩色流。
+
+表现：
+
+- 画面是灰度/黑白
+- AprilTag 对比度很好，识别稳定
+- 白色足球、反光点阵球会很亮
+- HSV 颜色检测没有意义，因为没有真实颜色
+
+两条入口当前都使用 `--ball-bright`，不是 YOLO，也不是 HSV。灰度入口通常对白球/反光点阵球更敏感；彩色入口方便人工观察。
+
+### 0.3 黑屏但程序不崩
+
+现象：
+
+```text
+RealSense pipeline OK
+MJPEG 正常打开
+画面全黑
+```
+
+原因：`librealsense` 的 RGB color stream 在这台 Jetson/G1 上可能返回黑帧。
+
+解决：改用 V4L2 UVC 节点。
+
+检查节点：
+
+```bash
+v4l2-ctl --list-devices
+for d in /dev/video*; do
+  echo "--- $d"
+  v4l2-ctl -d "$d" --list-formats-ext 2>/dev/null | sed -n '1,60p'
+done
+```
+
+常见可用结果：
+
+- `/dev/video0`：Depth，格式 `Z16`
+- `/dev/video3`：IR/灰度 UVC，格式 `GREY/UYVY`
+- `/dev/video4`：彩色 UVC，格式 `YUYV`
+
+脚本默认：
+
+```bash
+--color-backend v4l2 --v4l2-device /dev/video3 --v4l2-fourcc GREY --v4l2-fps 30
+```
+
+OpenCV 在 Jetson 上用字符串 `/dev/video2` 可能打不开，所以代码内部会把它转成数字 index `2`。
+
+### 0.4 `failed to set power state`
+
+常见栈：
+
+```text
+RuntimeError: failed to set power state
+```
+
+原因通常是：
+
+- 同一个 RealSense 被旧进程占用
+- 或者重复访问 RealSense device handle 时 librealsense/USB 状态不稳定
+
+先清旧进程：
+
+```bash
+pkill -f "apriltag_detector.py" 2>/dev/null || true
+pkill -f "ball_detector.py" 2>/dev/null || true
+```
+
+确认相机还在：
+
+```bash
+lsusb | grep -i RealSense
+```
+
+代码中已经避免在选择 serial 后重复 `get_info()`，减少这个问题。
+
+### 0.5 `unitree_hg ROS msg not found`
+
+现象：
+
+```text
+unitree_hg ROS msg not found; using default waist angles
+```
+
+原因：机器上只有 Livox workspace，没有 Unitree G1/H1 的 ROS2 message workspace。
+
+已采用修复方式：
+
+```bash
+git clone --depth 1 https://github.com/unitreerobotics/unitree_ros2.git ~/unitree_ros2
+echo "123" | sudo -S apt install -y ros-humble-rosidl-generator-dds-idl libyaml-cpp-dev
+cd ~/unitree_ros2/cyclonedds_ws
+source /opt/ros/humble/setup.bash
+colcon build --symlink-install --packages-select unitree_hg \
+  --cmake-args -DPython3_EXECUTABLE=/usr/bin/python3 -DPYTHON_EXECUTABLE=/usr/bin/python3
+```
+
+验证：
+
+```bash
+source /opt/ros/humble/setup.bash
+source ~/unitree_ros2/cyclonedds_ws/install/setup.bash
+/home/unitree/miniconda3/envs/robomimic/bin/python -c \
+  "from unitree_hg.msg import LowState; print('unitree_hg OK')"
+```
+
+`run_apriltag_target.sh` 已默认 source：
+
+```bash
+~/unitree_ros2/cyclonedds_ws/install/setup.bash
+```
+
+### 0.6 DDS / ROS2 网络注意事项
+
+脚本默认使用 CycloneDDS：
+
+```bash
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+```
+
+接口自动优先选 `192.168.123.*`：
+
+```bash
+CYCLONEDDS_IFACE="$(ip -o -4 addr show scope global | awk '/192\.168\.123\./ {print $2; exit}')"
+```
+
+如果日志出现：
+
+```text
+selected interface "lo" is not multicast-capable
+```
+
+说明当前没找到机器人网段接口。检查：
+
+```bash
+ip -o -4 addr show scope global
+```
+
+必要时手动指定：
+
+```bash
+CYCLONEDDS_IFACE=enP8p1s0 ./onboard/perception/camera/run_apriltag_target.sh --show
+```
+
+### 0.7 8080 端口占用
+
+现象：
+
+```text
+OSError: [Errno 98] Address already in use
+```
+
+查占用：
+
+```bash
+ss -ltnp 'sport = :8080'
+pgrep -af "apriltag_detector.py"
+```
+
+解决：
+
+```bash
+pkill -f "onboard/perception/camera/apriltag_detector.py"
+```
+
+或者换端口：
+
+```bash
+./onboard/perception/camera/run_apriltag_target.sh --show --show-port 8081
+```
+
+### 0.8 白球 bright detector
+
+当前有两个稳定入口：
+
+```bash
+# 灰度 / IR，适合 AprilTag + 白球/反光点阵球
+./onboard/perception/camera/run_apriltag_gray_ball.sh --show
+
+# 彩色，适合人工观察正常 RGB-like 画面
+./onboard/perception/camera/run_apriltag_color_ball.sh --show
+```
+
+截图参考：
+
+- 灰度 / IR 画面：`/home/unitree/.cursor/projects/home-unitree-yichao-RoboMimic-Deploy/assets/image-3632c5e3-9bd8-44fa-bbfc-c5fb0d7e7193.png`
+- 彩色 V4L2 画面：`/home/unitree/.cursor/projects/home-unitree-yichao-RoboMimic-Deploy/assets/image-b7b42a8f-1fa4-45a6-965b-3a61cd282251.png`
+
+灰度入口默认：
+
+```bash
+--color-backend v4l2
+--v4l2-device /dev/video3
+--v4l2-fourcc GREY
+--ball-bright
+--ball-bright-threshold 180
+```
+
+彩色入口默认：
+
+```bash
+--color-backend v4l2
+--v4l2-device /dev/video4
+--v4l2-fourcc YUYV
+--ball-bright
+--ball-bright-threshold 180
+```
+
+代码里 V4L2 fallback 会按当前 `--v4l2-fourcc` 过滤节点：
+
+- 灰度入口只找支持 `GREY` 的节点，不会跳到彩色节点
+- 彩色入口只找支持 `YUYV` 的节点，不会跳到 depth/灰度节点
+
+原理：
+
+1. 在 IR/灰度图下半部分找亮斑
+2. 对亮点做形态学合并，适配反光点阵球
+3. 检查候选是否像球：
+   - 外接圆半径范围
+   - contour circularity
+   - minAreaRect 宽高比
+   - 轮廓质心是否接近圆心
+4. 使用已知球半径 `0.115 m` 做单目距离估计和候选几何过滤：
+
+```text
+depth = fx * 0.115 / r_px
+```
+
+5. 转到 pelvis 坐标后继续过滤：
+   - 深度范围
+   - 左右范围
+   - 高度范围
+
+默认发布：
+
+```text
+rt/cam_ball_state
+```
+
+### 0.9 关于 depth 验证的结论
+
+我们尝试过在 V4L2 灰度画面旁边再开一个 RealSense depth-only pipeline，用真实 depth 验证：
+
+```text
+R_measured = r_px * depth_surface / fx
+```
+
+理想逻辑是：
+
+- bright detector 只给候选圆
+- depth patch 给候选的真实表面距离
+- 如果 `R_measured` 接近 `0.115m`，才认为是球
+- 发布球心：`depth_center = depth_surface + 0.115`
+
+但实测这台 G1 + D435I 上 **V4L2 UVC 和 librealsense depth-only 不能稳定同时打开同一台相机**：
+
+```text
+Starting RealSense depth-only ...
+Frame didn't arrive within 5000
+Failed to resolve the request ...
+VIDEOIO(V4L2): failed VIDIOC_REQBUFS: errno=19 (No such device)
+```
+
+后果：
+
+- depth-only 启动失败
+- `/dev/video*` 会重新枚举
+- 正在工作的灰度 V4L2 节点可能消失
+- 预览从灰度变黑或跳到彩色节点
+
+最终决策：
+
+- 默认 **不启用** `--ball-bright-use-depth`
+- 保留该参数作为实验接口
+- 现场稳定方案使用灰度/彩色 V4L2 + 单目球半径估计
+
+如果以后接入第二个相机，或确认 depth/color 可同步，再考虑重新启用 depth 验证。
+
+### 0.10 白球识别率/误检调参
+
+如果经常丢球，降低阈值：
+
+```bash
+./onboard/perception/camera/run_apriltag_gray_ball.sh --show --ball-bright-threshold 165
+```
+
+如果误检白鞋、墙面、反光物，提高阈值：
+
+```bash
+./onboard/perception/camera/run_apriltag_gray_ball.sh --show --ball-bright-threshold 200
+```
+
+如果白鞋仍被识别成球，优先调这些参数：
+
+```bash
+--ball-bright-z-min -1.2
+--ball-bright-z-max 0.1
+--ball-bright-max-abs-y 2.0
+```
+
+判断逻辑：
+
+- 鞋通常是长条/不对称亮斑，会被宽高比和质心偏移过滤
+- 球应该接近圆形，`aspect≈1`，`center_offset≈0`
+- 如果鞋尖刚好很圆，只能依赖位置、高度、时序稳定性进一步过滤
+
+半径估计注意：
+
+为了合并反光点阵球，算法会对亮点做 dilation，外接圆半径可能偏大，导致单目深度偏近。代码提供：
+
+```bash
+--ball-bright-radius-correction 4
+```
+
+含义：深度估计时使用 `r_depth = r_px - correction`。如果球的 x 明显比 AprilTag 近，增大 correction；如果球比实际偏远，减小 correction。
+
+### 0.11 `rs2_deproject_pixel_to_point` 类型错误
+
+现象：
+
+```text
+TypeError: rs2_deproject_pixel_to_point(): incompatible function arguments
+Invoked with: <__main__._ApproxIntrinsics object ...>
+```
+
+原因：V4L2 模式使用 `_ApproxIntrinsics`，不是 RealSense 原生 `rs.intrinsics`。
+
+修复：代码里已改成纯 Python pinhole 反投影：
+
+```text
+x = (u - ppx) / fx * depth
+y = (v - ppy) / fy * depth
+z = depth
+```
+
+### 0.12 RealSense USB buffer
+
+如果遇到相机 `bad_alloc`、帧启动失败、流不稳定，检查：
+
+```bash
+cat /sys/module/usbcore/parameters/usbfs_memory_mb
+```
+
+推荐：
+
+```bash
+echo 256 | sudo tee /sys/module/usbcore/parameters/usbfs_memory_mb
+```
+
+不要盲目设成 1000MB，Jetson 16GB 上可能和 DDS 共享内存一起造成系统不稳定。
+
+### 0.13 V4L2 节点和格式
+
+常见枚举：
+
+```bash
+v4l2-ctl --list-devices
+for d in /dev/video*; do
+  echo "--- $d"
+  v4l2-ctl -d "$d" --list-formats-ext 2>/dev/null | sed -n '1,80p'
+done
+```
+
+当前观察到的节点：
+
+- `/dev/video0`：depth，`Z16`
+- `/dev/video3`：IR/灰度，`GREY/UYVY`
+- `/dev/video4`：彩色，`YUYV`
+
+`/dev/video3 + GREY` 第一帧可能是全黑，代码里已做 warmup，最多丢弃 10 帧，直到拿到非空帧。
+
+如果 V4L2 运行中出现：
+
+```text
+select() timeout
+```
+
+代码会连续失败 5 次后释放当前 cap，重新扫描同类 FOURCC 节点并继续。
+
+### 0.14 常用确认命令
+
+```bash
+# 相机进程
+pgrep -af "apriltag_detector.py|ball_detector.py|sensor_dashboard.py"
+
+# 相机 USB
+lsusb | grep -i RealSense
+
+# V4L2 节点
+v4l2-ctl --list-devices
+
+# 8080 预览端口
+ss -ltnp 'sport = :8080'
+
+# Unitree ROS2 msg
+source /opt/ros/humble/setup.bash
+source ~/unitree_ros2/cyclonedds_ws/install/setup.bash
+/home/unitree/miniconda3/envs/robomimic/bin/python -c \
+  "from unitree_hg.msg import LowState; print('OK')"
+
+# Python 语法检查
+python -m py_compile onboard/perception/camera/apriltag_detector.py
+bash -n onboard/perception/camera/run_apriltag_target.sh
+bash -n onboard/perception/camera/run_apriltag_gray_ball.sh
+bash -n onboard/perception/camera/run_apriltag_color_ball.sh
+```
+
+---
+
 ## 目录
 
 1. [硬件与环境配置](#一硬件与环境配置)

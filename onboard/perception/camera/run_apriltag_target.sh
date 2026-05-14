@@ -104,12 +104,12 @@ cmd=(
 
 if [[ "$use_default_camera_args" -eq 1 ]]; then
     cmd+=(
+    --camera-profile gray-ir
     --color-backend v4l2
     --v4l2-device /dev/video3
     --v4l2-fourcc GREY
     --v4l2-fps 30
     --ball-bright
-    --ball-bright-threshold 180
     )
 fi
 

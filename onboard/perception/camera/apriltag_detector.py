@@ -93,6 +93,96 @@ _BRIGHT_MAX_CENTER_OFFSET = 0.35  # contour centroid offset / enclosing radius
 _BRIGHT_RADIUS_CORRECTION = 6.0  # px added by the 13x13 dilation used to merge dots
 
 
+_CAMERA_PROFILES = {
+    # D435 IR/greyscale UVC stream. Its FOV is substantially wider than the
+    # color imager, so sharing the color focal length biases AprilTag pose and
+    # monocular ball depth.
+    "gray-ir": {
+        "intrinsics": {
+            "fx_width_ratio": 0.527,
+            "fy_width_ratio": 0.508,
+            "cx_width_ratio": 0.500,
+            "cy_height_ratio": 0.500,
+        },
+        "chest_xyz_delta": (0.0, 0.020, 0.0),
+        "chest_rpy_delta": (0.0, 0.0, 0.0),
+        "bright": {
+            "threshold": 175,
+            "roi_y": 0.42,
+            "min_depth": 0.35,
+            "max_depth": 6.0,
+            "max_abs_y": 2.2,
+            "z_min": -1.35,
+            "z_max": 0.25,
+            "radius_correction": 6.0,
+            "min_fill": 0.16,
+            "min_circularity": 0.32,
+            "min_aspect": 0.68,
+            "max_aspect": 1.47,
+            "max_center_offset": 0.32,
+        },
+    },
+    # V4L2 YUYV color stream. Keep the previous focal-length approximation,
+    # but separate it from the IR profile and use stricter bright-blob filters.
+    "color-v4l2": {
+        "intrinsics": {
+            "fx_width_ratio": 0.712,
+            "fy_width_ratio": 0.712,
+            "cx_width_ratio": 0.500,
+            "cy_height_ratio": 0.500,
+        },
+        "chest_xyz_delta": (0.0, 0.0, 0.0),
+        "chest_rpy_delta": (0.0, 0.0, 0.0),
+        "bright": {
+            "threshold": 200,
+            "roi_y": 0.50,
+            "min_depth": 0.40,
+            "max_depth": 5.0,
+            "max_abs_y": 2.0,
+            "z_min": -1.25,
+            "z_max": 0.20,
+            "radius_correction": 4.0,
+            "min_fill": 0.22,
+            "min_circularity": 0.40,
+            "min_aspect": 0.75,
+            "max_aspect": 1.33,
+            "max_center_offset": 0.25,
+        },
+    },
+    "realsense": {
+        "intrinsics": None,
+        "chest_xyz_delta": (0.0, 0.0, 0.0),
+        "chest_rpy_delta": (0.0, 0.0, 0.0),
+        "bright": {},
+    },
+}
+
+
+def _resolve_camera_profile(args) -> str:
+    if args.camera_profile != "auto":
+        return args.camera_profile
+    if args.color_backend != "v4l2":
+        return "realsense"
+    fourcc = str(args.v4l2_fourcc).upper()
+    return "gray-ir" if fourcc in ("GREY", "GRAY", "Y8", "Y800") else "color-v4l2"
+
+
+def _profile_value(args, attr: str, profile: dict, key: str, fallback):
+    value = getattr(args, attr)
+    if value is not None:
+        return value
+    return profile.get("bright", {}).get(key, fallback)
+
+
+def _build_profile_intrinsics(args, profile: dict):
+    intr = profile.get("intrinsics") or {}
+    fx = args.fx if args.fx is not None else args.width * intr.get("fx_width_ratio", 0.712)
+    fy = args.fy if args.fy is not None else args.width * intr.get("fy_width_ratio", 0.712)
+    cx = args.cx if args.cx is not None else args.width * intr.get("cx_width_ratio", 0.5)
+    cy = args.cy if args.cy is not None else args.height * intr.get("cy_height_ratio", 0.5)
+    return _ApproxIntrinsics(args.width, args.height, fx, fy, cx, cy)
+
+
 def _detect_ball_hsv(
     color_bgr: np.ndarray,
     hsv_low: np.ndarray,
@@ -1097,6 +1187,12 @@ def main():
         help="Color capture backend. Use v4l2 if librealsense RGB is black.",
     )
     parser.add_argument(
+        "--camera-profile",
+        choices=("auto", "gray-ir", "color-v4l2", "realsense"),
+        default="auto",
+        help="Camera calibration/detection profile. auto selects from backend/fourcc.",
+    )
+    parser.add_argument(
         "--v4l2-device",
         default="/dev/video2",
         help="V4L2 RGB camera node used when --color-backend=v4l2.",
@@ -1225,23 +1321,33 @@ def main():
              "--ball-bright-topic (default rt/cam_ball_state).",
     )
     parser.add_argument("--ball-bright-topic", default="rt/cam_ball_state")
-    parser.add_argument("--ball-bright-threshold", type=int, default=180,
+    parser.add_argument("--ball-bright-threshold", type=int, default=None,
                         help="Minimum grayscale threshold for bright ball detection.")
-    parser.add_argument("--ball-bright-roi-y", type=float, default=_BRIGHT_ROI_Y_FRAC,
+    parser.add_argument("--ball-bright-roi-y", type=float, default=None,
                         help="Ignore image rows above this fraction (default 0.45).")
-    parser.add_argument("--ball-bright-min-depth", type=float, default=0.4,
+    parser.add_argument("--ball-bright-min-depth", type=float, default=None,
                         help="Reject apparent-radius depth below this value in metres.")
-    parser.add_argument("--ball-bright-max-depth", type=float, default=6.0,
+    parser.add_argument("--ball-bright-max-depth", type=float, default=None,
                         help="Reject apparent-radius depth above this value in metres.")
-    parser.add_argument("--ball-bright-max-abs-y", type=float, default=2.5,
+    parser.add_argument("--ball-bright-max-abs-y", type=float, default=None,
                         help="Reject pelvis-frame lateral ball positions outside +/- this value.")
-    parser.add_argument("--ball-bright-z-min", type=float, default=-1.4,
+    parser.add_argument("--ball-bright-z-min", type=float, default=None,
                         help="Reject pelvis-frame ball z below this value.")
-    parser.add_argument("--ball-bright-z-max", type=float, default=0.3,
+    parser.add_argument("--ball-bright-z-max", type=float, default=None,
                         help="Reject pelvis-frame ball z above this value.")
     parser.add_argument("--ball-bright-radius-correction", type=float,
-                        default=_BRIGHT_RADIUS_CORRECTION,
+                        default=None,
                         help="Pixels subtracted from the dilated bright blob radius before depth estimation.")
+    parser.add_argument("--ball-bright-min-fill", type=float, default=None,
+                        help="Minimum contour fill ratio for bright-ball candidates.")
+    parser.add_argument("--ball-bright-min-circularity", type=float, default=None,
+                        help="Minimum contour circularity for bright-ball candidates.")
+    parser.add_argument("--ball-bright-min-aspect", type=float, default=None,
+                        help="Minimum minAreaRect aspect ratio for bright-ball candidates.")
+    parser.add_argument("--ball-bright-max-aspect", type=float, default=None,
+                        help="Maximum minAreaRect aspect ratio for bright-ball candidates.")
+    parser.add_argument("--ball-bright-max-center-offset", type=float, default=None,
+                        help="Maximum contour-centroid offset divided by enclosing radius.")
     parser.add_argument("--ball-bright-use-depth", action="store_true",
                         help="Use RealSense depth to verify physical radius and publish ball center.")
     parser.add_argument("--ball-bright-radius-tol", type=float, default=0.08,
@@ -1266,6 +1372,37 @@ def main():
         help="Override chest camera rotation in radians.",
     )
     args = parser.parse_args()
+    args.camera_profile = _resolve_camera_profile(args)
+    camera_profile = _CAMERA_PROFILES[args.camera_profile]
+    args.ball_bright_threshold = _profile_value(
+        args, "ball_bright_threshold", camera_profile, "threshold", 180)
+    args.ball_bright_roi_y = _profile_value(
+        args, "ball_bright_roi_y", camera_profile, "roi_y", _BRIGHT_ROI_Y_FRAC)
+    args.ball_bright_min_depth = _profile_value(
+        args, "ball_bright_min_depth", camera_profile, "min_depth", 0.4)
+    args.ball_bright_max_depth = _profile_value(
+        args, "ball_bright_max_depth", camera_profile, "max_depth", 6.0)
+    args.ball_bright_max_abs_y = _profile_value(
+        args, "ball_bright_max_abs_y", camera_profile, "max_abs_y", 2.5)
+    args.ball_bright_z_min = _profile_value(
+        args, "ball_bright_z_min", camera_profile, "z_min", -1.4)
+    args.ball_bright_z_max = _profile_value(
+        args, "ball_bright_z_max", camera_profile, "z_max", 0.3)
+    args.ball_bright_radius_correction = _profile_value(
+        args, "ball_bright_radius_correction", camera_profile,
+        "radius_correction", _BRIGHT_RADIUS_CORRECTION)
+    args.ball_bright_min_fill = _profile_value(
+        args, "ball_bright_min_fill", camera_profile, "min_fill", _BRIGHT_MIN_FILL)
+    args.ball_bright_min_circularity = _profile_value(
+        args, "ball_bright_min_circularity", camera_profile,
+        "min_circularity", _BRIGHT_MIN_CIRC)
+    args.ball_bright_min_aspect = _profile_value(
+        args, "ball_bright_min_aspect", camera_profile, "min_aspect", _BRIGHT_MIN_ASPECT)
+    args.ball_bright_max_aspect = _profile_value(
+        args, "ball_bright_max_aspect", camera_profile, "max_aspect", _BRIGHT_MAX_ASPECT)
+    args.ball_bright_max_center_offset = _profile_value(
+        args, "ball_bright_max_center_offset", camera_profile,
+        "max_center_offset", _BRIGHT_MAX_CENTER_OFFSET)
 
     target_tag_ids = _parse_tag_ids(args.tag_ids)
     tag_offsets = _parse_tag_offsets(args.tag_offset)
@@ -1341,19 +1478,28 @@ def main():
             return
 
     default_xyz, default_rpy = get_default_chest_extrinsics()
-    chest_xyz = tuple(args.chest_xyz) if args.chest_xyz is not None else default_xyz
-    chest_rpy = tuple(args.chest_rpy) if args.chest_rpy is not None else default_rpy
+    chest_xyz = (
+        tuple(args.chest_xyz)
+        if args.chest_xyz is not None
+        else tuple(
+            float(base) + float(delta)
+            for base, delta in zip(default_xyz, camera_profile["chest_xyz_delta"])
+        )
+    )
+    chest_rpy = (
+        tuple(args.chest_rpy)
+        if args.chest_rpy is not None
+        else tuple(
+            float(base) + float(delta)
+            for base, delta in zip(default_rpy, camera_profile["chest_rpy_delta"])
+        )
+    )
+    print(f"[INFO] Camera profile: {args.camera_profile}")
     print(f"[INFO] Chest extrinsics xyz={tuple(round(v, 5) for v in chest_xyz)}")
     print(f"[INFO] Chest extrinsics rpy={tuple(round(v, 5) for v in chest_rpy)}")
 
     if args.color_backend == "v4l2":
-        color_intrin = _ApproxIntrinsics(
-            args.width, args.height,
-            args.fx if args.fx is not None else args.width * 0.712,
-            args.fy if args.fy is not None else args.width * 0.712,
-            args.cx if args.cx is not None else args.width * 0.5,
-            args.cy if args.cy is not None else args.height * 0.5,
-        )
+        color_intrin = _build_profile_intrinsics(args, camera_profile)
         rec_fps = v4l2_fps
     else:
         color_profile = profile.get_stream(rs.stream.color).as_video_stream_profile()
@@ -1598,6 +1744,11 @@ def main():
                     color,
                     threshold=args.ball_bright_threshold,
                     roi_y_frac=args.ball_bright_roi_y,
+                    min_fill=args.ball_bright_min_fill,
+                    min_circularity=args.ball_bright_min_circularity,
+                    min_aspect=args.ball_bright_min_aspect,
+                    max_aspect=args.ball_bright_max_aspect,
+                    max_center_offset=args.ball_bright_max_center_offset,
                 )
                 _br_selected = None
                 for _cand in _br_candidates:

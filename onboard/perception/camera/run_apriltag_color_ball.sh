@@ -15,10 +15,10 @@ set -e
 cd "$(dirname "$0")/../../.."
 
 exec bash onboard/perception/camera/run_apriltag_target.sh \
+    --camera-profile color-v4l2 \
     --color-backend v4l2 \
     --v4l2-device "${V4L2_DEVICE:-/dev/video4}" \
     --v4l2-fourcc "${V4L2_FOURCC:-YUYV}" \
     --v4l2-fps "${V4L2_FPS:-30}" \
     --ball-bright \
-    --ball-bright-threshold "${BALL_BRIGHT_THRESHOLD:-180}" \
     "$@"

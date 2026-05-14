@@ -237,33 +237,47 @@ pkill -f "onboard/perception/camera/apriltag_detector.py"
 
 截图参考：
 
-- 灰度 / IR 画面：`/home/unitree/.cursor/projects/home-unitree-yichao-RoboMimic-Deploy/assets/image-3632c5e3-9bd8-44fa-bbfc-c5fb0d7e7193.png`
-- 彩色 V4L2 画面：`/home/unitree/.cursor/projects/home-unitree-yichao-RoboMimic-Deploy/assets/image-b7b42a8f-1fa4-45a6-965b-3a61cd282251.png`
+- ![灰度 / IR 画面](../../assets/grayimage.png)
+- ![彩色 V4L2 画面](../../assets/colorimage.png)
 
 灰度入口默认：
 
 ```bash
+--camera-profile gray-ir
 --color-backend v4l2
 --v4l2-device /dev/video3
 --v4l2-fourcc GREY
 --ball-bright
---ball-bright-threshold 180
 ```
 
 彩色入口默认：
 
 ```bash
+--camera-profile color-v4l2
 --color-backend v4l2
 --v4l2-device /dev/video4
 --v4l2-fourcc YUYV
 --ball-bright
---ball-bright-threshold 180
 ```
 
 代码里 V4L2 fallback 会按当前 `--v4l2-fourcc` 过滤节点：
 
 - 灰度入口只找支持 `GREY` 的节点，不会跳到彩色节点
 - 彩色入口只找支持 `YUYV` 的节点，不会跳到 depth/灰度节点
+
+两条入口现在也会分开使用 `--camera-profile`：
+
+- `gray-ir`：IR/灰度流使用更宽 FOV 的近似内参，并给 chest 外参加 `+0.020m` Y 偏置。这个 profile 更适合 AprilTag 位姿和白球单目深度估计。
+- `color-v4l2`：彩色 YUYV 流保留原来的彩色近似内参和默认 chest 外参，并使用更严格的 bright-ball 形状过滤，减少白墙/鞋子误检。
+
+如果现场标定出更准的值，仍可直接覆盖：
+
+```bash
+./onboard/perception/camera/run_apriltag_gray_ball.sh --show \
+  --fx 675 --fy 650 --cx 640 --cy 360 \
+  --chest-xyz 0.13444 0.020 0.06228 \
+  --chest-rpy 0.0 0.2902482546 0.0
+```
 
 原理：
 
@@ -335,13 +349,13 @@ VIDEOIO(V4L2): failed VIDIOC_REQBUFS: errno=19 (No such device)
 如果经常丢球，降低阈值：
 
 ```bash
-./onboard/perception/camera/run_apriltag_gray_ball.sh --show --ball-bright-threshold 165
+./onboard/perception/camera/run_apriltag_gray_ball.sh --show --ball-bright-threshold 160
 ```
 
 如果误检白鞋、墙面、反光物，提高阈值：
 
 ```bash
-./onboard/perception/camera/run_apriltag_gray_ball.sh --show --ball-bright-threshold 200
+./onboard/perception/camera/run_apriltag_gray_ball.sh --show --ball-bright-threshold 190
 ```
 
 如果白鞋仍被识别成球，优先调这些参数：

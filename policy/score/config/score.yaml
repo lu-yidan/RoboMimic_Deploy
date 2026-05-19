@@ -1,8 +1,8 @@
 # onnx_path:   "policy-obs-33.onnx"
-# onnx_path:   "policy-obs-a2c.onnx"
+onnx_path:   "policy-obs-aic.onnx"
 # onnx_path:   "policy-obs-54-vhh.onnx"
 # onnx_path:   "policy-obs-325-uz8.onnx"
-onnx_path:   "policy-obs-utf8-486.onnx"
+# onnx_path:   "policy-obs-utf8-486.onnx"
 # onnx_path:   "policy-obs-410-vvj.onnx"
 # onnx_path:   "policy-obs-54-vhh.onnx"
 # onnx_path:   "policy-obs-54-vhh.onnx"
@@ -35,7 +35,7 @@ action_clip:
 
 # false = simulation (ball_pos from MuJoCo world frame)
 # true  = real robot (ball_pos from DDS, already in pelvis body frame)
-use_body_frame_ball: false
+use_body_frame_ball: true
 
 # When ball_valid is false and sensor ball is ~zero: use this pelvis-frame default for
 # soccer_pos_b history, ball_as_anchor_pos blend, and ball_facing_anchor_ori (not raw [0,0,0]).
@@ -59,17 +59,17 @@ zero_anchor_pos: false
 # If true, anchor_pos_b is set to the ball position expressed in the torso body frame,
 # instead of the reference-motion anchor position.
 # Has no effect when zero_anchor_pos is true (zero_anchor_pos takes priority).
-ball_as_anchor_pos: true
+ball_as_anchor_pos: false
 
 # If true, anchor_ori_6d is computed so its +X axis always points toward the ball
 # (world-frame direction from torso to ball, with Z = ref-anchor height - torso height).
 # Overrides the default reference-motion orientation.
-ball_facing_anchor_ori: true
+ball_facing_anchor_ori: false
 
 # Target source:
 # - fixed:    use `target_pos`
 # - apriltag: use rt/target_state (AprilTag / target detector) on real robot
-target_source: fixed
+target_source: apriltag
 
 # If target_source=apriltag and the tag is lost:
 # - true:  keep the last seen target direction in a yaw/world cache and
@@ -91,8 +91,8 @@ target_pos: [5.0, 0.0, 0.115]
 # [trigger_frame, trigger_play_end_frame], then return to frame 0 and wait
 # (ball must leave the trigger zone once before the next trigger).
 # If `trigger_play_end_frame` is omitted, plays from `trigger_frame` to clip end (one-shot).
-wait_for_ball:   true
-trigger_play_once: false
+wait_for_ball:   false
+trigger_play_once: true
 trigger_radius:  0.25    # metres
 trigger_horizon: 0.4    # look-ahead seconds
 trigger_base_offset_xy: [0.1, -0.1]  # torso frame: +x forward, +y left; right is negative y

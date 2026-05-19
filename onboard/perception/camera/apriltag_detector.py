@@ -21,6 +21,10 @@ from __future__ import annotations
 
 import argparse
 import math
+import multiprocessing as mp
+import os
+import queue
+import signal
 import socket
 import sys
 import threading
@@ -38,6 +42,8 @@ try:
     from unitree_hg.msg import LowState
 except ModuleNotFoundError:
     LowState = None
+from unitree_sdk2py.core.channel import ChannelFactoryInitialize, ChannelSubscriber
+from unitree_sdk2py.idl.unitree_hg.msg.dds_ import LowState_ as LowStateHG
 
 sys.path.append(str(Path(__file__).parent.parent.parent.parent.absolute()))
 
@@ -52,11 +58,50 @@ from onboard.perception.camera.camera_to_base import (  # noqa: E402
     optical_to_body,
     transform_point_chest_camera_to_base_with_extrinsics,
 )
+from onboard.perception.camera.timing import StageTimer  # noqa: E402
 
 
 COAST_FRAMES = 8
 EMA_ALPHA = 0.5
 EMA_GATE = 0.4
+
+
+def _read_real_config_net():
+    real_cfg_path = Path(__file__).parent.parent.parent.parent / "deploy_real" / "config" / "real.yaml"
+    with open(real_cfg_path, "r", encoding="utf-8") as f:
+        for line in f:
+            stripped = line.strip()
+            if stripped.startswith("net:"):
+                return stripped.split(":", 1)[1].strip().strip("\"'")
+    return None
+
+
+def _available_net_interfaces():
+    try:
+        return {name for name in os.listdir("/sys/class/net") if name != "lo"}
+    except OSError:
+        return set()
+
+
+def _select_lowstate_net(config_net):
+    available = _available_net_interfaces()
+    if config_net in available:
+        return config_net
+    for candidate in ("enP8p1s0", "enp5s0f1", "eth0", "usb0", "usb1"):
+        if candidate in available:
+            print(
+                f"[WARN] configured lowstate net '{config_net}' is unavailable; using '{candidate}'",
+                flush=True,
+            )
+            return candidate
+    if available:
+        selected = sorted(available)[0]
+        print(
+            f"[WARN] configured lowstate net '{config_net}' is unavailable; using '{selected}'",
+            flush=True,
+        )
+        return selected
+    return config_net
 
 # ── Ball detection constants (used when --ball is active) ─────────────────
 _BALL_DEPTH_SAMPLE_R = 5
@@ -92,6 +137,8 @@ _BRIGHT_MAX_ASPECT  = 1.55
 _BRIGHT_MAX_CENTER_OFFSET = 0.35  # contour centroid offset / enclosing radius
 _BRIGHT_RADIUS_CORRECTION = 6.0  # px added by the 13x13 dilation used to merge dots
 
+STATUS_PRINT_PERIOD_S = 0.5
+
 
 _CAMERA_PROFILES = {
     # D435 IR/greyscale UVC stream. Its FOV is substantially wider than the
@@ -107,13 +154,13 @@ _CAMERA_PROFILES = {
         "chest_xyz_delta": (0.0, 0.020, 0.0),
         "chest_rpy_delta": (0.0, 0.0, 0.0),
         "bright": {
-            "threshold": 175,
+            "threshold": 190,
             "roi_y": 0.42,
             "min_depth": 0.35,
-            "max_depth": 6.0,
-            "max_abs_y": 2.2,
+            "max_depth": 10.0,
+            "max_abs_y": 5.0,
             "z_min": -1.35,
-            "z_max": 0.25,
+            "z_max": 0.5,
             "radius_correction": 6.0,
             "min_fill": 0.16,
             "min_circularity": 0.32,
@@ -134,7 +181,7 @@ _CAMERA_PROFILES = {
         "chest_xyz_delta": (0.0, 0.0, 0.0),
         "chest_rpy_delta": (0.0, 0.0, 0.0),
         "bright": {
-            "threshold": 200,
+            "threshold": 215,
             "roi_y": 0.50,
             "min_depth": 0.40,
             "max_depth": 5.0,
@@ -287,7 +334,7 @@ def _detect_ball_bright(
 
 
 def _detect_ball_bright_candidates(
-    color_bgr: np.ndarray,
+    image: np.ndarray,
     threshold: int = 180,
     min_r: int = _BRIGHT_MIN_R,
     max_r: int = _BRIGHT_MAX_R,
@@ -299,7 +346,10 @@ def _detect_ball_bright_candidates(
     max_center_offset: float = _BRIGHT_MAX_CENTER_OFFSET,
 ) -> list:
     """Return bright round candidates sorted by visual confidence."""
-    gray = cv2.cvtColor(color_bgr, cv2.COLOR_BGR2GRAY)
+    if image.ndim == 2:
+        gray = image
+    else:
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     h, w = gray.shape
     y_min = int(max(0.0, min(0.95, roi_y_frac)) * h)
     roi = gray[y_min:, :]
@@ -309,7 +359,20 @@ def _detect_ball_bright_candidates(
     # Use a fixed lower bound but adapt upward gently in overexposed scenes.
     # A high percentile makes dotted/reflective balls flicker, so cap its effect.
     dyn_thr = int(max(threshold, min(np.percentile(roi, 90), threshold + 20)))
-    _, mask = cv2.threshold(roi, dyn_thr, 255, cv2.THRESH_BINARY)
+    _, seed_mask = cv2.threshold(roi, dyn_thr, 255, cv2.THRESH_BINARY)
+    bright_pts = cv2.findNonZero(seed_mask)
+    if bright_pts is None:
+        return []
+
+    # Most frames contain only a compact bright region. Crop expensive morphology
+    # and contour extraction to the bright-pixel bounding box instead of the full ROI.
+    bx, by, bw, bh = cv2.boundingRect(bright_pts)
+    margin = int(max(max_r, 16))
+    x0 = max(0, bx - margin)
+    y0 = max(0, by - margin)
+    x1 = min(w, bx + bw + margin)
+    y1 = min(roi.shape[0], by + bh + margin)
+    mask = seed_mask[y0:y1, x0:x1]
     k_clean = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
     k_merge = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (13, 13))
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, k_clean)
@@ -353,6 +416,8 @@ def _detect_ball_bright_candidates(
         if center_offset > max_center_offset:
             continue
 
+        cx += x0
+        cy_roi += y0
         cy = cy_roi + y_min
         # Prefer solid, symmetric, round blobs in the lower image. White shoes
         # tend to be elongated or have an off-centre contour centroid.
@@ -450,6 +515,7 @@ class _JointListener(Node):
         self.q_wy = 0.0
         self.q_wr = 0.0
         self.q_wp = 0.0
+        self.last_msg_s = 0.0
         if LowState is not None:
             self.create_subscription(LowState, "/lowstate", self._cb, qos_profile_sensor_data)
             self.get_logger().info("camera_apriltag_detector: subscribed to /lowstate")
@@ -463,6 +529,71 @@ class _JointListener(Node):
         self.q_wy = q[12]
         self.q_wr = q[13]
         self.q_wp = q[14]
+        self.last_msg_s = time.time()
+
+
+class _UnitreeDdsJointListener:
+    """Read waist joint angles from Unitree DDS rt/lowstate."""
+
+    def __init__(self, net: str | None, topic: str = "rt/lowstate", max_hz: float = 50.0):
+        self.q_wy = 0.0
+        self.q_wr = 0.0
+        self.q_wp = 0.0
+        self.last_msg_s = 0.0
+        self._min_update_period_s = 1.0 / max_hz if max_hz > 0 else 0.0
+        self._last_update_s = 0.0
+        self._cb_count = 0
+        self._applied_count = 0
+        self._skipped_count = 0
+        self._cb_time_acc_s = 0.0
+        self._cb_time_max_s = 0.0
+        self._stats_window_start_s = time.time()
+        self._lock = threading.Lock()
+        ChannelFactoryInitialize(0, net)
+        self._subscriber = ChannelSubscriber(topic, LowStateHG)
+        self._subscriber.Init(self._cb, 10)
+        print(f"[INFO] Unitree DDS joint listener started ({topic}, max {max_hz:.0f} Hz)")
+
+    def _cb(self, msg: LowStateHG):
+        _t0 = time.perf_counter()
+        now_s = time.time()
+        self._cb_count += 1
+        if now_s - self._last_update_s < self._min_update_period_s:
+            self._skipped_count += 1
+        else:
+            with self._lock:
+                self._last_update_s = now_s
+                self.q_wy = float(msg.motor_state[12].q)
+                self.q_wr = float(msg.motor_state[13].q)
+                self.q_wp = float(msg.motor_state[14].q)
+                self.last_msg_s = now_s
+            self._applied_count += 1
+
+        _dt = time.perf_counter() - _t0
+        self._cb_time_acc_s += _dt
+        self._cb_time_max_s = max(self._cb_time_max_s, _dt)
+
+    def pop_stats(self):
+        with self._lock:
+            now_s = time.time()
+            elapsed_s = max(1e-6, now_s - self._stats_window_start_s)
+            stats = {
+                "lowstate_cb_hz": self._cb_count / elapsed_s,
+                "lowstate_applied_hz": self._applied_count / elapsed_s,
+                "lowstate_skipped_hz": self._skipped_count / elapsed_s,
+                "lowstate_cb_avg_ms": (
+                    (self._cb_time_acc_s / self._cb_count) * 1000.0
+                    if self._cb_count else 0.0
+                ),
+                "lowstate_cb_max_ms": self._cb_time_max_s * 1000.0,
+            }
+            self._cb_count = 0
+            self._applied_count = 0
+            self._skipped_count = 0
+            self._cb_time_acc_s = 0.0
+            self._cb_time_max_s = 0.0
+            self._stats_window_start_s = now_s
+            return stats
 
 
 def _parse_tag_ids(raw_values):
@@ -720,11 +851,13 @@ def _try_open_v4l2_color_device(args, device):
             time.sleep(0.03)
             continue
         if candidate.ndim == 2:
-            candidate = cv2.cvtColor(candidate, cv2.COLOR_GRAY2BGR)
-        if candidate.ndim != 3 or candidate.shape[2] != 3:
+            pass
+        elif candidate.ndim == 3 and candidate.shape[2] == 3:
+            pass
+        else:
             cap.release()
             raise RuntimeError(
-                f"not a 3-channel color/IR frame: shape={getattr(candidate, 'shape', None)}"
+                f"not a usable color/IR frame: shape={getattr(candidate, 'shape', None)}"
             )
         if float(candidate.std()) >= 1.0:
             frame = candidate
@@ -801,6 +934,156 @@ def _sample_depth_patch_for_color_pixel(
     if len(valid_d) == 0:
         return 0.0
     return float(np.median(valid_d))
+
+
+def _put_latest(q, item):
+    try:
+        while True:
+            q.get_nowait()
+    except queue.Empty:
+        pass
+    try:
+        q.put_nowait(item)
+    except queue.Full:
+        pass
+
+
+def _bright_ball_worker(
+    frame_q,
+    result_q,
+    topic,
+    color_intrin_tuple,
+    chest_xyz,
+    chest_rpy,
+    bright_cfg,
+):
+    color_intrin = _ApproxIntrinsics(*color_intrin_tuple)
+    ball_dds = BallStatePublisher(domain_id=0, topic_name=topic)
+    center_ema = None
+    miss_count = 0
+
+    while True:
+        item = frame_q.get()
+        if item is None:
+            break
+
+        color, waist_q = item
+        q_wy, q_wr, q_wp = waist_q
+        candidates = _detect_ball_bright_candidates(
+            color,
+            threshold=bright_cfg["threshold"],
+            roi_y_frac=bright_cfg["roi_y"],
+            min_fill=bright_cfg["min_fill"],
+            min_circularity=bright_cfg["min_circularity"],
+            min_aspect=bright_cfg["min_aspect"],
+            max_aspect=bright_cfg["max_aspect"],
+            max_center_offset=bright_cfg["max_center_offset"],
+        )
+        selected = None
+
+        for cand in candidates:
+            radius_for_depth = max(
+                _BRIGHT_MIN_R,
+                cand["r"] - bright_cfg["radius_correction"],
+            )
+            cand_depth = (
+                color_intrin.fx * _BALL_RADIUS / radius_for_depth
+                if radius_for_depth > 0 else 0.0
+            )
+            if not (bright_cfg["min_depth"] <= cand_depth <= bright_cfg["max_depth"]):
+                continue
+            cand_opt = _deproject_pixel_to_point(
+                color_intrin, [cand["cx"], cand["cy"]], cand_depth)
+            cand_cam = optical_to_body(cand_opt)
+            cand_base = transform_point_chest_camera_to_base_with_extrinsics(
+                np.array(cand_cam, dtype=np.float32),
+                q_wy, q_wr, q_wp,
+                chest_xyz=chest_xyz,
+                chest_rpy=chest_rpy,
+            )
+            cx_b, cy_b, cz_b = (float(cand_base[0]), float(cand_base[1]), float(cand_base[2]))
+            if abs(cy_b) > bright_cfg["max_abs_y"]:
+                continue
+            if not (bright_cfg["z_min"] <= cz_b <= bright_cfg["z_max"]):
+                continue
+            cand["depth"] = float(cand_depth)
+            cand["p_cam"] = np.array(cand_cam, dtype=np.float32)
+            cand["p_base"] = (cx_b, cy_b, cz_b)
+            selected = cand
+            break
+
+        if selected is not None:
+            miss_count = 0
+            p_arr = selected["p_cam"]
+            if center_ema is None:
+                center_ema = p_arr.copy()
+            elif np.linalg.norm(p_arr - center_ema) < _BALL_EMA_GATE:
+                center_ema = _BALL_EMA_ALPHA * p_arr + (1 - _BALL_EMA_ALPHA) * center_ema
+            else:
+                center_ema = p_arr.copy()
+
+            p_base = transform_point_chest_camera_to_base_with_extrinsics(
+                center_ema,
+                q_wy, q_wr, q_wp,
+                chest_xyz=chest_xyz,
+                chest_rpy=chest_rpy,
+            )
+            bx, by, bz = (float(p_base[0]), float(p_base[1]), float(p_base[2]))
+            ball_dds.publish(bx, by, bz, valid=True, source=SOURCE_CAM)
+            r_int = int(selected["r"])
+            overlay = {
+                "bbox": (
+                    int(selected["cx"] - r_int),
+                    int(selected["cy"] - r_int),
+                    int(selected["cx"] + r_int),
+                    int(selected["cy"] + r_int),
+                ),
+                "pelvis": (bx, by, bz),
+                "depth": float(selected["depth"]),
+                "valid": True,
+                "miss": 0,
+                "source": "bright",
+                "status": (
+                    f"BRGT valid pelvis=({bx:+.3f},{by:+.3f},{bz:+.3f}) "
+                    f"center={float(selected['depth']):.2f}m cand={len(candidates)}"
+                ),
+            }
+        else:
+            miss_count += 1
+            if miss_count <= _BALL_COAST and center_ema is not None:
+                p_base = transform_point_chest_camera_to_base_with_extrinsics(
+                    center_ema,
+                    q_wy, q_wr, q_wp,
+                    chest_xyz=chest_xyz,
+                    chest_rpy=chest_rpy,
+                )
+                bx, by, bz = (float(p_base[0]), float(p_base[1]), float(p_base[2]))
+                ball_dds.publish(bx, by, bz, valid=False, source=SOURCE_CAM)
+                overlay = {
+                    "bbox": None,
+                    "pelvis": (bx, by, bz),
+                    "depth": 0.0,
+                    "valid": False,
+                    "miss": miss_count,
+                    "source": "bright",
+                    "status": (
+                        f"BRGT coast {miss_count}/{_BALL_COAST} "
+                        f"pelvis=({bx:+.3f},{by:+.3f},{bz:+.3f}) cand={len(candidates)}"
+                    ),
+                }
+            else:
+                center_ema = None
+                ball_dds.publish(0.0, 0.0, 0.0, valid=False, source=SOURCE_NONE)
+                overlay = {
+                    "bbox": None,
+                    "pelvis": None,
+                    "depth": 0.0,
+                    "valid": False,
+                    "miss": miss_count,
+                    "source": "bright",
+                    "status": f"BRGT no ball cand={len(candidates)}",
+                }
+        _put_latest(result_q, overlay)
 
 
 def _start_mjpeg_server(port: int = 8080):
@@ -1135,21 +1418,23 @@ def _make_yolo_ball_thread(
                         overlay_state["depth"]  = depth_m
                         overlay_state["valid"]  = is_det
                         overlay_state["miss"]   = miss_count
-
-                    tag = "BALL " if is_det else "COAST"
-                    print(
-                        f"\r[{tag}] cam_ball pelvis=({bx:+.3f},{by:+.3f},{bz:+.3f}) "
-                        f"dist={depth_m:.2f}m ball={ball_fps.fps:4.1f}fps" + " " * 5,
-                        end="", flush=True,
-                    )
+                        overlay_state["source"] = "yolo"
+                        overlay_state["status"] = (
+                            f"YOLO {'valid' if is_det else 'coast'} "
+                            f"pelvis=({bx:+.3f},{by:+.3f},{bz:+.3f}) "
+                            f"dist={depth_m:.2f}m fps={ball_fps.fps:4.1f}"
+                        )
 
             if not published_valid:
                 center_ema = None
                 if overlay_state is not None:
                     overlay_state["bbox"] = None
+                    overlay_state["pelvis"] = None
+                    overlay_state["depth"] = 0.0
+                    overlay_state["valid"] = False
+                    overlay_state["source"] = "yolo"
+                    overlay_state["status"] = f"YOLO no ball fps={ball_fps.fps:4.1f}"
                 ball_dds.publish(0.0, 0.0, 0.0, valid=False, source=SOURCE_NONE)
-                print(f"\r[     ] cam_ball: no ball  fps={ball_fps.fps:4.1f}" + " " * 20,
-                      end="", flush=True)
 
             ball_fps.tick()
 
@@ -1159,11 +1444,16 @@ def _make_yolo_ball_thread(
 
 
 def main():
+    def _raise_keyboard_interrupt(signum, _frame):
+        raise KeyboardInterrupt
+
+    signal.signal(signal.SIGTERM, _raise_keyboard_interrupt)
+
     parser = argparse.ArgumentParser(
         description="Chest D455 + AprilTag target detector -> rt/target_state"
     )
-    parser.add_argument("--width", type=int, default=1280)
-    parser.add_argument("--height", type=int, default=720)
+    parser.add_argument("--width", type=int, default=848)
+    parser.add_argument("--height", type=int, default=480)
     parser.add_argument(
         "--detect-scale", type=float, default=1.0,
         help="Scale factor applied to gray frame before ArUco detection "
@@ -1182,9 +1472,9 @@ def main():
     )
     parser.add_argument(
         "--color-backend",
-        choices=("realsense", "v4l2"),
-        default="realsense",
-        help="Color capture backend. Use v4l2 if librealsense RGB is black.",
+        choices=("auto", "realsense", "v4l2"),
+        default="auto",
+        help="Color capture backend. auto uses v4l2 for --ball-bright, otherwise realsense.",
     )
     parser.add_argument(
         "--camera-profile",
@@ -1228,6 +1518,29 @@ def main():
         help="MJPEG preview port used with --show (default: 8080).",
     )
     parser.add_argument(
+        "--preview-max-hz",
+        type=float,
+        default=12.0,
+        help="Maximum MJPEG encode/update rate when --show is active (default 12 Hz).",
+    )
+    parser.add_argument(
+        "--status-hz",
+        type=float,
+        default=1.0 / STATUS_PRINT_PERIOD_S,
+        help="Maximum terminal status refresh rate; <=0 disables status prints (default 2 Hz).",
+    )
+    parser.add_argument(
+        "--profile-timing",
+        action="store_true",
+        help="Print camera pipeline mean/p95 stage timings every --profile-window frames.",
+    )
+    parser.add_argument(
+        "--profile-window",
+        type=int,
+        default=30,
+        help="Timing profiler window in frames (default 30).",
+    )
+    parser.add_argument(
         "--record",
         action="store_true",
         help="Record annotated camera view to MP4 (saved to --record-dir).",
@@ -1241,6 +1554,22 @@ def main():
         "--dds-topic",
         default="rt/target_state",
         help="DDS topic name to publish to.",
+    )
+    parser.add_argument(
+        "--lowstate-net",
+        default=None,
+        help="Network interface for Unitree DDS lowstate. Defaults to deploy_real/config/real.yaml net.",
+    )
+    parser.add_argument(
+        "--lowstate-topic",
+        default="rt/lowstate",
+        help="Unitree DDS lowstate topic for waist joint angles.",
+    )
+    parser.add_argument(
+        "--lowstate-max-hz",
+        type=float,
+        default=50.0,
+        help="Maximum rate for applying lowstate waist joint updates (default 50 Hz).",
     )
     parser.add_argument(
         "--tag-id",
@@ -1320,7 +1649,18 @@ def main():
              "Uses apparent ball radius for monocular distance and publishes to "
              "--ball-bright-topic (default rt/cam_ball_state).",
     )
+    parser.add_argument(
+        "--ball-bright-inline",
+        action="store_true",
+        help="Run bright-ball detection inline in the AprilTag process instead of a worker process.",
+    )
     parser.add_argument("--ball-bright-topic", default="rt/cam_ball_state")
+    parser.add_argument(
+        "--ball-bright-max-hz",
+        type=float,
+        default=10.0,
+        help="Maximum bright-ball detection/publish rate. Default 10 Hz; <=0 runs every frame.",
+    )
     parser.add_argument("--ball-bright-threshold", type=int, default=None,
                         help="Minimum grayscale threshold for bright ball detection.")
     parser.add_argument("--ball-bright-roi-y", type=float, default=None,
@@ -1372,10 +1712,12 @@ def main():
         help="Override chest camera rotation in radians.",
     )
     args = parser.parse_args()
+    if args.color_backend == "auto":
+        args.color_backend = "v4l2" if args.ball_bright else "realsense"
     args.camera_profile = _resolve_camera_profile(args)
     camera_profile = _CAMERA_PROFILES[args.camera_profile]
     args.ball_bright_threshold = _profile_value(
-        args, "ball_bright_threshold", camera_profile, "threshold", 180)
+        args, "ball_bright_threshold", camera_profile, "threshold", 190)
     args.ball_bright_roi_y = _profile_value(
         args, "ball_bright_roi_y", camera_profile, "roi_y", _BRIGHT_ROI_Y_FRAC)
     args.ball_bright_min_depth = _profile_value(
@@ -1422,26 +1764,18 @@ def main():
     print(f"[INFO] AprilTag family: {family_name}")
     print(f"[INFO] Tag size: {args.tag_size:.4f} m")
 
-    # Init ROS2 + DDS before the camera pipeline — mirroring ball_detector.py.
+    # Init lowstate + DDS before the camera pipeline — mirroring ball_detector.py.
     # Starting the camera first lets the frame queue fill during DDS setup
     # (several seconds), which overflows librealsense's frame pool → bad_alloc.
-    rclpy.init()
-    joint = _JointListener()
+    if args.lowstate_net is None:
+        args.lowstate_net = _select_lowstate_net(_read_real_config_net())
+    joint = _UnitreeDdsJointListener(
+        args.lowstate_net,
+        topic=args.lowstate_topic,
+        max_hz=args.lowstate_max_hz,
+    )
     ros_stop = threading.Event()
-
-    def _spin_loop():
-        while not ros_stop.is_set() and rclpy.ok():
-            try:
-                rclpy.spin_once(joint, timeout_sec=0.0)
-            except Exception:
-                if not rclpy.ok() or ros_stop.is_set():
-                    break
-                raise
-            time.sleep(0.02)
-
-    ros_thread = threading.Thread(target=_spin_loop, daemon=True)
-    ros_thread.start()
-    print("[INFO] ROS2 joint listener started (/lowstate)")
+    ros_thread = None
 
     dds = TargetStatePublisher(domain_id=0, topic_name=args.dds_topic)
     print(f"[INFO] DDS publisher ready on '{args.dds_topic}'")
@@ -1513,9 +1847,17 @@ def main():
     _yolo_buf_frames = [None]
     _yolo_buf_lock   = threading.Lock()
     _yolo_buf_event  = threading.Event()
-    # Shared dict written by YOLO/HSV path, read by MJPEG renderer (dict-key writes
-    # are atomic in CPython; stale-by-one-frame reads are acceptable).
-    _ball_overlay = {"bbox": None, "pelvis": None, "depth": 0.0, "valid": False, "miss": 0}
+    # Shared dict written by ball detectors and read by MJPEG/status rendering
+    # (dict-key writes are atomic in CPython; stale-by-one-frame reads are OK).
+    _ball_overlay = {
+        "bbox": None,
+        "pelvis": None,
+        "depth": 0.0,
+        "valid": False,
+        "miss": 0,
+        "source": None,
+        "status": "ball disabled",
+    }
 
     # Depth stream resources. YOLO uses color+depth RealSense; V4L2 bright mode
     # can optionally use a depth-only RealSense stream to validate physical radius.
@@ -1567,10 +1909,59 @@ def main():
     _bright_ball_dds = None
     _bright_center_ema = None
     _bright_miss_count = 0
+    _bright_frame_q = None
+    _bright_result_q = None
+    _bright_proc = None
     if args.ball_bright:
-        _bright_ball_dds = BallStatePublisher(domain_id=0, topic_name=args.ball_bright_topic)
+        if args.ball_bright_inline:
+            _bright_ball_dds = BallStatePublisher(domain_id=0, topic_name=args.ball_bright_topic)
+            mode_txt = "inline"
+        else:
+            # Use spawn so the worker does not inherit already-started DDS,
+            # RealSense, or OpenCV background threads from the parent process.
+            _bright_mp_ctx = mp.get_context("spawn")
+            _bright_frame_q = _bright_mp_ctx.Queue(maxsize=1)
+            _bright_result_q = _bright_mp_ctx.Queue(maxsize=1)
+            bright_cfg = {
+                "threshold": args.ball_bright_threshold,
+                "roi_y": args.ball_bright_roi_y,
+                "min_depth": args.ball_bright_min_depth,
+                "max_depth": args.ball_bright_max_depth,
+                "max_abs_y": args.ball_bright_max_abs_y,
+                "z_min": args.ball_bright_z_min,
+                "z_max": args.ball_bright_z_max,
+                "radius_correction": args.ball_bright_radius_correction,
+                "min_fill": args.ball_bright_min_fill,
+                "min_circularity": args.ball_bright_min_circularity,
+                "min_aspect": args.ball_bright_min_aspect,
+                "max_aspect": args.ball_bright_max_aspect,
+                "max_center_offset": args.ball_bright_max_center_offset,
+                "status_hz": args.status_hz,
+            }
+            _bright_proc = _bright_mp_ctx.Process(
+                target=_bright_ball_worker,
+                args=(
+                    _bright_frame_q,
+                    _bright_result_q,
+                    args.ball_bright_topic,
+                    (
+                        color_intrin.width,
+                        color_intrin.height,
+                        color_intrin.fx,
+                        color_intrin.fy,
+                        color_intrin.ppx,
+                        color_intrin.ppy,
+                    ),
+                    tuple(chest_xyz),
+                    tuple(chest_rpy),
+                    bright_cfg,
+                ),
+                daemon=True,
+            )
+            _bright_proc.start()
+            mode_txt = f"worker pid={_bright_proc.pid}"
         print(
-            f"[INFO] Bright ball detection active  threshold≥{args.ball_bright_threshold} "
+            f"[INFO] Bright ball detection active ({mode_txt})  threshold≥{args.ball_bright_threshold} "
             f"roi_y≥{args.ball_bright_roi_y:.2f} -> topic '{args.ball_bright_topic}'"
         )
 
@@ -1600,10 +1991,44 @@ def main():
     miss_count = 0
     fps = _FPS()
     v4l2_fail_count = 0
+    _last_bright_run_s = 0.0
+    _bright_period_s = 1.0 / args.ball_bright_max_hz if args.ball_bright_max_hz > 0 else 0.0
+    _last_status_print_s = 0.0
+    _status_period_s = 1.0 / args.status_hz if args.status_hz > 0 else None
+    _last_preview_s = 0.0
+    _preview_period_s = 1.0 / args.preview_max_hz if args.preview_max_hz > 0 else 0.0
+    timing = StageTimer(
+        enabled=args.profile_timing,
+        window=args.profile_window,
+        label="apriltag",
+    )
+
+    def _status_print(*print_args, **print_kwargs):
+        nonlocal _last_status_print_s
+        if _status_period_s is None:
+            return
+        now_s = time.monotonic()
+        if now_s - _last_status_print_s < _status_period_s:
+            return
+        _last_status_print_s = now_s
+        print(*print_args, **print_kwargs)
+
+    def _format_ball_status():
+        if not (args.ball or args.ball_hsv or args.ball_bright):
+            return None
+        return _ball_overlay.get("status") or "ball waiting"
+
+    def _status_line(tag_status: str):
+        parts = [tag_status, f"apriltag={fps.fps:4.1f}fps"]
+        ball_status = _format_ball_status()
+        if ball_status:
+            parts.append(ball_status)
+        _status_print("\r" + " | ".join(parts) + " " * 8, end="", flush=True)
 
     print("[INFO] Camera running. Press Ctrl+C to stop.")
     try:
         while True:
+            _t_frame0 = time.perf_counter()
             frames = None
             if args.color_backend == "v4l2":
                 if v4l2_first_frame is not None:
@@ -1628,8 +2053,6 @@ def main():
                             rec_fps = v4l2_fps
                             v4l2_fail_count = 0
                         continue
-                    if color.ndim == 2:
-                        color = cv2.cvtColor(color, cv2.COLOR_GRAY2BGR)
                     v4l2_fail_count = 0
             else:
                 frames = pipeline.wait_for_frames()
@@ -1637,6 +2060,7 @@ def main():
                 if not color_frame:
                     continue
                 color = np.asanyarray(color_frame.get_data()).copy()
+            _t_capture = time.perf_counter()
 
             # YOLO thread: pre-copy depth + downscaled color; release frame buffer ASAP.
             if args.ball:
@@ -1648,7 +2072,7 @@ def main():
                 _yolo_buf_event.set()
 
             _bright_depth_np = None
-            if args.ball_bright and args.ball_bright_use_depth:
+            if args.ball_bright and args.ball_bright_inline and args.ball_bright_use_depth:
                 if depth_pipeline is not None:
                     try:
                         _depth_frames = depth_pipeline.wait_for_frames(timeout_ms=5)
@@ -1660,6 +2084,7 @@ def main():
                 elif frames is not None:
                     _df = frames.get_depth_frame()
                     _bright_depth_np = np.asanyarray(_df.get_data()).copy() if _df else None
+            _t_depth = time.perf_counter()
 
             # HSV ball detection runs synchronously here — pure OpenCV, no thread needed.
             if args.ball_hsv:
@@ -1706,15 +2131,15 @@ def main():
                         _ball_overlay["depth"]  = _hsv_depth
                         _ball_overlay["valid"]  = True
                         _ball_overlay["miss"]   = 0
+                        _ball_overlay["source"] = "hsv"
+                        _ball_overlay["status"] = (
+                            f"HSV valid pelvis=({_hbx:+.3f},{_hby:+.3f},{_hbz:+.3f}) "
+                            f"dist={_hsv_depth:.2f}m"
+                        )
 
                         if args.ball_hsv_show_mask:
                             cv2.circle(color, (_hsv_cx, _hsv_cy), _r_int,
                                        (0, 255, 180), 2)
-
-                        print(f"\r[HSV ] cam_ball "
-                              f"pelvis=({_hbx:+.3f},{_hby:+.3f},{_hbz:+.3f}) "
-                              f"dist={_hsv_depth:.2f}m",
-                              end="", flush=True)
                 else:
                     _hsv_miss_count += 1
                     if _hsv_miss_count <= _BALL_COAST and _hsv_center_ema is not None:
@@ -1730,16 +2155,54 @@ def main():
                                               valid=False, source=SOURCE_CAM)
                         _ball_overlay["miss"]  = _hsv_miss_count
                         _ball_overlay["valid"] = False
+                        _ball_overlay["source"] = "hsv"
+                        _ball_overlay["status"] = (
+                            f"HSV coast {_hsv_miss_count}/{_BALL_COAST} "
+                            f"pelvis=({_hbx:+.3f},{_hby:+.3f},{_hbz:+.3f})"
+                        )
                     else:
                         if _hsv_miss_count > _BALL_COAST:
                             _hsv_center_ema = None
                             _ball_overlay["bbox"] = None
+                            _ball_overlay["pelvis"] = None
+                            _ball_overlay["depth"] = 0.0
                         _hsv_ball_dds.publish(0.0, 0.0, 0.0,
                                               valid=False, source=SOURCE_NONE)
+                        _ball_overlay["valid"] = False
+                        _ball_overlay["miss"] = _hsv_miss_count
+                        _ball_overlay["source"] = "hsv"
+                        _ball_overlay["status"] = "HSV no ball"
+            _t_hsv = time.perf_counter()
 
             # Bright IR/greyscale ball detection: useful when V4L2 exposes an
             # IR-like stream where the white ball is bright but color is absent.
-            if args.ball_bright:
+            _now_loop_s = time.time()
+            _run_bright = (
+                args.ball_bright
+                and args.ball_bright_inline
+                and (
+                    _bright_period_s <= 0.0
+                    or _now_loop_s - _last_bright_run_s >= _bright_period_s
+                )
+            )
+            if args.ball_bright and not args.ball_bright_inline:
+                try:
+                    while True:
+                        _ball_overlay.update(_bright_result_q.get_nowait())
+                except queue.Empty:
+                    pass
+                if (
+                    _bright_period_s <= 0.0
+                    or _now_loop_s - _last_bright_run_s >= _bright_period_s
+                ):
+                    _last_bright_run_s = _now_loop_s
+                    bright_frame = color.copy() if color.ndim == 2 else color
+                    _put_latest(
+                        _bright_frame_q,
+                        (bright_frame, (joint.q_wy, joint.q_wr, joint.q_wp)),
+                    )
+            if _run_bright:
+                _last_bright_run_s = _now_loop_s
                 _br_candidates = _detect_ball_bright_candidates(
                     color,
                     threshold=args.ball_bright_threshold,
@@ -1838,16 +2301,16 @@ def main():
                     _ball_overlay["depth"]  = _br_depth
                     _ball_overlay["valid"]  = True
                     _ball_overlay["miss"]   = 0
+                    _ball_overlay["source"] = "bright"
+                    _ball_overlay["status"] = (
+                        f"BRGT valid pelvis=({_bbx:+.3f},{_bby:+.3f},{_bbz:+.3f}) "
+                        f"center={_br_depth:.2f}m r={_br_r:.1f}/{_br_r_depth:.1f}px "
+                        f"R={_br_radius_m:.3f}m"
+                    )
 
                     if args.ball_bright_show_mask:
                         cv2.circle(color, (_br_cx, _br_cy), _r_int,
                                    (0, 255, 180), 2)
-
-                    print(f"\r[BRGT] cam_ball "
-                          f"pelvis=({_bbx:+.3f},{_bby:+.3f},{_bbz:+.3f}) "
-                          f"center={_br_depth:.2f}m r={_br_r:.1f}/{_br_r_depth:.1f}px "
-                          f"R={_br_radius_m:.3f}m",
-                          end="", flush=True)
                 else:
                     _bright_miss_count += 1
                     if _bright_miss_count <= _BALL_COAST and _bright_center_ema is not None:
@@ -1863,14 +2326,26 @@ def main():
                                                  valid=False, source=SOURCE_CAM)
                         _ball_overlay["miss"]  = _bright_miss_count
                         _ball_overlay["valid"] = False
+                        _ball_overlay["source"] = "bright"
+                        _ball_overlay["status"] = (
+                            f"BRGT coast {_bright_miss_count}/{_BALL_COAST} "
+                            f"pelvis=({_bbx:+.3f},{_bby:+.3f},{_bbz:+.3f})"
+                        )
                     else:
                         if _bright_miss_count > _BALL_COAST:
                             _bright_center_ema = None
                             _ball_overlay["bbox"] = None
+                            _ball_overlay["pelvis"] = None
+                            _ball_overlay["depth"] = 0.0
                         _bright_ball_dds.publish(0.0, 0.0, 0.0,
                                                  valid=False, source=SOURCE_NONE)
+                        _ball_overlay["valid"] = False
+                        _ball_overlay["miss"] = _bright_miss_count
+                        _ball_overlay["source"] = "bright"
+                        _ball_overlay["status"] = f"BRGT no ball cand={len(_br_candidates)}"
+            _t_bright = time.perf_counter()
 
-            gray = cv2.cvtColor(color, cv2.COLOR_BGR2GRAY)
+            gray = color if color.ndim == 2 else cv2.cvtColor(color, cv2.COLOR_BGR2GRAY)
             # Downscale before ArUco to avoid bad_alloc in OpenCV C++ on Jetson
             # at high resolutions/fps. Corners are scaled back so pose estimation
             # uses the original camera_matrix unchanged.
@@ -1882,6 +2357,7 @@ def main():
             else:
                 gray_det = gray
             corners_list, ids, _ = detector.detectMarkers(gray_det)
+            _t_detect = time.perf_counter()
             if args.detect_scale != 1.0 and corners_list:
                 corners_list = tuple(c / args.detect_scale for c in corners_list)
             ids_flat = ids.reshape(-1).tolist() if ids is not None else []
@@ -1933,6 +2409,9 @@ def main():
             tag_distance = 0.0
             fused_tag_ids = []
             overlay_mode_txt = "mode: waiting"
+            tag_status = (
+                f"[     ] no tag ({','.join(str(tag_id) for tag_id in target_tag_ids)})"
+            )
 
             if representative is not None and fused_target_tvec is not None:
                 miss_count = 0
@@ -1977,11 +2456,10 @@ def main():
                     overlay_mode_txt = f"mode: fused tags {contributors}"
                 else:
                     overlay_mode_txt = f"mode: single tag {representative['tag_id']} ({target_mode})"
-                print(
-                    f"\r[TAG {representative['tag_id']}] pelvis=({pelvis_xyz[0]:+.3f}, {pelvis_xyz[1]:+.3f}, {pelvis_xyz[2]:+.3f}) "
-                    f"dist={tag_distance:.2f}m mode={target_mode} tags={contributors} conf={tag_conf:.2f} apriltag={fps.fps:4.1f}fps",
-                    end="",
-                    flush=True,
+                tag_status = (
+                    f"[TAG {representative['tag_id']}] "
+                    f"pelvis=({pelvis_xyz[0]:+.3f},{pelvis_xyz[1]:+.3f},{pelvis_xyz[2]:+.3f}) "
+                    # f"dist={tag_distance:.2f}m mode={target_mode} tags={contributors} conf={tag_conf:.2f}"
                 )
             else:
                 miss_count += 1
@@ -1997,11 +2475,10 @@ def main():
                         confidence=tag_conf,
                         source=SOURCE_CHEST_CAMERA,
                     )
-                    print(
-                        f"\r[COAST {last_detection['tag_id']}] pelvis=({last_pelvis_xyz[0]:+.3f}, {last_pelvis_xyz[1]:+.3f}, {last_pelvis_xyz[2]:+.3f}) "
-                        f"dist={tag_distance:.2f}m miss={miss_count}/{args.coast_frames} apriltag={fps.fps:4.1f}fps",
-                        end="",
-                        flush=True,
+                    tag_status = (
+                        f"[COAST {last_detection['tag_id']}] "
+                        f"pelvis=({last_pelvis_xyz[0]:+.3f},{last_pelvis_xyz[1]:+.3f},{last_pelvis_xyz[2]:+.3f}) "
+                        # f"dist={tag_distance:.2f}m miss={miss_count}/{args.coast_frames}"
                     )
                 else:
                     center_ema = None
@@ -2017,14 +2494,24 @@ def main():
                         confidence=0.0,
                         source=SOURCE_CHEST_CAMERA,
                     )
-                    print(
-                        f"\r[     ] no tag ({','.join(str(tag_id) for tag_id in target_tag_ids)}) apriltag={fps.fps:4.1f}fps" + " " * 20,
-                        end="",
-                        flush=True,
+                    tag_status = (
+                        f"[     ] no tag ({','.join(str(tag_id) for tag_id in target_tag_ids)})"
                     )
+            _t_publish = time.perf_counter()
 
-            if args.show or video_writer is not None:
-                vis = color.copy()
+            _now_preview_s = time.monotonic()
+            _render_show = (
+                args.show
+                and (
+                    _preview_period_s <= 0.0
+                    or _now_preview_s - _last_preview_s >= _preview_period_s
+                )
+            )
+            if _render_show or video_writer is not None:
+                if color.ndim == 2:
+                    vis = cv2.cvtColor(color, cv2.COLOR_GRAY2BGR)
+                else:
+                    vis = color.copy()
                 for det in all_detections:
                     corners = det["corners"].astype(np.int32)
                     is_target = det["tag_id"] in target_tag_ids
@@ -2128,18 +2615,37 @@ def main():
                 if video_writer is not None:
                     video_writer.write(vis)
 
-                if args.show:
+                if _render_show:
                     ok, jpg_buf = cv2.imencode(".jpg", vis, [cv2.IMWRITE_JPEG_QUALITY, 60])
                     if ok:
                         with mjpeg_lock:
                             mjpeg_frame[0] = jpg_buf.tobytes()
+                    _last_preview_s = _now_preview_s
+            _t_vis = time.perf_counter()
 
             fps.tick()
+            _status_line(tag_status)
+            timing.add("capture", _t_frame0, _t_capture)
+            timing.add("depth", _t_capture, _t_depth)
+            timing.add("hsv", _t_depth, _t_hsv)
+            timing.add("bright", _t_hsv, _t_bright)
+            timing.add("apriltag", _t_bright, _t_detect)
+            timing.add("publish", _t_detect, _t_publish)
+            timing.add("preview", _t_publish, _t_vis)
+            timing.add("total", _t_frame0, _t_vis)
+            timing.tick()
 
     except KeyboardInterrupt:
         print("\n[INFO] Interrupted.")
     finally:
         ros_stop.set()
+        if _bright_frame_q is not None:
+            _put_latest(_bright_frame_q, None)
+        if _bright_proc is not None:
+            _bright_proc.join(timeout=1.0)
+            if _bright_proc.is_alive():
+                _bright_proc.terminate()
+                _bright_proc.join(timeout=1.0)
         if pipeline is not None:
             pipeline.stop()
         if depth_pipeline is not None:
@@ -2151,9 +2657,9 @@ def main():
             print(f"[INFO] Recording saved.")
         if httpd is not None:
             httpd.shutdown()
-        if ros_thread.is_alive():
+        if ros_thread is not None and ros_thread.is_alive():
             ros_thread.join(timeout=1.0)
-        if rclpy.ok():
+        if ros_thread is not None and rclpy.ok():
             rclpy.shutdown()
         print("[INFO] Done.")
 

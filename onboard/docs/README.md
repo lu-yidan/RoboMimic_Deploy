@@ -12,13 +12,14 @@
 onboard/
 └── perception/
     ├── lidar/
-    │   ├── ball_detector.py      ← 主服务：MID360 点云 → 球心检测 → DDS 发布
+    │   ├── ball_detector.py      ← MID360 点云 → raw lidar 球心 → DDS 发布
     │   ├── rviz_publisher.py     ← RViz2 可视化：点云 + Marker 发布
     │   ├── center_kalman_filter.py ← 卡尔曼滤波平滑球心轨迹
     │   ├── mid360_to_base.py     ← 坐标变换：MID360 系 → pelvis (base) 系
     │   └── README.md             ← Lidar 使用手册（含 RViz2 配置）
     └── camera/
         ├── ball_detector.py      ← 单相机：RealSense D435 + YOLO11m TRT → DDS 发布
+        ├── run_gray_perception.sh ← 灰度 AprilTag + bright-ball 启动脚本
         ├── ball_detector_dual.py ← 双相机：2×D435 + 共享 YOLO → DDS 发布
         ├── camera_to_base.py     ← 坐标变换：相机系 → pelvis 系（含胸部占位外参）
         ├── run.sh                ← 单相机启动脚本（含 TRT 路径、GPU 解锁）
@@ -33,7 +34,7 @@ onboard/
 
 ---
 
-## DDS 消息
+## DDS 消息与 Topic
 
 | 字段 | 类型 | 含义 |
 |------|------|------|
@@ -41,7 +42,9 @@ onboard/
 | `x / y / z` | float32 | 球心在 **pelvis body 系** 的坐标（m） |
 | `valid` | uint8 | `1` = 本帧检测到球；`0` = 未检测到，位置为上一帧 EMA 值 |
 
-- **Topic**：`rt/ball_state`
+- **Raw lidar topic**：`rt/lidar_ball_state`
+- **Raw camera topic**：`rt/cam_ball_state`
+- **Final policy topic**：`rt/ball_state`（由 `onboard/perception/ball_fuser.py` 发布）
 - **QoS**：BestEffort，KeepLast(1)
 - **频率**：约 10 Hz（受 Livox MID360 点云帧率限制）
 
@@ -143,7 +146,7 @@ source ~/yixuan/yichao-deploy/ws_livox/install/setup.sh
 ros2 launch livox_ros_driver2 msg_MID360_launch.py
 ```
 
-#### 3. 启动球检测服务
+#### 3. 启动 raw 球检测服务
 
 在 `RoboMimicDeploy_G1` 根目录下运行：
 
@@ -151,7 +154,8 @@ ros2 launch livox_ros_driver2 msg_MID360_launch.py
 python onboard/perception/lidar/ball_detector.py
 ```
 
-服务启动后终端会持续打印检测到的球心坐标及每帧耗时。
+服务启动后发布 `rt/lidar_ball_state`。策略使用的最终 `rt/ball_state`
+由 `onboard/perception/ball_fuser.py` 发布。
 
 ---
 
@@ -215,7 +219,23 @@ bash onboard/perception/camera/run_dual.sh --show     # +双路 MJPEG 预览 (po
 
 > 详见 `onboard/perception/camera/README.md`。
 
-两方案均发布到同一 DDS Topic `rt/ball_state`，`deploy_real.py` 无需修改，启动哪个方案即用哪个。
+新的推荐链路是 raw sensor topic + fuser：lidar 发布 `rt/lidar_ball_state`，
+camera 发布 `rt/cam_ball_state`，`ball_fuser.py` 按 `lidar > camera` 选择观测并
+统一 Kalman 平滑后发布 `rt/ball_state`。详见
+`onboard/docs/CAMERA_PERCEPTION_ARCHITECTURE.md`；近期重构变更和现场检查项见
+`onboard/docs/CAMERA_PERCEPTION_REFACTOR_NOTE.md`。
+
+### 方案 C — Grayscale AprilTag + Bright Ball
+
+```bash
+bash onboard/perception/camera/run_gray_perception.sh
+bash onboard/perception/camera/run_gray_perception.sh --with-fuser
+```
+
+灰度链路默认使用 `/dev/video3`、`GREY`、`30Hz`，发布 AprilTag target 到
+`rt/target_state`，发布 camera raw ball 到 `rt/cam_ball_state`。使用
+`--profile-timing` 可输出 capture / bright / apriltag / preview / total 的
+mean/p95 耗时。
 
 ---
 

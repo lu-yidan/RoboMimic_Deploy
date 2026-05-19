@@ -8,6 +8,8 @@
 #   - 需要 AprilTag 目标 + 白球/反光球检测
 #
 # 注意：
+#   默认由单个进程独占 V4L2 GREY 节点，并在内部用 latest-frame
+#   worker 发布 rt/cam_ball_state，避免多个进程抢同一相机。
 #   这里不启用 RealSense depth-only。实测它会和 V4L2 UVC
 #   抢同一台 D435I，导致 /dev/video* 重新枚举甚至灰度画面消失。
 # ============================================================
@@ -21,4 +23,5 @@ exec bash onboard/perception/camera/run_apriltag_target.sh \
     --v4l2-fourcc "${V4L2_FOURCC:-GREY}" \
     --v4l2-fps "${V4L2_FPS:-30}" \
     --ball-bright \
+    --ball-bright-max-hz "${BALL_BRIGHT_MAX_HZ:-0}" \
     "$@"

@@ -31,6 +31,10 @@ else
     echo "[run_lidar] WARN: Livox workspace setup not found: $LIVOX_WS/install/setup.bash"
 fi
 
+UNITREE_ROS2_WS="${UNITREE_ROS2_WS:-$HOME/unitree_ros2/cyclonedds_ws}"
+source "$UNITREE_ROS2_WS/install/setup.sh" 2>/dev/null || true
+source "$UNITREE_ROS2_WS/install/setup.bash" 2>/dev/null || true
+
 LIVOX_CONFIG="${LIVOX_CONFIG:-$LIVOX_WS/src/livox_ros_driver2/config/MID360_config.json}"
 if [[ ! -f "$LIVOX_CONFIG" ]]; then
     echo "[run_lidar] ERROR: MID360 config not found: $LIVOX_CONFIG"
@@ -51,6 +55,7 @@ source /home/unitree/miniconda3/etc/profile.d/conda.sh 2>/dev/null || true
 
 # Use CycloneDDS — Unitree's intended RMW (FastDDS OOM-kills on 16 GB Jetson).
 export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+export ROS_LOCALHOST_ONLY=0
 CYCLONEDDS_IFACE="${CYCLONEDDS_IFACE:-$(ip -o -4 addr show scope global 2>/dev/null | awk '/192\.168\.123\./ {print $2; exit}')}"
 CYCLONEDDS_IFACE="${CYCLONEDDS_IFACE:-enP8p1s0}"
 export CYCLONEDDS_URI="<CycloneDDS><Domain><General><Interfaces><NetworkInterface name=\"$CYCLONEDDS_IFACE\" priority=\"default\" multicast=\"default\" /></Interfaces></General></Domain></CycloneDDS>"

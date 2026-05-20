@@ -4,6 +4,11 @@ set -euo pipefail
 SESSION_NAME="${1:-robomimic}"
 REPO_DIR="/home/unitree/yichao/RoboMimic_Deploy"
 TMUX_SHELL="bash --noprofile --norc"
+detect_robot_iface() {
+  ip -o -4 addr show scope global 2>/dev/null \
+    | awk '/192\.168\.123\./ {print $2; exit}'
+}
+ROBOT_IFACE="${ROBOT_IFACE:-$(detect_robot_iface)}"
 ROBOT_IFACE="${ROBOT_IFACE:-enP8p1s0}"
 UNITREE_SDK2_DIR="${UNITREE_SDK2_DIR:-/home/unitree/unitree_sdk2-main}"
 CYCLONEDDS_IDLC="${CYCLONEDDS_IDLC:-/opt/ros/humble/bin/idlc}"
@@ -45,7 +50,7 @@ RIGHT_BOTTOM="$(tmux split-window -v -P -F '#{pane_id}' -t "${RIGHT_MID}" -c "${
 
 # Pre-fill commands — press Enter in each pane to start
 tmux send-keys -t "${RIGHT_TOP}"    -l "cd ${REPO_DIR} && { pkill -f 'onboard/perception/camera/apriltag_detector.py.*--v4l2-device /dev/video3' || true; pkill -f 'onboard/perception/camera/run_apriltag_target.sh.*--v4l2-device /dev/video3' || true; if command -v fuser >/dev/null 2>&1; then fuser -k 8080/tcp || true; fuser -k /dev/video3 || true; fi; } && ./onboard/perception/camera/run_gray_perception.sh --with-fuser --show"
-tmux send-keys -t "${RIGHT_MID}"    -l "cd ${REPO_DIR} && ./onboard/perception/lidar/run.sh --show --base-y-bias 0.05 --dds-topic rt/lidar_ball_state"
+tmux send-keys -t "${RIGHT_MID}"    -l "cd ${REPO_DIR} && ./onboard/perception/lidar/run.sh --show --base-y-bias 0.00 --dds-topic rt/lidar_ball_state"
 tmux send-keys -t "${LEFT_TOP}"     -l "cd ${REPO_DIR} && rm -rf bridge/build && cmake -S bridge -B bridge/build -DUNITREE_SDK2_DIR=${UNITREE_SDK2_DIR} -DCYCLONEDDS_IDLC=${CYCLONEDDS_IDLC} && cmake --build bridge/build -j2 && LD_LIBRARY_PATH=${UNITREE_DDS_LIB}:\${LD_LIBRARY_PATH:-} CYCLONEDDS_URI='${BRIDGE_CYCLONEDDS_URI}' BRIDGE_NETWORK_INTERFACE=${ROBOT_IFACE} bridge/build/cpp_bridge_main"
 tmux send-keys -t "${LEFT_MID}"     -l "cd ${REPO_DIR} && if [[ -f \"${SCORE_ONNX}\" ]]; then LD_LIBRARY_PATH=${PY_CYCLONEDDS_LIB}:${CONDA_ENV_LIB}:/opt/onnxruntime/lib:\${LD_LIBRARY_PATH:-} CYCLONEDDS_URI='${PY_BRIDGE_CYCLONEDDS_URI}' ROS_LOCALHOST_ONLY=0 \"${PYTHON_BIN}\" bridge/python/deploy_policy.py; else echo \"[deploy_policy] Missing ONNX model: ${SCORE_ONNX}\"; echo \"[deploy_policy] Copy the trained policy .onnx into policy/score/model/ or set SCORE_ONNX / policy/score/config/score.yaml.\"; fi"
 tmux send-keys -t "${LEFT_BOTTOM}"  -l "cd ${REPO_DIR} && bash onboard/perception/run_sensor_dashboard.sh"

@@ -1512,11 +1512,6 @@ def main():
         help="Stream annotated video via MJPEG on port 8080.",
     )
     parser.add_argument(
-        "--show-no-overlay",
-        action="store_true",
-        help="Stream raw camera frames via MJPEG without captions, boxes, or markers.",
-    )
-    parser.add_argument(
         "--show-port",
         type=int,
         default=8080,
@@ -2517,106 +2512,105 @@ def main():
                     vis = cv2.cvtColor(color, cv2.COLOR_GRAY2BGR)
                 else:
                     vis = color.copy()
-                if not args.show_no_overlay:
-                    for det in all_detections:
-                        corners = det["corners"].astype(np.int32)
-                        is_target = det["tag_id"] in target_tag_ids
-                        is_selected = representative is not None and det["tag_id"] == representative["tag_id"] and np.allclose(
-                            det["center_xy"], representative["center_xy"]
-                        )
-                        color_box = (0, 255, 0) if is_selected else ((255, 160, 0) if is_target else (160, 160, 160))
-                        cv2.polylines(vis, [corners], True, color_box, 2)
-                        cx, cy = det["center_xy"].astype(int)
-                        cv2.circle(vis, (cx, cy), 4, color_box, -1)
-                        label = f"id={det['tag_id']} d={det['distance_m']:.2f}m"
-                        cv2.putText(
-                            vis,
-                            label,
-                            (int(corners[0][0]), max(24, int(corners[0][1]) - 8)),
-                            cv2.FONT_HERSHEY_SIMPLEX,
-                            0.55,
-                            color_box,
-                            2,
-                        )
-
-                    if representative is None and last_detection is not None and miss_count <= args.coast_frames:
-                        coast_corners = last_detection["corners"].astype(np.int32)
-                        cv2.polylines(vis, [coast_corners], True, (0, 165, 255), 2)
-                        cv2.putText(
-                            vis,
-                            f"coast {last_detection['tag_id']} {miss_count}/{args.coast_frames}",
-                            (int(coast_corners[0][0]), max(24, int(coast_corners[0][1]) - 8)),
-                            cv2.FONT_HERSHEY_SIMPLEX,
-                            0.55,
-                            (0, 165, 255),
-                            2,
-                        )
-
-                    fps_txt = f"AprilTag {fps.fps:.1f} fps"
-                    ids_txt = f"target ids: {', '.join(str(tag_id) for tag_id in target_tag_ids)}"
-                    fam_txt = f"family: {family_name} size={args.tag_size:.3f}m"
-                    extr_txt = f"xyz={tuple(round(v, 3) for v in chest_xyz)}"
-                    cv2.putText(
-                        vis, fps_txt, (10, 24),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2,
+                for det in all_detections:
+                    corners = det["corners"].astype(np.int32)
+                    is_target = det["tag_id"] in target_tag_ids
+                    is_selected = representative is not None and det["tag_id"] == representative["tag_id"] and np.allclose(
+                        det["center_xy"], representative["center_xy"]
                     )
-                    cv2.putText(
-                        vis, ids_txt, (10, 50),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 2,
-                    )
-                    cv2.putText(
-                        vis, fam_txt, (10, 76),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1,
-                    )
-                    cv2.putText(
-                        vis, extr_txt, (10, 98),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1,
-                    )
-                    if tag_offsets:
-                        cv2.putText(
-                            vis, "target mode: per-tag offset", (10, 120),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1,
-                        )
+                    color_box = (0, 255, 0) if is_selected else ((255, 160, 0) if is_target else (160, 160, 160))
+                    cv2.polylines(vis, [corners], True, color_box, 2)
+                    cx, cy = det["center_xy"].astype(int)
+                    cv2.circle(vis, (cx, cy), 4, color_box, -1)
+                    label = f"id={det['tag_id']} d={det['distance_m']:.2f}m"
                     cv2.putText(
                         vis,
-                        overlay_mode_txt,
-                        (10, 142),
+                        label,
+                        (int(corners[0][0]), max(24, int(corners[0][1]) - 8)),
                         cv2.FONT_HERSHEY_SIMPLEX,
-                        0.5,
-                        (255, 255, 255),
-                        1,
+                        0.55,
+                        color_box,
+                        2,
                     )
-                    if published and last_pelvis_xyz is not None:
-                        info = (
-                            f"pelvis ({pelvis_xyz[0]:+.2f}, {pelvis_xyz[1]:+.2f}, {pelvis_xyz[2]:+.2f})m "
-                            f"dist {tag_distance:.2f}m"
-                        )
-                        cv2.putText(vis, info, (10, vis.shape[0] - 12),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 0), 2)
 
-                    # Draw ball detection overlay (YOLO, HSV, or bright-ball mode).
-                    if args.ball or args.ball_hsv or args.ball_bright:
-                        bo = _ball_overlay
-                        if bo["bbox"] is not None:
-                            bx1, by1, bx2, by2 = bo["bbox"]
-                            is_ball_valid = bo["valid"]
-                            box_color = (0, 255, 128) if is_ball_valid else (0, 165, 255)
-                            cv2.rectangle(vis, (bx1, by1), (bx2, by2), box_color, 2)
-                            bcx, bcy = (bx1 + bx2) // 2, (by1 + by2) // 2
-                            cv2.circle(vis, (bcx, bcy), 5, box_color, -1)
-                            miss = bo["miss"]
-                            label = (f"ball d={bo['depth']:.2f}m" if is_ball_valid
-                                     else f"ball coast {miss}")
-                            cv2.putText(vis, label, (bx1, max(16, by1 - 6)),
-                                        cv2.FONT_HERSHEY_SIMPLEX, 0.55, box_color, 2)
-                            if bo["pelvis"] is not None:
-                                px, py, pz = bo["pelvis"]
-                                cv2.putText(
-                                    vis,
-                                    f"ball pelvis ({px:+.2f},{py:+.2f},{pz:+.2f})m",
-                                    (10, vis.shape[0] - 34),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, box_color, 2,
-                                )
+                if representative is None and last_detection is not None and miss_count <= args.coast_frames:
+                    coast_corners = last_detection["corners"].astype(np.int32)
+                    cv2.polylines(vis, [coast_corners], True, (0, 165, 255), 2)
+                    cv2.putText(
+                        vis,
+                        f"coast {last_detection['tag_id']} {miss_count}/{args.coast_frames}",
+                        (int(coast_corners[0][0]), max(24, int(coast_corners[0][1]) - 8)),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.55,
+                        (0, 165, 255),
+                        2,
+                    )
+
+                fps_txt = f"AprilTag {fps.fps:.1f} fps"
+                ids_txt = f"target ids: {', '.join(str(tag_id) for tag_id in target_tag_ids)}"
+                fam_txt = f"family: {family_name} size={args.tag_size:.3f}m"
+                extr_txt = f"xyz={tuple(round(v, 3) for v in chest_xyz)}"
+                cv2.putText(
+                    vis, fps_txt, (10, 24),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2,
+                )
+                cv2.putText(
+                    vis, ids_txt, (10, 50),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 2,
+                )
+                cv2.putText(
+                    vis, fam_txt, (10, 76),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1,
+                )
+                cv2.putText(
+                    vis, extr_txt, (10, 98),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1,
+                )
+                if tag_offsets:
+                    cv2.putText(
+                        vis, "target mode: per-tag offset", (10, 120),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1,
+                    )
+                cv2.putText(
+                    vis,
+                    overlay_mode_txt,
+                    (10, 142),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    (255, 255, 255),
+                    1,
+                )
+                if published and last_pelvis_xyz is not None:
+                    info = (
+                        f"pelvis ({pelvis_xyz[0]:+.2f}, {pelvis_xyz[1]:+.2f}, {pelvis_xyz[2]:+.2f})m "
+                        f"dist {tag_distance:.2f}m"
+                    )
+                    cv2.putText(vis, info, (10, vis.shape[0] - 12),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 0), 2)
+
+                # Draw ball detection overlay (YOLO, HSV, or bright-ball mode).
+                if args.ball or args.ball_hsv or args.ball_bright:
+                    bo = _ball_overlay
+                    if bo["bbox"] is not None:
+                        bx1, by1, bx2, by2 = bo["bbox"]
+                        is_ball_valid = bo["valid"]
+                        box_color = (0, 255, 128) if is_ball_valid else (0, 165, 255)
+                        cv2.rectangle(vis, (bx1, by1), (bx2, by2), box_color, 2)
+                        bcx, bcy = (bx1 + bx2) // 2, (by1 + by2) // 2
+                        cv2.circle(vis, (bcx, bcy), 5, box_color, -1)
+                        miss = bo["miss"]
+                        label = (f"ball d={bo['depth']:.2f}m" if is_ball_valid
+                                 else f"ball coast {miss}")
+                        cv2.putText(vis, label, (bx1, max(16, by1 - 6)),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, box_color, 2)
+                        if bo["pelvis"] is not None:
+                            px, py, pz = bo["pelvis"]
+                            cv2.putText(
+                                vis,
+                                f"ball pelvis ({px:+.2f},{py:+.2f},{pz:+.2f})m",
+                                (10, vis.shape[0] - 34),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, box_color, 2,
+                            )
 
                 if video_writer is not None:
                     video_writer.write(vis)

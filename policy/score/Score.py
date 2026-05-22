@@ -276,6 +276,7 @@ class Score(FSMState):
         self.freeze_motion_at_first_frame = bool(cfg.get("freeze_motion_at_first_frame", False))
         self.zero_anchor_pos        = bool(cfg.get("zero_anchor_pos",        False))
         self.ball_as_anchor_pos     = bool(cfg.get("ball_as_anchor_pos",     False))
+        self.ball_anchor_cmd_scale  = float(cfg.get("ball_anchor_cmd_scale", 0.5))
         self.ball_facing_anchor_ori = bool(cfg.get("ball_facing_anchor_ori", False))
         self.target_pos_w     = np.array(cfg["target_pos"],        dtype=np.float32)  # world frame
         self.target_source    = str(cfg.get("target_source", "fixed")).strip().lower()
@@ -295,7 +296,10 @@ class Score(FSMState):
             np.array(_lost_default, dtype=np.float32) if _lost_default is not None else None
         )
         self._ball_obs_lost_norm_max = float(cfg.get("ball_obs_lost_norm_max", 1e-3))
-        self._ball_vel_b_alpha = float(cfg.get("ball_vel_b_alpha", 0.5))
+        self._ball_vel_kf_pos_std = float(cfg.get("ball_vel_kf_pos_std", 0.04))
+        self._ball_vel_kf_accel_std = float(cfg.get("ball_vel_kf_accel_std", 5.0))
+        self._ball_vel_kf_init_vel_std = float(cfg.get("ball_vel_kf_init_vel_std", 2.0))
+        self._ball_vel_kf_outlier_dist = float(cfg.get("ball_vel_kf_outlier_dist", 0.8))
         self.runtime_mode = "real" if self.use_body_frame_ball else "sim"
         self.anchor_mode = (
             "zero"
@@ -349,6 +353,9 @@ class Score(FSMState):
         self._burst_need_ball_clear = False
         self._prev_ball_pos_b_for_trigger = None
         self._ball_vel_b_est = np.zeros(3, dtype=np.float32)
+        self._ball_vel_kf_initialized = False
+        self._ball_vel_kf_x = np.zeros(4, dtype=np.float64)  # [x, y, vx, vy] in pelvis frame
+        self._ball_vel_kf_P = np.eye(4, dtype=np.float64)
         self._entry_yaw_mat = np.eye(3, dtype=np.float64)
         self._target_world_yaw_vec = None
         self._debug_target_pos_w = np.zeros(3, dtype=np.float32)
@@ -438,7 +445,7 @@ class Score(FSMState):
         self._trigger_policy_step = 0
         self._burst_need_ball_clear = False
         self._prev_ball_pos_b_for_trigger = None
-        self._ball_vel_b_est[:] = 0.0
+        self._reset_ball_vel_kf()
 
         max_delta = np.abs(self._t0_target_q - self._entry_q).max()
         if self.wait_for_ball:
@@ -497,34 +504,78 @@ class Score(FSMState):
         start_t = int(np.clip(self.trigger_frame, 0, self.trigger_play_end_frame - 1))
         return (start_t + (policy_step - self._trigger_policy_step)) >= (self.trigger_play_end_frame - 1)
 
-    def _estimate_ball_vel_b(self) -> np.ndarray:
-        """Estimate body-frame ball velocity on real robot from `ball_pos_b`.
+    def _reset_ball_vel_kf(self):
+        self._prev_ball_pos_b_for_trigger = None
+        self._ball_vel_b_est[:] = 0.0
+        self._ball_vel_kf_initialized = False
+        self._ball_vel_kf_x[:] = 0.0
+        self._ball_vel_kf_P = np.eye(4, dtype=np.float64)
 
-        `ball_pos_b` is already expressed in the pelvis frame, so its derivative
-        naturally gives ball velocity relative to the robot. Use light smoothing
-        to reduce trigger jitter from perception noise.
+    def _estimate_ball_vel_b(self) -> np.ndarray:
+        """Estimate pelvis-frame ball velocity on real robot from `ball_pos_b`.
+
+        Triggering only needs horizontal velocity, so use a 2D constant-velocity
+        Kalman filter on [x, y, vx, vy] instead of raw position differencing.
         """
         if not self.use_body_frame_ball:
             return np.zeros(3, dtype=np.float32)
 
         if not self.state_cmd.ball_valid:
-            self._prev_ball_pos_b_for_trigger = None
-            self._ball_vel_b_est[:] = 0.0
+            self._reset_ball_vel_kf()
             return self._ball_vel_b_est.copy()
 
-        cur_ball_pos_b = self.state_cmd.ball_pos_b.astype(np.float32)
-        if self._prev_ball_pos_b_for_trigger is None:
-            self._prev_ball_pos_b_for_trigger = cur_ball_pos_b.copy()
+        z = self.state_cmd.ball_pos_b[:2].astype(np.float64)
+        if not self._ball_vel_kf_initialized:
+            self._ball_vel_kf_x[:] = [z[0], z[1], 0.0, 0.0]
+            pos_var = max(self._ball_vel_kf_pos_std, 1e-4) ** 2
+            vel_var = max(self._ball_vel_kf_init_vel_std, 1e-4) ** 2
+            self._ball_vel_kf_P = np.diag([pos_var, pos_var, vel_var, vel_var]).astype(np.float64)
+            self._ball_vel_kf_initialized = True
             self._ball_vel_b_est[:] = 0.0
             return self._ball_vel_b_est.copy()
 
         dt = max(float(self.control_dt), 1e-3)
-        raw_vel_b = (cur_ball_pos_b - self._prev_ball_pos_b_for_trigger) / dt
-        alpha = float(np.clip(self._ball_vel_b_alpha, 0.0, 1.0))
-        self._ball_vel_b_est = (
-            alpha * raw_vel_b + (1.0 - alpha) * self._ball_vel_b_est
-        ).astype(np.float32)
-        self._prev_ball_pos_b_for_trigger = cur_ball_pos_b.copy()
+        F = np.array([
+            [1.0, 0.0, dt,  0.0],
+            [0.0, 1.0, 0.0, dt ],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ], dtype=np.float64)
+        accel_var = max(self._ball_vel_kf_accel_std, 1e-4) ** 2
+        dt2 = dt * dt
+        dt3 = dt2 * dt
+        dt4 = dt2 * dt2
+        Q = accel_var * np.array([
+            [0.25 * dt4, 0.0,       0.5 * dt3, 0.0      ],
+            [0.0,        0.25 * dt4, 0.0,       0.5 * dt3],
+            [0.5 * dt3, 0.0,        dt2,       0.0      ],
+            [0.0,        0.5 * dt3, 0.0,       dt2      ],
+        ], dtype=np.float64)
+        H = np.array([
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+        ], dtype=np.float64)
+        R = (max(self._ball_vel_kf_pos_std, 1e-4) ** 2) * np.eye(2, dtype=np.float64)
+
+        x_pred = F @ self._ball_vel_kf_x
+        P_pred = F @ self._ball_vel_kf_P @ F.T + Q
+        innovation = z - H @ x_pred
+        if (
+            self._ball_vel_kf_outlier_dist > 0.0
+            and float(np.linalg.norm(innovation)) > self._ball_vel_kf_outlier_dist
+        ):
+            self._ball_vel_kf_initialized = False
+            self._ball_vel_b_est[:] = 0.0
+            return self._ball_vel_b_est.copy()
+
+        S = H @ P_pred @ H.T + R
+        K = P_pred @ H.T @ np.linalg.inv(S)
+        self._ball_vel_kf_x = x_pred + K @ innovation
+        I = np.eye(4, dtype=np.float64)
+        self._ball_vel_kf_P = (I - K @ H) @ P_pred
+        self._ball_vel_kf_P = 0.5 * (self._ball_vel_kf_P + self._ball_vel_kf_P.T)
+
+        self._ball_vel_b_est[:] = [self._ball_vel_kf_x[2], self._ball_vel_kf_x[3], 0.0]
         return self._ball_vel_b_est.copy()
 
     def _get_effective_ball_pos_b(self):
@@ -603,8 +654,10 @@ class Score(FSMState):
                     anchor_cmd_xy = ball_pos_torso_b[:2].astype(np.float32)
                     norm_xy = float(np.linalg.norm(anchor_cmd_xy))
                     if norm_xy > 1e-6:
-                        clipped_norm_xy = np.clip(0.5*norm_xy, 0, 1.0)
-                        anchor_pos_b_ball = 0.5 * clipped_norm_xy * (anchor_cmd_xy / norm_xy)
+                        clipped_norm_xy = np.clip(self.ball_anchor_cmd_scale * norm_xy, 0, 1.0)
+                        anchor_pos_b_ball = (
+                            self.ball_anchor_cmd_scale * clipped_norm_xy * (anchor_cmd_xy / norm_xy)
+                        )
                         anchor_pos_b = np.concatenate(
                             [anchor_pos_b_ball, [aligned_anchor_pos_w[2] - torso_pos_w[2]]]
                         )
@@ -621,8 +674,10 @@ class Score(FSMState):
             anchor_cmd_xy = ball_pos_torso_b[:2]
             norm_xy = float(np.linalg.norm(anchor_cmd_xy))
             if norm_xy > 1e-6:
-                clipped_norm_xy = np.clip(0.5*norm_xy, 0, 1.0)
-                anchor_pos_b_ball = 0.5 * clipped_norm_xy * (anchor_cmd_xy / norm_xy)
+                clipped_norm_xy = np.clip(self.ball_anchor_cmd_scale * norm_xy, 0, 1.0)
+                anchor_pos_b_ball = (
+                    self.ball_anchor_cmd_scale * clipped_norm_xy * (anchor_cmd_xy / norm_xy)
+                )
                 return np.concatenate(
                     [anchor_pos_b_ball, [aligned_anchor_pos_w[2] - torso_pos_w[2]]]
                 ).astype(np.float32)

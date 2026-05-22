@@ -1,10 +1,10 @@
 # onnx_path:   "policy-obs-33.onnx"
-onnx_path:   "policy-obs-aic.onnx"
-# onnx_path:   "policy-obs-54-vhh.onnx"
+# onnx_path:   "policy-obs-aic.onnx"
+onnx_path:   "policy-obs-a3c.onnx"
 # onnx_path:   "policy-obs-325-uz8.onnx"
 # onnx_path:   "policy-obs-utf8-486.onnx"
 # onnx_path:   "policy-obs-410-vvj.onnx"
-# onnx_path:   "policy-obs-54-vhh.onnx"
+# onnx_path:   "policy-obs-ae.onnx"
 # onnx_path:   "policy-obs-54-vhh.onnx"
 # onnx_path:   "policy-obs-54-4s.onnx"
 motion_path: "score_motion.npz"
@@ -35,14 +35,21 @@ action_clip:
 
 # false = simulation (ball_pos from MuJoCo world frame)
 # true  = real robot (ball_pos from DDS, already in pelvis body frame)
-use_body_frame_ball: true
+use_body_frame_ball: false
 
 # When ball_valid is false and sensor ball is ~zero: use this pelvis-frame default for
 # soccer_pos_b history, ball_as_anchor_pos blend, and ball_facing_anchor_ori (not raw [0,0,0]).
 # Omit key to disable substitution.
 ball_obs_default_when_lost: [2.0, 0.0, -0.7]
 ball_obs_lost_norm_max: 1.0e-3
-ball_vel_b_alpha: 0.5   # real模式下由 ball_pos_b 差分估计 ball_vel_b 的平滑系数
+
+# Real trigger ball velocity estimator: 2D constant-velocity Kalman filter
+# over pelvis-frame [x, y, vx, vy]. Larger pos_std trusts measurements less;
+# larger accel_std lets velocity change faster.
+ball_vel_kf_pos_std: 0.04        # metres
+ball_vel_kf_accel_std: 5.0       # m/s^2
+ball_vel_kf_init_vel_std: 2.0    # m/s
+ball_vel_kf_outlier_dist: 0.8    # metres; reset filter on larger innovation
 
 # Optional: clip motion to a specific time window (seconds).
 # If omitted, the full motion sequence is used.
@@ -59,6 +66,7 @@ zero_anchor_pos: false
 # If true, anchor_pos_b is set to the ball position expressed in the torso body frame,
 # instead of the reference-motion anchor position.
 # Has no effect when zero_anchor_pos is true (zero_anchor_pos takes priority).
+ball_anchor_cmd_scale: 0.25
 ball_as_anchor_pos: false
 
 # If true, anchor_ori_6d is computed so its +X axis always points toward the ball
@@ -69,7 +77,7 @@ ball_facing_anchor_ori: false
 # Target source:
 # - fixed:    use `target_pos`
 # - apriltag: use rt/target_state (AprilTag / target detector) on real robot
-target_source: apriltag
+target_source: fixed
 
 # If target_source=apriltag and the tag is lost:
 # - true:  keep the last seen target direction in a yaw/world cache and
@@ -92,10 +100,10 @@ target_pos: [5.0, 0.0, 0.115]
 # (ball must leave the trigger zone once before the next trigger).
 # If `trigger_play_end_frame` is omitted, plays from `trigger_frame` to clip end (one-shot).
 wait_for_ball:   false
-trigger_play_once: true
+trigger_play_once: false
 trigger_radius:  0.25    # metres
 trigger_horizon: 0.4    # look-ahead seconds
-trigger_base_offset_xy: [0.1, -0.1]  # torso frame: +x forward, +y left; right is negative y
+trigger_base_offset_xy: [0.15, -0.1]  # torso frame: +x forward, +y left; right is negative y
 trigger_frame:            250   # first motion frame on trigger (loaded clip indices)
 trigger_play_end_frame:   300   # last motion frame inclusive (252..302 = 51 frames)
 # Default settings:

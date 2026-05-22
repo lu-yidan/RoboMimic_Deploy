@@ -15,7 +15,7 @@
 
 ```bash
 pkill -f "onboard/perception/camera/apriltag_detector.py" 2>/dev/null || true
-./onboard/perception/camera/run_gray_perception.sh --show
+./onboard/perception/camera/run_apriltag_gray_ball.sh --show
 ```
 
 默认脚本会做这些事：
@@ -23,21 +23,8 @@ pkill -f "onboard/perception/camera/apriltag_detector.py" 2>/dev/null || true
 - 使用 V4L2 读取 RealSense 的 IR/灰度 UVC 流：`/dev/video3` + `GREY`
 - AprilTag 发布到 `rt/target_state`
 - 白球 bright detector 发布到 `rt/cam_ball_state`
-- 最终策略球位置由 `onboard/perception/ball_fuser.py` 发布到 `rt/ball_state`
 - 浏览器预览端口：`8080`
 - 默认四 tag 板：id `0/1/2/3`
-
-如需同时启动 final ball fuser：
-
-```bash
-./onboard/perception/camera/run_gray_perception.sh --with-fuser
-```
-
-如需定位低于 20Hz 的瓶颈：
-
-```bash
-./onboard/perception/camera/run_apriltag_gray_ball.sh --profile-timing --preview-max-hz 10 --status-hz 4
-```
 
 如果需要彩色画面：
 
@@ -1591,11 +1578,15 @@ Exception: channel factory init error.
 
 #### 修复
 
-`apriltag_detector.py` 改为直接订阅 Unitree DDS `rt/lowstate`：
+Camera 和 LiDAR detector 都应直接订阅 Unitree DDS `rt/lowstate`：
 
 ```text
 rt/lowstate -> LowStateHG -> q[12], q[13], q[14]
 ```
+
+LiDAR 进程同时要跑 ROS2 / Livox / rclpy，因此 lowstate DDS listener 放在隔离子进程中，
+主进程只读取最新 waist joints snapshot。这样可以避免 Unitree DDS 和 ROS2/Livox 在同一
+Python 进程内互相影响，同时保留 `rt/lowstate` 的实时腰部关节角。
 
 并在启动时做网卡选择：
 
@@ -1612,6 +1603,19 @@ rt/lowstate -> LowStateHG -> q[12], q[13], q[14]
 
 说明进入了正确路径。
 
+LiDAR 端还会在状态行里打印：
+
+```text
+[lidar] pelvis=(...) raw=(...) waist_q=(...) joint_age_s=...
+```
+
+其中 `rt/lidar_ball_state` 和 fuser 输出的 `rt/ball_state` 都应是 pelvis body frame。
+如果 lowstate 丢失或过期，会每 2 秒报警：
+
+```text
+lowstate stale/missing (...); MID360->pelvis transform is using default or stale waist joints
+```
+
 #### 快速验证
 
 运行 detector 后观察日志或临时 debug 输出：
@@ -1619,6 +1623,24 @@ rt/lowstate -> LowStateHG -> q[12], q[13], q[14]
 ```text
 waist_q != [0,0,0]
 joint_age_s < 0.05
+```
+
+现场验证过的 LiDAR 修复表现：
+
+```text
+[lidar] pelvis=(-0.01,-1.78,-0.71) raw=(...) waist_q=(-1.41,-0.09,-0.01) joint_age_s=0.01~0.03
+```
+
+修复前同一姿态近似输出 torso-like 坐标：
+
+```text
+[lidar] pelvis=(+1.79,-0.19,-0.76) ... waist_q=(+0.00,+0.00,+0.00) joint_age_s=null
+```
+
+修复后 fuser 应优先使用 LiDAR raw observation，并发布：
+
+```text
+[fuser] source=lidar -> rt/ball_state
 ```
 
 若 `joint_age_s` 是 `null` 或 `waist_q` 长时间为 `[0,0,0]`，说明 lowstate 没有进 detector，
@@ -1631,7 +1653,84 @@ python tools/check_dds_connection.py <网卡名>
 
 注意：Score 的 `anchor_pos_b` / `anchor_ori_6d` 按训练设置是 torso-link 相关；
 不要把它们和 policy observation 里的 `soccer_pos_b` / `target_pos_b` 混淆。
-本问题只针对 camera detector 发布到 `rt/ball_state` / `rt/target_state` 的 pelvis-frame 观测。
+本问题只针对 detector 发布到 `rt/lidar_ball_state`、`rt/ball_state`、`rt/target_state`
+的 pelvis-frame 观测。
+
+---
+
+### 11.6 `rt/lidar_ball_state` 在其他 pane 看不到
+
+#### 现象
+
+LiDAR detector 日志显示已经检测并发布 raw ball，但 dashboard / fuser / `check_ball_state.py`
+看不到 `rt/lidar_ball_state`，或者 fuser 一直退回 camera / none。
+
+#### 根因
+
+启动环境里若残留：
+
+```bash
+ROS_LOCALHOST_ONLY=1
+```
+
+ROS2 会把通信限制在 localhost。即使 detector 本身在跑，跨进程 / 跨 pane 的 DDS topic
+也可能不可见，现场表现就是 LiDAR raw topic 消失。
+
+#### 修复与验证
+
+LiDAR 启动脚本应显式设置：
+
+```bash
+export ROS_LOCALHOST_ONLY=0
+bash onboard/perception/lidar/run.sh --show --dds-topic rt/lidar_ball_state
+```
+
+验证顺序：
+
+```bash
+echo "$ROS_LOCALHOST_ONLY"   # 应为 0 或空；推荐脚本内固定为 0
+bash onboard/perception/run_sensor_dashboard.sh
+```
+
+dashboard 应能同时看到 `rt/lidar_ball_state` 和 fuser 发布的 `rt/ball_state`。
+
+---
+
+### 11.7 Camera / fuser 输出混在同一个终端，或 Ctrl-C 后残留进程
+
+#### 现象
+
+使用灰度相机 + fuser 时，camera pane 里同时刷 bright-ball、AprilTag 和 fuser 状态，
+不容易判断当前帧来自哪个模块；按 Ctrl-C 后有时 fuser 或 bright worker 仍残留。
+
+#### 修复
+
+推荐使用：
+
+```bash
+bash onboard/perception/camera/run_gray_perception.sh --with-fuser --show
+```
+
+当前脚本行为：
+
+- camera 主循环统一低频打印 AprilTag / bright-ball 状态；bright worker 不再直接向终端打印。
+- `--with-fuser` 会把 fuser stdout/stderr 重定向到 `/tmp/ball_fuser.log`，避免 camera pane 混入 fuser 状态。
+- camera 和 fuser 都以独立 process group 启动；`INT` / `TERM` / `EXIT` 会清理两组子进程。
+- `apriltag_detector.py` 将 `SIGTERM` 转成 `KeyboardInterrupt`，确保 `finally` 路径关闭 camera 和 bright worker。
+
+排查命令：
+
+```bash
+tail -f /tmp/ball_fuser.log
+pgrep -af "apriltag_detector.py|ball_fuser.py"
+```
+
+按 Ctrl-C 后 `pgrep` 不应再看到对应进程；如果要强制重启，可先：
+
+```bash
+pkill -f "onboard/perception/camera/apriltag_detector.py" 2>/dev/null || true
+pkill -f "onboard/perception/ball_fuser.py" 2>/dev/null || true
+```
 
 ---
 
@@ -1787,71 +1886,4 @@ Hough 检测（`_detect_hough()`）不依赖颜色，在灰度图上寻找圆形
 - 球检测继续使用 `--ball` 模式（YOLO）
 - `debug/hsv_tuner.py --web` 保留为调试工具，如需重新尝试颜色/形态检测可用
 - 如果将来更换颜色鲜明的足球（如橙色、黄色），HSV 方案可快速重启
-
----
-
-## 15. `--ball-bright` 能看到亮球但不发布/不画框
-
-### 现象
-
-IR/灰度画面中能看到亮点球，且肉眼看起来很明显，但 `--ball-bright` 没有检测结果：
-
-```text
-[cam-bright] no ball  cand=2
-```
-
-### 调试结论
-
-这类问题不一定是亮度阈值失败。一次实际复现中，2D bright-blob 已经能稳定找到候选：
-
-```text
-candidate_count=2
-球候选约为 cx=610~637, cy=222~262, r=18~25 px
-depth=2.8~4.3 m
-```
-
-真正导致漏检的是后续 **pelvis-frame 几何过滤**。当机器人 pelvis 与 torso/camera 有较大 yaw 差时，球在 pelvis 坐标系里的 lateral `y` 会很大，例如：
-
-```text
-pelvis=[-2.5, -4.0, -0.29]
-reject_counts={"max_abs_y": 2}
-```
-
-旧配置 `max_abs_y=2.2~3.0` 会把这种侧向姿态下的球过滤掉，即使画面中球非常明显。
-
-### 坐标系说明
-
-`--ball-bright` 的过滤分两层：
-
-1. **图像/相机像素空间**：`roi_y`、亮度阈值、圆度、fill、aspect 等。
-   - `roi_y=0.42` 表示忽略图像顶部 42%，只在下方区域找亮球。
-   - 这一步只看像素位置和形状，不知道 pelvis 坐标。
-
-2. **pelvis/base frame**：`max_abs_y`、`z_min`、`z_max`。
-   - 先根据候选半径估计单目深度。
-   - 再把 camera optical/body point 通过 waist joints 转到 pelvis frame。
-   - 最后用 pelvis-frame `y/z` 做空间过滤。
-
-因此：
-
-```text
-roi_y                 -> camera image pixel space
-max_abs_y/z_min/z_max -> pelvis/base frame
-```
-
-### 修复
-
-把 bright-ball 的默认 lateral range 放宽到覆盖侧身姿态：
-
-```bash
---ball-bright-max-abs-y 5.0
-```
-
-当前默认启动脚本也显式传入：
-
-```bash
---ball-bright-max-abs-y 5.0
-```
-
-这样侧向 `|y|≈4m` 的球可以通过，而地面上的假亮点仍会被 `z_min/z_max` 过滤掉。
 

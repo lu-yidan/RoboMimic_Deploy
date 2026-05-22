@@ -3,10 +3,10 @@
 
 Subscribes to:
   /livox/lidar  (Livox MID360 point cloud)
-  /lowstate     (Unitree G1 joint states, for waist/head angles)
+  rt/lowstate   (Unitree DDS lowstate, for waist angles)
 
 Publishes via DDS:
-  "rt/ball_state"  (BallState — ball position in pelvis body frame, ~10 Hz)
+  "rt/lidar_ball_state"  (raw lidar BallState in pelvis body frame, ~10 Hz)
 
 Usage (from this repository root, e.g. RoboMimic_Deploy):
 
@@ -34,11 +34,20 @@ from rclpy.qos import qos_profile_sensor_data
 
 from livox_ros_driver2.msg import CustomMsg
 from sensor_msgs.msg import PointCloud2, PointField
-from unitree_hg.msg import LowState
+try:
+    from unitree_hg.msg import LowState
+except ModuleNotFoundError:
+    LowState = None
 
 from onboard.perception.lidar.center_kalman_filter import CenterKalmanFilter
 from onboard.perception.lidar.mid360_to_base import compute_mid360_to_base_transform
 from onboard.perception.lidar.rviz_publisher import RvizPublisher
+from onboard.perception.lowstate_dds import (
+    UnitreeDdsJointListener,
+    UnitreeDdsJointProcessListener,
+    read_real_config_net,
+    select_lowstate_net,
+)
 from common.ball_state_dds import BallStatePublisher, SOURCE_LIDAR, SOURCE_NONE
 from common.lidar_ball_debug_dds import LidarBallDebugPublisher
 
@@ -127,6 +136,11 @@ class BallDetector(Node):
         base_y_bias: float = 0.0,
         show: bool = False,
         msg_type: str = "pc2",
+        lowstate_net: str | None = None,
+        lowstate_topic: str = "rt/lowstate",
+        lowstate_max_hz: float = 50.0,
+        joint_stale_s: float = 0.25,
+        lowstate_listener: UnitreeDdsJointListener | None = None,
     ):
         super().__init__("ball_detector")
 
@@ -149,12 +163,25 @@ class BallDetector(Node):
         self.center_kf = CenterKalmanFilter()
         self._last_lidar_ts = None
 
-        # ---- Joint angles (updated from /lowstate) ----
+        # ---- Joint angles (updated from Unitree DDS rt/lowstate) ----
         self.q_wy   = 0.0
         self.q_wr   = 0.0
         self.q_wp   = 0.0
         self.q_head = 0.593412
         self.q_mid  = 0.0
+        self._joint_age_s = None
+        self._joint_stale_s = float(joint_stale_s)
+        self._last_joint_warn_s = 0.0
+        self._last_joint_error_warn_s = 0.0
+        self._ros_lowstate_s = 0.0
+        self._joint_listener = lowstate_listener
+        if self._joint_listener is not None:
+            self.get_logger().info(
+                f"Unitree DDS lowstate process listener active "
+                f"(net={lowstate_net or 'auto'}, topic={lowstate_topic})"
+            )
+        else:
+            self.get_logger().warn("Unitree DDS lowstate listener unavailable")
         self._T_base_mid360 = compute_mid360_to_base_transform(
             self.q_wy, self.q_wr, self.q_wp, self.q_head, self.q_mid
         )
@@ -184,8 +211,17 @@ class BallDetector(Node):
         else:
             self.create_subscription(CustomMsg, "/livox/lidar",
                                      self.cb_lidar, 5)
-        self.create_subscription(LowState, "/lowstate",
-                                 self.cb_lowstate, qos_profile_sensor_data)
+        if self._joint_listener is None and LowState is not None:
+            self.create_subscription(LowState, "/lowstate",
+                                    self.cb_lowstate, qos_profile_sensor_data)
+            self.get_logger().warn(
+                "falling back to ROS /lowstate; prefer Unitree DDS rt/lowstate"
+            )
+        else:
+            if self._joint_listener is None:
+                self.get_logger().warn(
+                    "unitree_hg ROS msg not found; using default waist/head angles"
+                )
 
         # ---- Worker thread: heavy processing decoupled from ROS callback ----
         # cb_lidar() just swaps the message reference (O(1), non-blocking).
@@ -213,9 +249,35 @@ class BallDetector(Node):
         self.q_wy = q[12]
         self.q_wr = q[13]
         self.q_wp = q[14]
+        self._ros_lowstate_s = time.time()
+        self._joint_age_s = 0.0
         self._joint_dirty = True
 
+    def _refresh_waist_joints(self):
+        if self._joint_listener is not None:
+            waist_q, age_s = self._joint_listener.snapshot()
+            self.q_wy, self.q_wr, self.q_wp = waist_q
+            self._joint_age_s = age_s
+            self._joint_dirty = True
+        elif self._ros_lowstate_s > 0.0:
+            self._joint_age_s = time.time() - self._ros_lowstate_s
+
+        now_s = time.monotonic()
+        if self._joint_age_s is None or self._joint_age_s > self._joint_stale_s:
+            if now_s - self._last_joint_warn_s >= 2.0:
+                age = "null" if self._joint_age_s is None else f"{self._joint_age_s:.3f}s"
+                self.get_logger().warn(
+                    f"lowstate stale/missing (joint_age_s={age}); "
+                    "MID360->pelvis transform is using default or stale waist joints"
+                )
+                self._last_joint_warn_s = now_s
+            err = getattr(self._joint_listener, "last_error", None)
+            if err and now_s - self._last_joint_error_warn_s >= 5.0:
+                self.get_logger().warn(f"Unitree DDS lowstate child error: {err}")
+                self._last_joint_error_warn_s = now_s
+
     def _transform_point_mid360_to_base_fast(self, point_mid360: np.ndarray) -> np.ndarray:
+        self._refresh_waist_joints()
         if self._joint_dirty:
             self._T_base_mid360 = compute_mid360_to_base_transform(
                 self.q_wy, self.q_wr, self.q_wp, self.q_head, self.q_mid
@@ -253,6 +315,8 @@ class BallDetector(Node):
             with self._buf_lock:
                 msg       = self._buf_msg
                 recv_wall = self._buf_recv_wall
+            if msg is None:
+                continue
 
             t0    = time.perf_counter()
             stamp = msg.header.stamp
@@ -347,8 +411,11 @@ class BallDetector(Node):
                 self.center_kf.freeze_motion()
                 self._publish_invalid()
                 if _frame_n % 30 == 0:
+                    age = "null" if self._joint_age_s is None else f"{self._joint_age_s:.3f}"
                     print(
                         f"\r[lidar] no ball  n={n} hi={len(high_idx)} cand={cand.shape[0]}  "
+                        f"waist_q=({self.q_wy:+.2f},{self.q_wr:+.2f},{self.q_wp:+.2f}) "
+                        f"joint_age_s={age}  "
                         f"refl={1000*(t_pass1-t0):.0f}ms "
                         f"cand_xyz={1000*(t_pass2a-t_pass1):.0f}ms "
                         f"disp_xyz={1000*(t_pass2b-t_pass2a):.0f}ms "
@@ -391,9 +458,12 @@ class BallDetector(Node):
             # Throttle console output to avoid terminal I/O jitter.
             _frame_n += 1
             if _frame_n % 10 == 0:
+                age = "null" if self._joint_age_s is None else f"{self._joint_age_s:.3f}"
                 print(
                     f"\r[lidar] pelvis=({x:+.3f},{y:+.3f},{z:+.3f})  "
                     f"raw=({center_lidar[0]:.3f},{center_lidar[1]:.3f},{center_lidar[2]:.3f})  "
+                    f"waist_q=({self.q_wy:+.2f},{self.q_wr:+.2f},{self.q_wp:+.2f}) "
+                    f"joint_age_s={age}  "
                     f"surf_n={in_n} hi={len(high_idx)} cand={cand.shape[0]}  "
                     f"refl={1000*(t_pass1-t0):.0f}ms "
                     f"cand_xyz={1000*(t_pass2a-t_pass1):.0f}ms "
@@ -417,6 +487,7 @@ class BallDetector(Node):
                 valid=False,
             )
         else:
+            self._refresh_waist_joints()
             self._dds.publish(0.0, 0.0, 0.0, valid=False, source=SOURCE_NONE)
             zero = np.zeros(3, dtype=np.float32)
             self._debug.publish(
@@ -431,6 +502,8 @@ class BallDetector(Node):
         self._stop_flag.set()
         self._buf_event.set()          # unblock worker if waiting
         self._worker_thread.join(timeout=2)
+        if self._joint_listener is not None and hasattr(self._joint_listener, "stop"):
+            self._joint_listener.stop()
         if self._stdin_fd is not None and self._stdin_old_term is not None:
             termios.tcsetattr(self._stdin_fd, termios.TCSADRAIN, self._stdin_old_term)
         return super().destroy_node()
@@ -441,8 +514,8 @@ class BallDetector(Node):
 def main():
     import argparse
     parser = argparse.ArgumentParser(description="LiDAR ball detector")
-    parser.add_argument("--dds-topic", default="rt/ball_state",
-                        help="DDS topic name to publish to (default: rt/ball_state)")
+    parser.add_argument("--dds-topic", default="rt/lidar_ball_state",
+                        help="DDS topic name to publish to (default: rt/lidar_ball_state)")
     parser.add_argument("--debug-topic", default="rt/lidar_ball_debug",
                         help="DDS debug topic for pre-FK LiDAR values")
     parser.add_argument("--base-y-bias", type=float, default=0.0,
@@ -451,7 +524,38 @@ def main():
                         help="Enable RViz debug publishers (slower)")
     parser.add_argument("--msg-type", choices=("pc2", "custom"), default="pc2",
                         help="Livox ROS message type on /livox/lidar (default: pc2)")
+    parser.add_argument("--lowstate-net", default=None,
+                        help="Network interface for Unitree DDS lowstate. Defaults to deploy_real/config/real.yaml net.")
+    parser.add_argument("--lowstate-topic", default="rt/lowstate",
+                        help="Unitree DDS lowstate topic for waist joint angles.")
+    parser.add_argument("--lowstate-max-hz", type=float, default=50.0,
+                        help="Maximum rate for applying lowstate waist joint updates (default 50 Hz).")
+    parser.add_argument("--joint-stale-s", type=float, default=0.25,
+                        help="Warn when lowstate joint age exceeds this many seconds.")
     args, _ = parser.parse_known_args()
+
+    if args.lowstate_net is None:
+        args.lowstate_net = select_lowstate_net(read_real_config_net())
+    print(
+        f"[ball_detector] Lowstate DDS config: "
+        f"net={args.lowstate_net or 'auto'} topic={args.lowstate_topic} "
+        f"max_hz={args.lowstate_max_hz:.0f}",
+        flush=True,
+    )
+
+    lowstate_listener = None
+    try:
+        lowstate_listener = UnitreeDdsJointProcessListener(
+            args.lowstate_net,
+            topic=args.lowstate_topic,
+            max_hz=args.lowstate_max_hz,
+        )
+    except Exception as exc:
+        print(
+            f"[ball_detector] WARN: Unitree DDS lowstate listener failed: {exc}; "
+            "will try ROS /lowstate fallback",
+            flush=True,
+        )
 
     rclpy.init()
     node = BallDetector(
@@ -460,6 +564,11 @@ def main():
         base_y_bias=args.base_y_bias,
         show=args.show,
         msg_type=args.msg_type,
+        lowstate_net=args.lowstate_net,
+        lowstate_topic=args.lowstate_topic,
+        lowstate_max_hz=args.lowstate_max_hz,
+        joint_stale_s=args.joint_stale_s,
+        lowstate_listener=lowstate_listener,
     )
     # Use spin_once + sleep instead of spin() to avoid /lowstate 500 Hz
     # saturating the GIL and starving the worker thread.  The sleep yields

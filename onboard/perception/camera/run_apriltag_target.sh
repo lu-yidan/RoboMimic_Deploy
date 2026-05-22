@@ -37,27 +37,51 @@ echo "[run_apriltag_target.sh] Unlocking Jetson clocks..."
 echo "123" | sudo -S nvpmodel -m 0 2>/dev/null || true
 echo "123" | sudo -S jetson_clocks 2>/dev/null || true
 
-export LD_LIBRARY_PATH=/usr/local/cuda-12.1/compat:${LD_LIBRARY_PATH:-}
-export PYTHONPATH=/usr/lib/python3.8/dist-packages:${PYTHONPATH:-}
+source onboard/perception/setup_runtime_env.sh
 
 # Initialize conda for non-interactive shells (e.g. SSH)
 source /home/unitree/miniconda3/etc/profile.d/conda.sh 2>/dev/null || true
 
-source /opt/ros/foxy/setup.bash
-source ~/yixuan/yichao-deploy/ws_livox/install/setup.sh 2>/dev/null || true
+ROS_DISTRO="${ROS_DISTRO:-humble}"
+if [[ -f "/opt/ros/${ROS_DISTRO}/setup.bash" ]]; then
+    source "/opt/ros/${ROS_DISTRO}/setup.bash"
+elif [[ -f /opt/ros/foxy/setup.bash ]]; then
+    source /opt/ros/foxy/setup.bash
+elif [[ -f /opt/ros/humble/setup.bash ]]; then
+    source /opt/ros/humble/setup.bash
+fi
+
+LIVOX_WS="${LIVOX_WS:-$HOME/ws_livox}"
+source "$LIVOX_WS/install/setup.sh" 2>/dev/null || true
+source "$LIVOX_WS/install/setup.bash" 2>/dev/null || true
+
+UNITREE_ROS2_WS="${UNITREE_ROS2_WS:-$HOME/unitree_ros2/cyclonedds_ws}"
+source "$UNITREE_ROS2_WS/install/setup.sh" 2>/dev/null || true
+source "$UNITREE_ROS2_WS/install/setup.bash" 2>/dev/null || true
+
+PY_CYCLONEDDS_LIB="${PY_CYCLONEDDS_LIB:-$HOME/share/opt/cyclonedds-0.10.5/lib}"
+if [[ -d "$PY_CYCLONEDDS_LIB" ]]; then
+    export LD_LIBRARY_PATH="$PY_CYCLONEDDS_LIB:${LD_LIBRARY_PATH:-}"
+fi
 
 # Use CycloneDDS — Unitree's intended RMW.
 # FastDDS (the Foxy default) pre-allocates ~14 GB of shared memory on a 16 GB
 # system, immediately triggering the OOM killer before any Python code runs.
 export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
-export CYCLONEDDS_URI='<CycloneDDS><Domain><General><Interfaces><NetworkInterface name="eth0" priority="default" multicast="default" /></Interfaces></General></Domain></CycloneDDS>'
+export ROS_LOCALHOST_ONLY=0
+CYCLONEDDS_IFACE="${CYCLONEDDS_IFACE:-$(ip -o -4 addr show scope global 2>/dev/null | awk '/192\.168\.123\./ {print $2; exit}')}"
+CYCLONEDDS_IFACE="${CYCLONEDDS_IFACE:-enP8p1s0}"
+export CYCLONEDDS_URI="<CycloneDDS><Domain><General><Interfaces><NetworkInterface name=\"$CYCLONEDDS_IFACE\" priority=\"default\" multicast=\"default\" /></Interfaces></General></Domain></CycloneDDS>"
 
 use_default_board_layout=1
+use_default_camera_args=1
 for arg in "$@"; do
     case "$arg" in
         --tag-id|--tag-id=*|--tag-offset|--tag-offset=*)
             use_default_board_layout=0
-            break
+            ;;
+        --color-backend|--color-backend=*|--v4l2-device|--v4l2-device=*|--camera-profile|--camera-profile=*|--v4l2-fourcc|--v4l2-fourcc=*|--ball|--ball-hsv)
+            use_default_camera_args=0
             ;;
     esac
 done
@@ -73,11 +97,23 @@ default_board_args=(
     --tag-offset 3 -0.10 0.175 0.00
 )
 
+PYTHON_BIN="${PYTHON_BIN:-/home/unitree/miniconda3/envs/robomimic/bin/python}"
 cmd=(
-    conda run -n robomimic --no-capture-output
-    python -u onboard/perception/camera/apriltag_detector.py
-    --record
+    "$PYTHON_BIN" -u onboard/perception/camera/apriltag_detector.py
 )
+
+if [[ "$use_default_camera_args" -eq 1 ]]; then
+    cmd+=(
+    --camera-profile gray-ir
+    --color-backend v4l2
+    --v4l2-device /dev/video3
+    --v4l2-fourcc GREY
+    --v4l2-fps 30
+    --ball-bright
+    --ball-bright-max-hz 0
+    --ball-bright-max-abs-y 5.0
+    )
+fi
 
 if [[ "$use_default_board_layout" -eq 1 ]]; then
     echo "[run_apriltag_target.sh] Using default 4-tag board layout (ids 0/1/2/3, offsets in metres)."

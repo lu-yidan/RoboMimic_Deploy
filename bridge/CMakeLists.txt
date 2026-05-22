@@ -87,7 +87,10 @@ if(CYCLONEDDS_IDLC)
     VERBATIM
   )
   add_library(policy_bridge_idl STATIC ${BRIDGE_GENERATED_DIR}/policy_bridge.c)
-  target_include_directories(policy_bridge_idl PUBLIC ${BRIDGE_GENERATED_DIR})
+  target_include_directories(policy_bridge_idl PUBLIC
+    ${BRIDGE_GENERATED_DIR}
+    ${UNITREE_SDK2_DIR}/thirdparty/include
+  )
   target_link_libraries(policy_bridge_idl PUBLIC ${DDSC_LIB})
 else()
   message(WARNING "CycloneDDS idlc not found. DDS bridge transport must be generated manually.")

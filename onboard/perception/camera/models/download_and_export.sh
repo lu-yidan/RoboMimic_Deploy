@@ -11,8 +11,7 @@
 #
 # 依赖：
 #   - conda 环境 robomimic（含 ultralytics, torch）
-#   - TensorRT 8.5.2（JetPack 5.1.2 自带）
-#   - CUDA 12.1 compat stubs（/usr/local/cuda-12.1/compat）
+#   - JetPack TensorRT Python bindings
 # =============================================================================
 set -e
 
@@ -38,9 +37,9 @@ echo "[download_and_export] 目标模型: $MODEL_NAME"
 echo "[download_and_export] 模型目录: $MODEL_DIR"
 echo "================================================================"
 
-# ── 1. 环境变量（TRT 需要 libnvcudla + tensorrt Python 绑定）─────────
-export LD_LIBRARY_PATH=/usr/local/cuda-12.1/compat:${LD_LIBRARY_PATH:-}
-export PYTHONPATH=/usr/lib/python3.8/dist-packages:${PYTHONPATH:-}
+# ── 1. 环境变量（TRT Python 绑定 + CycloneDDS + conda libstdc++）─────────
+cd "$REPO_ROOT"
+source onboard/perception/setup_runtime_env.sh
 
 # ── 2. 解锁 GPU 最大频率 ──────────────────────────────────────────────
 echo "[download_and_export] Unlocking Jetson clocks..."
@@ -77,13 +76,12 @@ echo "  预计耗时：10-15 分钟（TensorRT kernel profiling）"
 conda run -n robomimic --no-capture-output python -u -c "
 import sys, os, numpy as np, shutil, time
 
-# numpy 1.24 compatibility patch for TRT 8.5
+# numpy compatibility patch for older TRT exporters.
 if not hasattr(np, 'bool'):   np.bool   = bool
 if not hasattr(np, 'int'):    np.int    = int
 if not hasattr(np, 'float'):  np.float  = float
 if not hasattr(np, 'object'): np.object = object
 
-sys.path.insert(0, '/usr/lib/python3.8/dist-packages')
 from ultralytics import YOLO
 
 model_pt     = '${MODEL_PT}'

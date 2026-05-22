@@ -276,6 +276,7 @@ class Score(FSMState):
         self.freeze_motion_at_first_frame = bool(cfg.get("freeze_motion_at_first_frame", False))
         self.zero_anchor_pos        = bool(cfg.get("zero_anchor_pos",        False))
         self.ball_as_anchor_pos     = bool(cfg.get("ball_as_anchor_pos",     False))
+        self.ball_anchor_cmd_scale  = float(cfg.get("ball_anchor_cmd_scale", 0.5))
         self.ball_facing_anchor_ori = bool(cfg.get("ball_facing_anchor_ori", False))
         self.target_pos_w     = np.array(cfg["target_pos"],        dtype=np.float32)  # world frame
         self.target_source    = str(cfg.get("target_source", "fixed")).strip().lower()
@@ -603,8 +604,10 @@ class Score(FSMState):
                     anchor_cmd_xy = ball_pos_torso_b[:2].astype(np.float32)
                     norm_xy = float(np.linalg.norm(anchor_cmd_xy))
                     if norm_xy > 1e-6:
-                        clipped_norm_xy = np.clip(0.5*norm_xy, 0, 1.0)
-                        anchor_pos_b_ball = 0.5 * clipped_norm_xy * (anchor_cmd_xy / norm_xy)
+                        clipped_norm_xy = np.clip(self.ball_anchor_cmd_scale * norm_xy, 0, 1.0)
+                        anchor_pos_b_ball = (
+                            self.ball_anchor_cmd_scale * clipped_norm_xy * (anchor_cmd_xy / norm_xy)
+                        )
                         anchor_pos_b = np.concatenate(
                             [anchor_pos_b_ball, [aligned_anchor_pos_w[2] - torso_pos_w[2]]]
                         )
@@ -621,8 +624,10 @@ class Score(FSMState):
             anchor_cmd_xy = ball_pos_torso_b[:2]
             norm_xy = float(np.linalg.norm(anchor_cmd_xy))
             if norm_xy > 1e-6:
-                clipped_norm_xy = np.clip(0.5*norm_xy, 0, 1.0)
-                anchor_pos_b_ball = 0.5 * clipped_norm_xy * (anchor_cmd_xy / norm_xy)
+                clipped_norm_xy = np.clip(self.ball_anchor_cmd_scale * norm_xy, 0, 1.0)
+                anchor_pos_b_ball = (
+                    self.ball_anchor_cmd_scale * clipped_norm_xy * (anchor_cmd_xy / norm_xy)
+                )
                 return np.concatenate(
                     [anchor_pos_b_ball, [aligned_anchor_pos_w[2] - torso_pos_w[2]]]
                 ).astype(np.float32)

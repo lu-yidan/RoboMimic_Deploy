@@ -38,7 +38,11 @@ class PolicyRuntime:
 
         self.state_cmd = StateAndCmd(self.num_joints)
         self.policy_output = PolicyOutput(self.num_joints)
-        self.FSM_controller = FSM(self.state_cmd, self.policy_output)
+        self.FSM_controller = FSM(
+            self.state_cmd,
+            self.policy_output,
+            score_config_file=config.score_config_file,
+        )
 
         self.bridge_state_sub = BridgeStateSubscriber(
             domain_id=config.bridge_domain_id,

@@ -167,7 +167,11 @@ def main(cfg: DictConfig):
 
     state_cmd = StateAndCmd(num_joints)
     policy_output = PolicyOutput(num_joints)
-    FSM_controller = FSM(state_cmd, policy_output)
+    FSM_controller = FSM(
+        state_cmd,
+        policy_output,
+        score_config_file=cfg.get("score_config_file", "score.yaml"),
+    )
 
     log_cfg = cfg.get("logging", {})
     logger = None
@@ -219,6 +223,9 @@ def main(cfg: DictConfig):
                         )
                     else:
                         print("[Ball] Reset requested, but no ball body exists in this scene.")
+                if joystick.is_button_released(JoystickButton.R3):                                                       # Score manual trigger, R3
+                    state_cmd.score_manual_trigger = True
+                    print("[Score] Manual trigger requested (R3).")
 
                 # Target Y-bias: L1 held + D-pad Right/Left (edge-triggered, ±5 cm)
                 if joystick.is_button_pressed(JoystickButton.L1):
@@ -258,6 +265,10 @@ def main(cfg: DictConfig):
                 state_cmd.vel_cmd[0] = -joystick.get_axis_value(1)
                 state_cmd.vel_cmd[1] = -joystick.get_axis_value(0)
                 state_cmd.vel_cmd[2] = -joystick.get_axis_value(3)
+                state_cmd.score_anchor_pos_raw_b[0] = -joystick.get_axis_value(1)
+                state_cmd.score_anchor_pos_raw_b[1] = -joystick.get_axis_value(0)
+                state_cmd.score_anchor_pos_raw_b[2] = 0.0
+                state_cmd.score_anchor_yaw_raw = -joystick.get_axis_value(3)
                 
                 step_start = time.time()
                 

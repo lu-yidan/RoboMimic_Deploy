@@ -1,6 +1,7 @@
 xml_path: "g1_description/scene_with_ball.xml"
 simulation_dt: 0.002
 control_decimation: 10
+score_config_file: "score-aggr.yaml"
 ball_sensor_hz: 10   # simulated ball sensor update rate (10 Hz = every 5 control steps)
 ghost_enabled: true
 ghost_rgba: [0.2, 0.9, 0.4, 0.2]

@@ -8,6 +8,8 @@ control_dt: 0.02
 
 error_over_time: 5
 
+score_config_file: "score.yaml"
+
 logging:
   enabled: true      # set true to record a score log
   log_dir: "logs"

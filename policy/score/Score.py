@@ -202,6 +202,23 @@ def _compile_action_clip_bounds(cfg, fallback_clip):
     return lo, hi
 
 
+def _resolve_score_config_path(current_dir, config_file):
+    config_path = Path(config_file)
+    if config_path.is_absolute():
+        return config_path
+
+    candidates = [
+        Path(current_dir) / "config" / config_file,
+        Path.cwd() / config_file,
+        Path(current_dir) / config_file,
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+
+    return candidates[0]
+
+
 # ---------------------------------------------------------------------------
 # Policy
 # ---------------------------------------------------------------------------
@@ -216,17 +233,23 @@ class Score(FSMState):
         "fixed_sim": 5.0,
     }
 
-    def __init__(self, state_cmd: StateAndCmd, policy_output: PolicyOutput):
+    def __init__(
+        self,
+        state_cmd: StateAndCmd,
+        policy_output: PolicyOutput,
+        config_file: str = "score.yaml",
+    ):
         super().__init__()
         self.state_cmd    = state_cmd
         self.policy_output = policy_output
         self.name     = FSMStateName.SKILL_SCORE
-        self.name_str = "skill_score"
+        self.name_str = "skill_" + Path(config_file).stem
 
         current_dir = os.path.dirname(os.path.abspath(__file__))
-        config_path = os.path.join(current_dir, "config", "score.yaml")
+        config_path = _resolve_score_config_path(current_dir, config_file)
         with open(config_path, "r") as f:
             cfg = yaml.load(f, Loader=yaml.FullLoader)
+        print(f"Score config: {config_path}")
 
         onnx_path   = os.path.join(current_dir, "model", cfg["onnx_path"])
         motion_path = os.path.join(current_dir, "model", cfg["motion_path"])
@@ -274,6 +297,16 @@ class Score(FSMState):
         if self.warmup_target_q_mj.shape != (29,):
             raise ValueError("warmup_target_joint_pos must contain 29 joint values in MuJoCo order")
         self.freeze_motion_at_first_frame = bool(cfg.get("freeze_motion_at_first_frame", False))
+        self.manual_trigger = bool(cfg.get("manual_trigger", False))
+        self.manual_anchor_cmd = bool(cfg.get("manual_anchor_cmd", False))
+        self.manual_anchor_pos_scale_xy = np.array(
+            cfg.get("manual_anchor_pos_scale_xy", [1.0, 0.6]),
+            dtype=np.float32,
+        )
+        if self.manual_anchor_pos_scale_xy.shape != (2,):
+            raise ValueError("manual_anchor_pos_scale_xy must contain [x_scale, y_scale]")
+        self.manual_anchor_yaw_scale = float(cfg.get("manual_anchor_yaw_scale", 1.57))
+        self.manual_cmd_deadzone = float(cfg.get("manual_cmd_deadzone", 0.05))
         self.zero_anchor_pos        = bool(cfg.get("zero_anchor_pos",        False))
         self.ball_as_anchor_pos     = bool(cfg.get("ball_as_anchor_pos",     False))
         self.ball_anchor_cmd_scale  = float(cfg.get("ball_anchor_cmd_scale", 0.5))
@@ -308,7 +341,11 @@ class Score(FSMState):
             if self.ball_as_anchor_pos else
             "motion_ref"
         )
-        self.anchor_ori_mode = "ball_facing" if self.ball_facing_anchor_ori else "motion_ref"
+        self.anchor_ori_mode = (
+            "ball_facing"
+            if self.ball_facing_anchor_ori else
+            "motion_ref"
+        )
 
         # ---- Ball-trigger gate: hold at frame 0 until ball enters the circle ----
         self.wait_for_ball    = bool(cfg.get("wait_for_ball",    False))
@@ -324,9 +361,14 @@ class Score(FSMState):
         _tpe = cfg.get("trigger_play_end_frame", None)
         self.trigger_play_end_frame = int(_tpe) if _tpe is not None else None
         self.trigger_play_once = bool(cfg.get("trigger_play_once", False))
+        self.trigger_gate_enabled = self.wait_for_ball or self.manual_trigger
         self.motion_mode = (
             "freeze"
             if self.freeze_motion_at_first_frame else
+            "manual_triggered_once"
+            if self.manual_trigger and self.trigger_play_once else
+            "manual_triggered"
+            if self.manual_trigger else
             "triggered_once"
             if self.wait_for_ball and self.trigger_play_once else
             "triggered"
@@ -385,6 +427,11 @@ class Score(FSMState):
             f"anchor={self.anchor_mode} anchor_ori={self.anchor_ori_mode} "
             f"motion={self.motion_mode} target={self.target_source}"
         )
+        if self.manual_anchor_cmd:
+            print(
+                "[Score config] manual anchor overrides only while joystick "
+                "input is outside deadzone."
+            )
         if self._adapt_play_motion_deprecated:
             print("[Score config] `adapt_play_motion` is deprecated and ignored.")
 
@@ -440,15 +487,27 @@ class Score(FSMState):
         self._t0_target_q = self.warmup_target_q_mj.copy()
 
         # ---- Trigger gate ----
-        # If wait_for_ball is on, hold at frame 0 until ball enters the circle.
-        self._motion_triggered    = not self.wait_for_ball
+        # Ball/manual trigger modes hold at frame 0 until the selected event arrives.
+        self._motion_triggered    = not self.trigger_gate_enabled
         self._trigger_policy_step = 0
         self._burst_need_ball_clear = False
         self._prev_ball_pos_b_for_trigger = None
         self._reset_ball_vel_kf()
+        self.state_cmd.score_manual_trigger = False
 
         max_delta = np.abs(self._t0_target_q - self._entry_q).max()
-        if self.wait_for_ball:
+        if self.manual_trigger:
+            if self.trigger_play_once:
+                s0 = int(np.clip(self.trigger_frame, 0, self.motion_total_steps - 1))
+                trigger_note = f", waiting for R3 manual trigger -> play once {s0}..end"
+            elif self.trigger_play_end_frame is not None:
+                s0 = int(np.clip(self.trigger_frame, 0, self.motion_total_steps - 1))
+                s1 = int(np.clip(self.trigger_play_end_frame, 0, self.motion_total_steps - 1))
+                s1 = max(s0, s1)
+                trigger_note = f", waiting for R3 manual trigger -> play frames {s0}..{s1}, then wait"
+            else:
+                trigger_note = f", waiting for R3 manual trigger -> frame {self.trigger_frame}..end"
+        elif self.wait_for_ball:
             if self.trigger_play_once:
                 s0 = int(np.clip(self.trigger_frame, 0, self.motion_total_steps - 1))
                 trigger_note = (f", waiting for ball (r={self.trigger_radius}m, "
@@ -485,24 +544,31 @@ class Score(FSMState):
         if self.freeze_motion_at_first_frame or not self._motion_triggered:
             return 0
         steps_since_trigger = policy_step - self._trigger_policy_step
-        if self.wait_for_ball and self.trigger_play_once:
+        if self.trigger_gate_enabled and self.trigger_play_once:
             return min(
                 int(np.clip(self.trigger_frame, 0, self.motion_total_steps - 1)) + steps_since_trigger,
                 self.motion_total_steps - 1,
             )
-        if self.wait_for_ball and self.trigger_play_end_frame is not None:
+        if self.trigger_gate_enabled and self.trigger_play_end_frame is not None:
             s0, s1 = self._trigger_segment_bounds()
             t_lin = s0 + steps_since_trigger
             return int(min(t_lin, s1))
-        if self.wait_for_ball:
+        if self.trigger_gate_enabled:
             return min(self.trigger_frame + steps_since_trigger, self.motion_total_steps - 1)
         return min(max(policy_step, 0), self.motion_total_steps - 1)
 
     def _trigger_play_once_finished(self, policy_step: int) -> bool:
-        if not (self.wait_for_ball and self.trigger_play_once and self._motion_triggered):
+        if not (self.trigger_gate_enabled and self.trigger_play_once and self._motion_triggered):
             return False
-        start_t = int(np.clip(self.trigger_frame, 0, self.trigger_play_end_frame - 1))
-        return (start_t + (policy_step - self._trigger_policy_step)) >= (self.trigger_play_end_frame - 1)
+        s0 = int(np.clip(self.trigger_frame, 0, self.motion_total_steps - 1))
+        s1 = int(np.clip(
+            self.trigger_play_end_frame
+            if self.trigger_play_end_frame is not None else self.motion_total_steps - 1,
+            0,
+            self.motion_total_steps - 1,
+        ))
+        s1 = max(s0, s1)
+        return (s0 + (policy_step - self._trigger_policy_step)) >= s1
 
     def _reset_ball_vel_kf(self):
         self._prev_ball_pos_b_for_trigger = None
@@ -631,6 +697,43 @@ class Score(FSMState):
         )
         return (R_torso_w.T @ ball_rel_torso_w).astype(np.float32)
 
+    def _apply_deadzone(self, value: float) -> float:
+        value = float(value)
+        return 0.0 if abs(value) < self.manual_cmd_deadzone else value
+
+    def _update_manual_anchor_command(self):
+        raw_xy = np.asarray(self.state_cmd.score_anchor_pos_raw_b[:2], dtype=np.float32)
+        raw_xy = np.array([self._apply_deadzone(raw_xy[0]), self._apply_deadzone(raw_xy[1])], dtype=np.float32)
+        anchor_cmd = np.zeros(3, dtype=np.float32)
+        anchor_cmd[:2] = raw_xy * self.manual_anchor_pos_scale_xy
+        yaw_cmd = self._apply_deadzone(self.state_cmd.score_anchor_yaw_raw) * self.manual_anchor_yaw_scale
+        self.state_cmd.score_anchor_pos_cmd_b = anchor_cmd
+        self.state_cmd.score_anchor_yaw_cmd = float(yaw_cmd)
+        self.state_cmd.score_anchor_pos_cmd_active = bool(np.any(np.abs(raw_xy) > 0.0))
+        self.state_cmd.score_anchor_yaw_cmd_active = bool(abs(yaw_cmd) > 0.0)
+        self.state_cmd.score_anchor_cmd_active = (
+            self.state_cmd.score_anchor_pos_cmd_active
+            or self.state_cmd.score_anchor_yaw_cmd_active
+        )
+
+    def _manual_anchor_pos_b(
+        self,
+        torso_pos_w: np.ndarray,
+        R_torso_w: np.ndarray,
+        aligned_anchor_pos_w: np.ndarray,
+    ) -> np.ndarray:
+        anchor_pos_b = self.state_cmd.score_anchor_pos_cmd_b.astype(np.float32).copy()
+        anchor_pos_b[2] = np.float32(aligned_anchor_pos_w[2] - torso_pos_w[2])
+        return anchor_pos_b
+
+    def _manual_anchor_ori_6d(self) -> np.ndarray:
+        yaw_rel = float(self.state_cmd.score_anchor_yaw_cmd)
+        rel_quat = np.array(
+            [np.cos(yaw_rel * 0.5), 0.0, 0.0, np.sin(yaw_rel * 0.5)],
+            dtype=np.float64,
+        )
+        return _rot6d_from_quat(rel_quat)
+
     def _compute_anchor_pos_b(
         self,
         ball_b_effective,
@@ -641,6 +744,10 @@ class Score(FSMState):
         """Compute anchor position observation in torso body frame."""
         if self.anchor_mode == "zero":
             return np.zeros(3, dtype=np.float32)
+
+        if (self.manual_anchor_cmd
+                and self.state_cmd.score_anchor_pos_cmd_active):
+            return self._manual_anchor_pos_b(torso_pos_w, R_torso_w, aligned_anchor_pos_w)
 
         if self.anchor_mode == "ball_cmd":
             ball_pos_torso_b = self._get_ball_pos_torso_b(
@@ -697,6 +804,10 @@ class Score(FSMState):
         init_world_quat: np.ndarray,
     ) -> np.ndarray:
         """Compute anchor orientation observation in torso/body frame."""
+        if (self.manual_anchor_cmd
+                and self.state_cmd.score_anchor_yaw_cmd_active):
+            return self._manual_anchor_ori_6d()
+
         if self.anchor_ori_mode == "ball_facing":
             if self.runtime_mode == "real":
                 # Real robot: use the ball direction relative to torso.
@@ -847,14 +958,15 @@ class Score(FSMState):
 
     def _update_motion_trigger_state(self, policy_step: int):
         """Update finite-burst state machine before trigger evaluation."""
-        if (self.wait_for_ball and not self.trigger_play_once and self._motion_triggered
+        if (self.trigger_gate_enabled and not self.trigger_play_once and self._motion_triggered
                 and self.trigger_play_end_frame is not None):
             s0, s1 = self._trigger_segment_bounds()
             if policy_step - self._trigger_policy_step > (s1 - s0):
                 self._motion_triggered = False
-                self._burst_need_ball_clear = True
+                self._burst_need_ball_clear = not self.manual_trigger
                 print(
-                    f"\n[Score] Played frames {s0}..{s1} → hold frame 0, wait for next ball",
+                    f"\n[Score] Played frames {s0}..{s1} -> hold frame 0, "
+                    f"wait for next {'R3' if self.manual_trigger else 'ball'}",
                     flush=True,
                 )
 
@@ -910,6 +1022,8 @@ class Score(FSMState):
 
         # Pelvis-frame ball for policy: sensor, or ball_obs_default_when_lost when invalid + ~zero.
         ball_b_effective = self._get_effective_ball_pos_b()
+        if self.manual_anchor_cmd:
+            self._update_manual_anchor_command()
 
         # ---- motion_anchor_pos_b (relative to torso, expressed in torso body frame) ----
         # Yaw-align the reference anchor world position, then express in torso body frame.
@@ -994,29 +1108,48 @@ class Score(FSMState):
         # Finite burst finished → hold frame 0 until next ball.
         self._update_motion_trigger_state(policy_step)
 
-        # ---- Ball-trigger gate ----
+        # ---- Trigger gate ----
         if not self._motion_triggered:
-            ball_pos_b, ball_vel_b, anchor_xy = self._get_trigger_ball_state_b()
-            in_circle = self._ball_enters_circle(
-                ball_pos_b[:2], ball_vel_b[:2], anchor_xy,
-                self.trigger_radius, self.trigger_horizon)
-            if self._burst_need_ball_clear:
-                if not in_circle:
-                    self._burst_need_ball_clear = False
-            elif in_circle:
-                self._motion_triggered = True
-                self._trigger_policy_step = policy_step
-                if self.trigger_play_once:
-                    s0 = int(np.clip(self.trigger_frame, 0, self.motion_total_steps - 1))
-                    print(f"\n[Score] Ball trigger at policy_step={policy_step} "
-                          f"→ play once from frame {s0} to clip end")
-                elif self.trigger_play_end_frame is not None:
-                    s0, s1 = self._trigger_segment_bounds()
-                    print(f"\n[Score] Ball trigger at policy_step={policy_step} "
-                          f"→ play frames {s0}..{s1}")
-                else:
-                    print(f"\n[Score] Ball trigger at policy_step={policy_step} "
-                          f"→ from frame {self.trigger_frame} to clip end")
+            if self.manual_trigger:
+                if self.state_cmd.score_manual_trigger:
+                    self.state_cmd.score_manual_trigger = False
+                    self._motion_triggered = True
+                    self._trigger_policy_step = policy_step
+                    if self.trigger_play_once:
+                        s0 = int(np.clip(self.trigger_frame, 0, self.motion_total_steps - 1))
+                        print(f"\n[Score] Manual trigger at policy_step={policy_step} "
+                              f"-> play once from frame {s0} to clip end")
+                    elif self.trigger_play_end_frame is not None:
+                        s0, s1 = self._trigger_segment_bounds()
+                        print(f"\n[Score] Manual trigger at policy_step={policy_step} "
+                              f"-> play frames {s0}..{s1}")
+                    else:
+                        print(f"\n[Score] Manual trigger at policy_step={policy_step} "
+                              f"-> from frame {self.trigger_frame} to clip end")
+            else:
+                ball_pos_b, ball_vel_b, anchor_xy = self._get_trigger_ball_state_b()
+                in_circle = self._ball_enters_circle(
+                    ball_pos_b[:2], ball_vel_b[:2], anchor_xy,
+                    self.trigger_radius, self.trigger_horizon)
+                if self._burst_need_ball_clear:
+                    if not in_circle:
+                        self._burst_need_ball_clear = False
+                elif in_circle:
+                    self._motion_triggered = True
+                    self._trigger_policy_step = policy_step
+                    if self.trigger_play_once:
+                        s0 = int(np.clip(self.trigger_frame, 0, self.motion_total_steps - 1))
+                        print(f"\n[Score] Ball trigger at policy_step={policy_step} "
+                              f"-> play once from frame {s0} to clip end")
+                    elif self.trigger_play_end_frame is not None:
+                        s0, s1 = self._trigger_segment_bounds()
+                        print(f"\n[Score] Ball trigger at policy_step={policy_step} "
+                              f"-> play frames {s0}..{s1}")
+                    else:
+                        print(f"\n[Score] Ball trigger at policy_step={policy_step} "
+                              f"-> from frame {self.trigger_frame} to clip end")
+        else:
+            self.state_cmd.score_manual_trigger = False
 
         obs = self._build_obs()
 
@@ -1040,6 +1173,12 @@ class Score(FSMState):
             print(f"  ball_pos_b    : {obs[529:532]}")   # newest frame of ball_hist   [517:532]
             print(f"  target_pos_b  : {obs[544:547]}")   # newest frame of target_hist [532:547]
             print(f"  target_src    : {self._target_debug_source}")
+            if self.manual_trigger or self.manual_anchor_cmd:
+                print(f"  manual        : trigger={self.manual_trigger} "
+                      f"anchor_cmd={self.state_cmd.score_anchor_pos_cmd_b} "
+                      f"yaw={self.state_cmd.score_anchor_yaw_cmd:+.3f} "
+                      f"active=({self.state_cmd.score_anchor_pos_cmd_active},"
+                      f"{self.state_cmd.score_anchor_yaw_cmd_active})")
             print(f"  actions_il    : min={actions_il.min():.3f}  max={actions_il.max():.3f}")
 
         self.policy_output.actions = target_q
@@ -1087,7 +1226,7 @@ class Score(FSMState):
                         "rgba": np.array([0.0, 1.0, 0.4, 0.90], dtype=np.float32)})
         # While waiting for the ball: show a semi-transparent cyan sphere indicating
         # the trigger circle radius around the configured torso-frame offset.
-        if self.wait_for_ball and not self._motion_triggered:
+        if self.wait_for_ball and not self.manual_trigger and not self._motion_triggered:
             R_torso_yaw_w = _quat_to_matrix(
                 _yaw_quat(self.state_cmd.torso_quat_w.astype(np.float64))
             )
@@ -1107,7 +1246,7 @@ class Score(FSMState):
         self.time_step += 1
         capped = self._motion_frame_index(policy_step)
         self.policy_output.ghost_qpos = self._compute_ghost_qpos(capped)
-        if self.wait_for_ball and self.trigger_play_once:
+        if self.trigger_gate_enabled and self.trigger_play_once:
             s0 = int(np.clip(self.trigger_frame, 0, self.motion_total_steps - 1))
             span_ct = self.motion_total_steps - s0
             bar_total = span_ct * self.control_dt
@@ -1116,7 +1255,7 @@ class Score(FSMState):
                 bar_prog = min(st + 1, span_ct) * self.control_dt
             else:
                 bar_prog = 0.0
-        elif self.wait_for_ball and self.trigger_play_end_frame is not None:
+        elif self.trigger_gate_enabled and self.trigger_play_end_frame is not None:
             s0, s1 = self._trigger_segment_bounds()
             span_ct = s1 - s0 + 1
             bar_total = span_ct * self.control_dt
@@ -1133,6 +1272,12 @@ class Score(FSMState):
         status_line += f" target_b={self._fmt_vec3(self._debug_target_pos_b)}"
         if abs(self.state_cmd.target_y_bias) > 1e-4:
             status_line += f" bias_y={self.state_cmd.target_y_bias:+.3f}m"
+        if self.manual_trigger:
+            status_line += f" trig={'go' if self._motion_triggered else 'R3'}"
+        if self.manual_anchor_cmd:
+            status_line += f" anchor_cmd={self._fmt_vec3(self.state_cmd.score_anchor_pos_cmd_b)}"
+            status_line += f" yaw={self.state_cmd.score_anchor_yaw_cmd:+.2f}"
+            status_line += f" active={int(self.state_cmd.score_anchor_cmd_active)}"
         if self.runtime_mode == "real":
             status_line += f" target_src={self._target_debug_source}"
         print(status_line, end="", flush=True)

@@ -16,6 +16,10 @@ class Config:
             self.lowstate_topic = config["lowstate_topic"]
             self.control_dt = config["control_dt"]
             self.error_over_time = config["error_over_time"]
+            self.score_config_file = os.environ.get(
+                "SCORE_CONFIG_FILE",
+                config.get("score_config_file", "score.yaml"),
+            )
             log_cfg = config.get("logging", {})
             self.log_enabled = log_cfg.get("enabled", False)
             self.log_dir     = log_cfg.get("log_dir", "logs")

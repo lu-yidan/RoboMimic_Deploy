@@ -43,6 +43,15 @@ class StateAndCmd:
         self.ball_y_bias = 0.0
         # joy cmd
         self.vel_cmd = np.zeros(3)
+        # Score-only manual commands. Other policies can ignore these fields.
+        self.score_manual_trigger = False
+        self.score_anchor_pos_cmd_b = np.zeros(3, dtype=np.float32)
+        self.score_anchor_yaw_cmd = 0.0
+        self.score_anchor_pos_raw_b = np.zeros(3, dtype=np.float32)
+        self.score_anchor_yaw_raw = 0.0
+        self.score_anchor_pos_cmd_active = False
+        self.score_anchor_yaw_cmd_active = False
+        self.score_anchor_cmd_active = False
         self.skill_cmd = FSMCommand.INVALID
         # skill change cmd
 

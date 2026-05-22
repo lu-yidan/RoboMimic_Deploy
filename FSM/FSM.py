@@ -18,7 +18,12 @@ class FSMMode(Enum):
     NORMAL = 2
 
 class FSM:
-    def __init__(self, state_cmd:StateAndCmd, policy_output:PolicyOutput):
+    def __init__(
+        self,
+        state_cmd:StateAndCmd,
+        policy_output:PolicyOutput,
+        score_config_file: str = "score.yaml",
+    ):
         self.state_cmd = state_cmd
         self.policy_output = policy_output
         self.cur_policy : FSMState
@@ -40,7 +45,7 @@ class FSM:
             "g1_result_pinocchio_1_6_mj.yaml",
             FSMStateName.SKILL_PINOCCHIO_1_6_MJ,
         )
-        self.score_policy = Score(state_cmd, policy_output)
+        self.score_policy = Score(state_cmd, policy_output, score_config_file)
         self.amp_policy = Amp(state_cmd, policy_output)
 
         print("initalized all policies!!!")

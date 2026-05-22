@@ -1,10 +1,10 @@
 # onnx_path:   "policy-obs-33.onnx"
-onnx_path:   "policy-obs-aic.onnx"
+# onnx_path:   "policy-obs-aic.onnx"
 # onnx_path:   "policy-obs-a2c.onnx"
 # onnx_path:   "policy-obs-325-uz8.onnx"
 # onnx_path:   "policy-obs-utf8-486.onnx"
 # onnx_path:   "policy-obs-410-vvj.onnx"
-# onnx_path:   "policy-obs-ae.onnx"
+onnx_path:   "policy-obs-ae.onnx"
 # onnx_path:   "policy-obs-54-vhh.onnx"
 # onnx_path:   "policy-obs-54-4s.onnx"
 motion_path: "score_motion.npz"
@@ -61,12 +61,13 @@ ball_vel_kf_outlier_dist: 0.8    # metres; reset filter on larger innovation
 freeze_motion_at_first_frame: false
 
 # Simulation-first manual Score control.
-# R3 triggers the kick; left stick commands anchor x/y; right stick horizontal commands relative yaw.
-manual_trigger: false
-manual_anchor_cmd: false
-manual_anchor_pos_scale_xy: [1.0, 0.6]
-manual_anchor_yaw_scale: 1.57
-manual_cmd_deadzone: 0.05
+# R3 triggers the kick; left stick commands a small relative anchor x/y goal;
+# right stick horizontal commands relative yaw.
+manual_trigger: true
+manual_anchor_cmd: true
+manual_anchor_pos_scale_xy: [0.04, 0.04]
+manual_anchor_yaw_scale: 0.01
+manual_cmd_deadzone: 0.02
 
 # If true, anchor_pos_b is always [0, 0, 0] (anchor treated as coincident with torso).
 zero_anchor_pos: false
@@ -74,7 +75,7 @@ zero_anchor_pos: false
 # If true, anchor_pos_b is set to the ball position expressed in the torso body frame,
 # instead of the reference-motion anchor position.
 # Has no effect when zero_anchor_pos is true (zero_anchor_pos takes priority).
-ball_anchor_cmd_scale: 0.25
+ball_anchor_cmd_scale: 0.2
 ball_as_anchor_pos: false
 
 # If true, anchor_ori_6d is computed so its +X axis always points toward the ball
@@ -107,7 +108,7 @@ target_pos: [5.0, 0.0, 0.115]
 # [trigger_frame, trigger_play_end_frame], then return to frame 0 and wait
 # (ball must leave the trigger zone once before the next trigger).
 # If `trigger_play_end_frame` is omitted, plays from `trigger_frame` to clip end (one-shot).
-wait_for_ball:   false
+wait_for_ball:   true
 trigger_play_once: false
 trigger_radius:  0.25    # metres
 trigger_horizon: 0.4    # look-ahead seconds

@@ -80,7 +80,7 @@ for arg in "$@"; do
         --tag-id|--tag-id=*|--tag-offset|--tag-offset=*)
             use_default_board_layout=0
             ;;
-        --color-backend|--color-backend=*|--v4l2-device|--v4l2-device=*|--camera-profile|--camera-profile=*|--v4l2-fourcc|--v4l2-fourcc=*|--ball|--ball-hsv)
+        --color-backend|--color-backend=*|--v4l2-device|--v4l2-device=*|--camera-profile|--camera-profile=*|--v4l2-fourcc|--v4l2-fourcc=*)
             use_default_camera_args=0
             ;;
     esac

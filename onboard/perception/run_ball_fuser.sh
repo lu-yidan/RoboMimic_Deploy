@@ -4,7 +4,7 @@
 #
 # 订阅：
 #   rt/lidar_ball_state  (lidar ball_detector 输出)
-#   rt/cam_ball_state    (apriltag_detector --ball 输出)
+#   rt/cam_ball_state    (apriltag_detector --ball-bright 输出)
 #
 # 发布：
 #   rt/ball_state        (deploy_policy.py 读取)

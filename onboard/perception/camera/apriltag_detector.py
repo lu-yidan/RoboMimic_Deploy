@@ -1133,12 +1133,7 @@ def _fuse_target_points_optical(detections):
     return fused, len(detections)
 
 
-def main():
-    def _raise_keyboard_interrupt(signum, _frame):
-        raise KeyboardInterrupt
-
-    signal.signal(signal.SIGTERM, _raise_keyboard_interrupt)
-
+def _build_parser():
     parser = argparse.ArgumentParser(
         description="Chest D455 + AprilTag target detector -> rt/target_state"
     )
@@ -1362,6 +1357,16 @@ def main():
         metavar=("ROLL", "PITCH", "YAW"),
         help="Override chest camera rotation in radians.",
     )
+    return parser
+
+
+def main():
+    def _raise_keyboard_interrupt(signum, _frame):
+        raise KeyboardInterrupt
+
+    signal.signal(signal.SIGTERM, _raise_keyboard_interrupt)
+
+    parser = _build_parser()
     args = parser.parse_args()
     if args.color_backend == "auto":
         args.color_backend = "v4l2" if args.ball_bright else "realsense"

@@ -283,7 +283,7 @@ Livox MID360（点云，~10 Hz）
         │
         │ DDS publish "rt/ball_state"
         ▼
-deploy_real.py → state_cmd.ball_pos_b → Score._build_obs()
+deploy_real.py → state_cmd.ball_pos_b → FreeKick._build_obs()
 ```
 
 ---
@@ -326,7 +326,7 @@ p_cam（平滑后）
 球心（pelvis body 系）
         │
         ▼ DDS publish "rt/ball_state"  (~35 Hz)
-deploy_real.py → state_cmd.ball_pos_b → Score._build_obs()
+deploy_real.py → state_cmd.ball_pos_b → FreeKick._build_obs()
 ```
 
 > Color→Depth 映射详解见 `onboard/perception/camera/TROUBLESHOOTING.md` 第九章。
@@ -347,7 +347,7 @@ dds = BallStatePublisher(domain_id=0)
 dds.publish(x, y, z, valid=True)
 ```
 
-`deploy_real.py` 和 `Score.py` **无需任何修改**。
+`deploy_real.py` 和 `FreeKick.py` **无需任何修改**。
 
 ---
 

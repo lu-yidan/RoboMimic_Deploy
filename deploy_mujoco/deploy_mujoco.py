@@ -175,11 +175,11 @@ def main(cfg: DictConfig):
     if log_cfg.get("enabled", False):
         logger = Logger(
             log_cfg.get("log_dir", "logs"),
-            log_cfg.get("tag", "score"),
+            log_cfg.get("tag", "freekick"),
             extra_meta={"robot_type": "mujoco", "xml_path": cfg.xml_path,
                         "control_dt": mj_per_step_duration},
         )
-        log_states = {FSMStateName[s] for s in log_cfg.get("states", ["SKILL_SCORE"])}
+        log_states = {FSMStateName[s] for s in log_cfg.get("states", ["SKILL_FREEKICK"])}
     log_step = 0
 
     joystick = JoyStick()
@@ -243,8 +243,8 @@ def main(cfg: DictConfig):
                     state_cmd.skill_cmd = FSMCommand.LOCO
                 elif joystick.is_button_released(JoystickButton.A):                                                # AMP, A
                     state_cmd.skill_cmd = FSMCommand.CMD_AMP
-                elif joystick.is_button_released(JoystickButton.R1):                                               # Score, R1
-                    state_cmd.skill_cmd = FSMCommand.CMD_SCORE
+                elif joystick.is_button_released(JoystickButton.R1):                                               # FreeKick, R1
+                    state_cmd.skill_cmd = FSMCommand.CMD_FREEKICK
                 elif hat_just_pressed(0, -1):                                                                     # BeyondMimicMJ, D-pad DOWN
                     state_cmd.skill_cmd = FSMCommand.CMD_BEYONDMIMIC_MJ
                 elif hat_just_pressed(0, 1):                                                                      # StandUpMJ, D-pad UP

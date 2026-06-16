@@ -1,8 +1,8 @@
-# Yaw Alignment in BeyondMimicMJ / Score: 原理与奇异修复
+# Yaw Alignment in BeyondMimicMJ / FreeKick: 原理与奇异修复
 
 ## 背景
 
-BeyondMimicMJ 和 Score 在 `enter()` 时计算旋转矩阵 `_init_to_world`，将 NPZ 参考轨迹在水平面内旋转，使其初始朝向与机器人当前朝向对齐。这样无论机器人面向何处，policy 收到的 anchor 参考始终以机器人当前朝向为基准，与训练时一致。
+BeyondMimicMJ 和 FreeKick 在 `enter()` 时计算旋转矩阵 `_init_to_world`，将 NPZ 参考轨迹在水平面内旋转，使其初始朝向与机器人当前朝向对齐。这样无论机器人面向何处，policy 收到的 anchor 参考始终以机器人当前朝向为基准，与训练时一致。
 
 ---
 
@@ -158,6 +158,6 @@ self._init_to_world = _quat_to_matrix(_yaw_quat(q_rel))
 
 ---
 
-## Score 策略的情况
+## FreeKick 策略的情况
 
-Score 的 `enter()` 使用相同的旧逻辑，但 Score 的动作从站立开始，通常进入时机器人也是站立的，所以没有触发奇异。如果 Score 将来需要支持非直立进入，可以应用相同的修复。
+FreeKick 的 `enter()` 使用相同的旧逻辑，但 FreeKick 的动作从站立开始，通常进入时机器人也是站立的，所以没有触发奇异。如果 FreeKick 将来需要支持非直立进入，可以应用相同的修复。

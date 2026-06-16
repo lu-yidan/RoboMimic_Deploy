@@ -19,8 +19,8 @@ class Config:
             log_cfg = config.get("logging", {})
             self.log_enabled = log_cfg.get("enabled", False)
             self.log_dir     = log_cfg.get("log_dir", "logs")
-            self.log_tag     = log_cfg.get("tag", "score")
-            self.log_states  = log_cfg.get("states", ["SKILL_SCORE"])
+            self.log_tag     = log_cfg.get("tag", "freekick")
+            self.log_states  = log_cfg.get("states", ["SKILL_FREEKICK"])
             self.bridge_domain_id = int(os.environ.get(
                 "BRIDGE_DOMAIN_ID",
                 config.get("bridge_domain_id", 0),

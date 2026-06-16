@@ -4,7 +4,7 @@
 # onnx_path:   "policy-stop.onnx"
 # onnx_path:   "policy-obs-410-vvj.onnx"
 onnx_path:   "policy-obs-427-lql.onnx"
-motion_path: "score_motion.npz"
+motion_path: "freekick_motion.npz"
 
 control_dt:      0.02     # 50 Hz control (sim: 2ms * 10 decimation)
 warmup_steps:    10       # interpolation steps from current pose to motion t=0

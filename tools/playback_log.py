@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Replay a score log in MuJoCo with robot pose and ball visualization.
+"""Replay a freekick log in MuJoCo with robot pose and ball visualization.
 
 Usage:
     python tools/playback_log.py <log.bin> [--xml path/to/robot.xml] [--speed 1.0]
@@ -79,7 +79,7 @@ def _progress(frame: int, total: int, speed: float, paused: bool,
 # ---------------------------------------------------------------------------
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Replay a score log in MuJoCo.")
+    parser = argparse.ArgumentParser(description="Replay a freekick log in MuJoCo.")
     parser.add_argument("log",   help="Path to .bin log file")
     parser.add_argument("--xml", default=None,
                         help="Robot XML path (overrides meta; default: g1_liao.xml)")

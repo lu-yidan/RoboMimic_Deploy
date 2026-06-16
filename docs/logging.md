@@ -1,15 +1,15 @@
-# Score Log 录制与回放
+# FreeKick Log 录制与回放
 
 ## 概述
 
-在执行 `SKILL_SCORE` 策略期间，可以将机器人状态、球位置和动作输出实时写入二进制 log 文件。每帧立即 flush，即使程序崩溃也不会丢失已录制的数据。
+在执行 `SKILL_FREEKICK` 策略期间，可以将机器人状态、球位置和动作输出实时写入二进制 log 文件。每帧立即 flush，即使程序崩溃也不会丢失已录制的数据。
 
 录制完成后，可在 MuJoCo 中可视化回放：
 
 - **绿色半透明机器人**：还原每帧的关节姿态
 - **红色球**：机器人传感器感知的球位置（`ball_pos_b` 变换到世界系）
 - **蓝色球**：MuJoCo 仿真 ground truth（仅仿真录制时有效）
-- **品红色目标球**：`Score` 实际使用的目标（`debug_target_pos_b` 变换到世界系）
+- **品红色目标球**：`FreeKick` 实际使用的目标（`debug_target_pos_b` 变换到世界系）
 - **紫色小球**：原始 `target_pos_b` 传感器/检测值
 
 主要用途：在真实机器人上录制，然后在 MuJoCo 里回放，直观验证球位置感知是否准确。
@@ -25,7 +25,7 @@
 logging:
   enabled: true
   log_dir: "logs"
-  tag:     "score"
+  tag:     "freekick"
 ```
 
 **真实机器人** — `deploy_real/config/real.yaml`
@@ -33,10 +33,10 @@ logging:
 logging:
   enabled: true
   log_dir: "logs"
-  tag:     "score"
+  tag:     "freekick"
 ```
 
-运行程序后，进入 `SKILL_SCORE` 状态时自动开始录制，退出时自动关闭并写入元信息。
+运行程序后，进入 `SKILL_FREEKICK` 状态时自动开始录制，退出时自动关闭并写入元信息。
 
 ---
 
@@ -46,8 +46,8 @@ logging:
 
 ```
 logs/
-  20260318_153012_score.bin    二进制帧数据
-  20260318_153012_score.json   元信息（字段定义、帧数、控制频率等）
+  20260318_153012_freekick.bin    二进制帧数据
+  20260318_153012_freekick.json   元信息（字段定义、帧数、控制频率等）
 ```
 
 每帧为 114 个 float32（456 bytes），字段如下：
@@ -66,7 +66,7 @@ logs/
 | `target_pos_b` | 3 | 原始 target 相对 pelvis body frame（来自 `rt/target_state`） |
 | `target_valid` | 1 | target 感知是否有效（0 / 1） |
 | `vel_cmd` | 3 | 速度命令 |
-| `debug_target_pos_b` | 3 | `Score` 实际使用的 target，相对 pelvis body frame |
+| `debug_target_pos_b` | 3 | `FreeKick` 实际使用的 target，相对 pelvis body frame |
 | `debug_target_source` | 1 | 目标来源编码：0=`none`, 1=`fixed`, 2=`fixed_fallback`, 3=`apriltag`, 4=`imu_hold`, 5=`fixed_sim` |
 | `actions` | 29 | policy 输出动作 |
 
@@ -76,7 +76,7 @@ logs/
 
 ```bash
 # 基本用法
-python tools/playback_log.py logs/20260318_153012_score.bin
+python tools/playback_log.py logs/20260318_153012_freekick.bin
 
 # 指定 xml 和初始速度
 python tools/playback_log.py logs/xxx.bin --xml g1_description/scene.xml --speed 0.5
@@ -100,12 +100,12 @@ python tools/playback_log.py logs/xxx.bin --xml g1_description/scene.xml --speed
 ```python
 from common.logger import Logger
 
-data = Logger.load("logs/20260318_153012_score.bin")
+data = Logger.load("logs/20260318_153012_freekick.bin")
 
 data["q"]          # (T, 29) 关节位置
 data["ball_pos_b"] # (T, 3)  球 body frame 位置
 data["target_pos_b"] # (T, 3) 原始 target body frame 位置
-data["debug_target_pos_b"] # (T, 3) Score 实际使用的 target
+data["debug_target_pos_b"] # (T, 3) FreeKick 实际使用的 target
 data["vel_cmd"]    # (T, 3) 速度命令
 data["ball_valid"] # (T,)    感知有效性
 data["_meta"]      # dict    元信息

@@ -82,9 +82,9 @@ Standard scene:
 python deploy_mujoco/deploy_mujoco.py
 ```
 
-Score scene (includes ball, required for Score policy):
+FreeKick scene (includes ball, required for FreeKick policy):
 ```bash
-python deploy_mujoco/deploy_mujoco.py --config-name mujoco_score
+python deploy_mujoco/deploy_mujoco.py --config-name mujoco_freekick
 ```
 
 ## 2. Policy Descriptions
@@ -94,7 +94,7 @@ python deploy_mujoco/deploy_mujoco.py --config-name mujoco_score
 | **FixedPose**       | Start                         | Position control reset to default joint values                                           |
 | **LocoMode**        | B                             | Stable walking control mode                                                              |
 | **AMP**             | A                             | AMP locomotion policy (enters run mode by default)                                       |
-| **Score**           | R1                            | Ball-kicking/scoring policy (547-dim obs, 5-frame history, requires onboard LiDAR)      |
+| **FreeKick**           | R1                            | Ball-kicking/scoring policy (547-dim obs, 5-frame history, requires onboard LiDAR)      |
 | **BeyondMimicMJ**   | D-pad DOWN                    | Fall-and-get-up imitation policy (MuJoCo-trained, with reference motion tracking)       |
 | **StandUpMJ**       | D-pad UP                      | Stand-up imitation policy (MuJoCo-trained, with reference motion tracking)              |
 | **Pinocchio1.6MJ**  | R2                            | MuJoCo imitation policy backed by `g1_result_pinocchio_1_6_mj.yaml`                     |
@@ -129,8 +129,8 @@ python deploy_mujoco/deploy_mujoco.py
    - **D-pad DOWN** -> BeyondMimicMJ
    - **D-pad UP** -> StandUpMJ
    - **R2** -> Pinocchio1.6MJ
-   - **R1** -> Score
-6. Use `--config-name mujoco_score` when entering **Score** so the simulation loads the ball scene.
+   - **R1** -> FreeKick
+6. Use `--config-name mujoco_freekick` when entering **FreeKick** so the simulation loads the ball scene.
 7. **BeyondMimicMJ / StandUpMJ / Pinocchio1.6MJ** can switch directly between each other with the same single-button bindings.
 8. Release **L2** at any time for damping protection (PassiveMode), or press **Start** to return to **FixedPose**.
 9. **BeyondMimic** is still present in the repository, but it is intentionally left without a default controller shortcut. Unused legacy policies such as Dance / Kick / KungFu / ASAP / HOST have been deleted from the repository.
@@ -163,7 +163,7 @@ python deploy_mujoco/deploy_mujoco.py
 3. The same single-button mapping applies on the real robot: **A / B / D-pad DOWN / D-pad UP / R2 / R1**.
    Press **F1** at any time for damping protection (PassiveMode).
 
-4. **Score policy (R1) — additional real-robot steps**: The Score policy depends on onboard LiDAR for real-time ball detection. Start the perception service before activating Score, which publishes ball state to DDS topic `rt/ball_state`. Do **not** activate the Score policy without the perception service running.
+4. **FreeKick policy (R1) — additional real-robot steps**: The FreeKick policy depends on onboard LiDAR for real-time ball detection. Start the perception service before activating FreeKick, which publishes ball state to DDS topic `rt/ball_state`. Do **not** activate the FreeKick policy without the perception service running.
 
 5. **Sensor Dashboard**: After starting `tools/start_tmux_layout.sh`, open `http://<robot-ip>:8091/` in a browser. The dashboard shows all sensor positions (target, cam/lidar/fused ball, corrected positions) and the active bias values in the orange "Current Bias" card. To start it manually:
    ```bash
@@ -189,7 +189,7 @@ The Mimic policy does not guarantee 100% success rate, particularly on slippery/
 - Press `Select` to immediately terminate the control program
 
 ### 3. Notes For The Retained Policies
-The default deploy entry points are now limited to `LocoMode / AMP / Score / BeyondMimicMJ / StandUpMJ / Pinocchio1.6MJ`.
+The default deploy entry points are now limited to `LocoMode / AMP / FreeKick / BeyondMimicMJ / StandUpMJ / Pinocchio1.6MJ`.
 
 ⚠️ **Important Precautions**:
 - **Palm Removal Recommended**: Some original training setups did not account for palm collisions (the author's G1 had no palms)

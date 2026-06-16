@@ -118,8 +118,8 @@ class LocoMode(FSMState):
             return FSMStateName.SKILL_STANDUP_MJ
         elif(self.state_cmd.skill_cmd == FSMCommand.CMD_PINOCCHIO_1_6_MJ):
             return FSMStateName.SKILL_PINOCCHIO_1_6_MJ
-        elif(self.state_cmd.skill_cmd == FSMCommand.CMD_SCORE):
-            return FSMStateName.SKILL_SCORE
+        elif(self.state_cmd.skill_cmd == FSMCommand.CMD_FREEKICK):
+            return FSMStateName.SKILL_FREEKICK
         elif(self.state_cmd.skill_cmd == FSMCommand.CMD_AMP):
             return FSMStateName.SKILL_AMP
         elif(self.state_cmd.skill_cmd == FSMCommand.POS_RESET):

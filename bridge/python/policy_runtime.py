@@ -146,7 +146,7 @@ class PolicyRuntime:
         elif self.remote_controller.is_button_pressed(KeyMap.A):
             self.state_cmd.skill_cmd = FSMCommand.CMD_AMP
         elif self.remote_controller.is_button_pressed(KeyMap.R1):
-            self.state_cmd.skill_cmd = FSMCommand.CMD_SCORE
+            self.state_cmd.skill_cmd = FSMCommand.CMD_FREEKICK
         elif self.remote_controller.is_button_pressed(KeyMap.down):
             self.state_cmd.skill_cmd = FSMCommand.CMD_BEYONDMIMIC_MJ
         elif self.remote_controller.is_button_pressed(KeyMap.up):

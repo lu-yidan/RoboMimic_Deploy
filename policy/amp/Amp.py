@@ -177,9 +177,9 @@ class Amp(FSMState):
         if cmd == FSMCommand.PASSIVE:
             self.state_cmd.skill_cmd = FSMCommand.INVALID
             return FSMStateName.PASSIVE
-        if cmd == FSMCommand.CMD_SCORE:
+        if cmd == FSMCommand.CMD_FREEKICK:
             self.state_cmd.skill_cmd = FSMCommand.INVALID
-            return FSMStateName.SKILL_SCORE
+            return FSMStateName.SKILL_FREEKICK
         if cmd == FSMCommand.CMD_BEYONDMIMIC_MJ:
             self.state_cmd.skill_cmd = FSMCommand.INVALID
             return FSMStateName.SKILL_BEYONDMIMIC_MJ

@@ -154,8 +154,8 @@ class Controller:
                 self.state_cmd.skill_cmd = FSMCommand.LOCO
             elif self.remote_controller.is_button_pressed(KeyMap.A):            # AMP, A
                 self.state_cmd.skill_cmd = FSMCommand.CMD_AMP
-            elif self.remote_controller.is_button_pressed(KeyMap.R1):           # Score, R1
-                self.state_cmd.skill_cmd = FSMCommand.CMD_SCORE
+            elif self.remote_controller.is_button_pressed(KeyMap.R1):           # FreeKick, R1
+                self.state_cmd.skill_cmd = FSMCommand.CMD_FREEKICK
             elif self.remote_controller.is_button_pressed(KeyMap.down):         # BeyondMimicMJ, Down
                 self.state_cmd.skill_cmd = FSMCommand.CMD_BEYONDMIMIC_MJ
             elif self.remote_controller.is_button_pressed(KeyMap.up):           # StandUpMJ, Up

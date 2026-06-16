@@ -5,7 +5,7 @@ from policy.fixedpose.FixedPose import FixedPose
 from policy.loco_mode.LocoMode import LocoMode
 from policy.beyondmimic.BeyondMimic import BeyondMimic
 from policy.beyondmimic_mj.BeyondMimicMJ import BeyondMimicMJ
-from policy.score.Score import Score
+from policy.robonaldo.FreeKick import FreeKick
 from policy.amp.Amp import Amp
 from FSM.FSMState import *
 import time
@@ -40,7 +40,7 @@ class FSM:
             "g1_result_pinocchio_1_6_mj.yaml",
             FSMStateName.SKILL_PINOCCHIO_1_6_MJ,
         )
-        self.score_policy = Score(state_cmd, policy_output)
+        self.freekick_policy = FreeKick(state_cmd, policy_output)
         self.amp_policy = Amp(state_cmd, policy_output)
 
         print("initalized all policies!!!")
@@ -93,8 +93,8 @@ class FSM:
             self.cur_policy = self.beyondmimic_policy
         elif((policy_name == FSMStateName.SKILL_BEYONDMIMIC_MJ)):
             self.cur_policy = self.beyondmimic_mj_policy
-        elif((policy_name == FSMStateName.SKILL_SCORE)):
-            self.cur_policy = self.score_policy
+        elif((policy_name == FSMStateName.SKILL_FREEKICK)):
+            self.cur_policy = self.freekick_policy
         elif((policy_name == FSMStateName.SKILL_STANDUP_MJ)):
             self.cur_policy = self.standup_mj_policy
         elif((policy_name == FSMStateName.SKILL_AMP)):

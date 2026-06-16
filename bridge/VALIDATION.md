@@ -49,7 +49,7 @@ Expected:
 ## Stage 4: Optional heavier policies
 
 Only after Stage 3 is stable, re-enable:
-- `Score`
+- `FreeKick`
 - `BeyondMimic`
 - `BeyondMimicMJ`
 - `AMP`

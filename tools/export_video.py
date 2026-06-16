@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
-"""Export a score log replay to MP4 using MuJoCo offscreen rendering.
+"""Export a freekick log replay to MP4 using MuJoCo offscreen rendering.
 
 Usage:
     conda run -n robomimic python tools/export_video.py <log.bin> [options]
 
 Examples:
     # Quick preview (first 200 frames, 640×360)
-    conda run -n robomimic python tools/export_video.py logs/20260324_155110_score.bin \
+    conda run -n robomimic python tools/export_video.py logs/20260324_155110_freekick.bin \
       --width 640 --height 360 --frames 200
 
     # Full export at 1280×720
-    conda run -n robomimic python tools/export_video.py 20260428_224118_score.bin \
+    conda run -n robomimic python tools/export_video.py 20260428_224118_freekick.bin \
       --width 1280 --height 720
-logs/20260428_224118_score.bin
+logs/20260428_224118_freekick.bin
 Options:
     --xml path/to/robot.xml      Override XML (default: from log meta or g1_liao.xml)
     --output out.mp4             Output path (default: <log_stem>.mp4 next to log)
@@ -35,7 +35,7 @@ Ball markers (ball_pos_b transformed to world):
     Orange — not valid but ball_pos_b ≠ 0 (e.g. coast)
     Blue   — sim ground truth (ball_pos_w) when present
 Target markers:
-    Magenta — target actually used by Score (debug_target_pos_b → world)
+    Magenta — target actually used by FreeKick (debug_target_pos_b → world)
     Purple  — raw target sensor/state (target_pos_b → world) when it differs
 """
 
@@ -119,7 +119,7 @@ def make_camera(pos, direction, distance: float = 3.0) -> mujoco.MjvCamera:
 # ---------------------------------------------------------------------------
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Export score log to MP4.")
+    parser = argparse.ArgumentParser(description="Export freekick log to MP4.")
     parser.add_argument("log",   help="Path to .bin log file")
     parser.add_argument("--xml",      default=None)
     parser.add_argument("--output",   default=None)
@@ -251,7 +251,7 @@ def main() -> None:
             _add_sphere(renderer.scene, data["ball_pos_w"][fi],
                         radius=0.11, rgba=[0.2, 0.4, 1.0, 0.6])
 
-        # Magenta sphere: target actually used by Score in pelvis body frame → world.
+        # Magenta sphere: target actually used by FreeKick in pelvis body frame → world.
         debug_target_pos_b = debug_target_pos_b_log[fi].astype(np.float64)
         debug_target_norm = float(np.linalg.norm(debug_target_pos_b))
         if debug_target_norm > 1e-3:

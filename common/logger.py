@@ -45,7 +45,7 @@ class Logger:
     ]
     RECORD_DIM: int = sum(n for _, n in FIELDS)  # 114
 
-    def __init__(self, log_dir: str, tag: str = "score",
+    def __init__(self, log_dir: str, tag: str = "freekick",
                  extra_meta: Optional[dict] = None) -> None:
         Path(log_dir).mkdir(parents=True, exist_ok=True)
         ts   = datetime.now().strftime("%Y%m%d_%H%M%S")

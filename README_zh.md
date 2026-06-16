@@ -86,9 +86,9 @@ pip install -e .
 python deploy_mujoco/deploy_mujoco.py
 ```
 
-Score 场景（含球，运行 Score 策略时使用）：
+FreeKick 场景（含球，运行 FreeKick 策略时使用）：
 ```bash
-python deploy_mujoco/deploy_mujoco.py --config-name mujoco_score
+python deploy_mujoco/deploy_mujoco.py --config-name mujoco_freekick
 ```
 
 ---
@@ -100,7 +100,7 @@ python deploy_mujoco/deploy_mujoco.py --config-name mujoco_score
 | **FixedPose**      | Start                         | 位控恢复至默认关节值                                                 |
 | **LocoMode**       | B                             | 用于稳定行走的控制模式                                               |
 | **AMP**            | A                             | AMP 运动策略（默认进入 run 模式）                                    |
-| **Score**          | R1                            | 踢球得分策略（547维obs，5帧历史，需配合机载雷达感知）               |
+| **FreeKick**          | R1                            | 踢球得分策略（547维obs，5帧历史，需配合机载雷达感知）               |
 | **BeyondMimicMJ**  | D-pad DOWN                    | 摔倒爬起模仿策略（MuJoCo 训练版，含参考动作跟踪）                   |
 | **StandUpMJ**      | D-pad UP                      | 站起模仿策略（MuJoCo 训练版，含参考动作跟踪）                       |
 | **Pinocchio1.6MJ** | R2                            | `g1_result_pinocchio_1_6_mj.yaml` 对应的 MuJoCo 模仿策略            |
@@ -138,9 +138,9 @@ python deploy_mujoco/deploy_mujoco.py
    - `D-pad DOWN` -> BeyondMimicMJ
    - `D-pad UP` -> StandUpMJ
    - `R2` -> Pinocchio1.6MJ
-   - `R1` -> Score
+   - `R1` -> FreeKick
 
-6. `Score` 需使用 `--config-name mujoco_score` 加载含球的仿真场景；`BeyondMimicMJ / StandUpMJ / Pinocchio1.6MJ` 之间支持直接互切
+6. `FreeKick` 需使用 `--config-name mujoco_freekick` 加载含球的仿真场景；`BeyondMimicMJ / StandUpMJ / Pinocchio1.6MJ` 之间支持直接互切
 
 7. 任意时刻可**松开 L2** 进入阻尼保护模式（PassiveMode），按 `Start` 返回 FixedPose
 
@@ -174,7 +174,7 @@ python deploy_mujoco/deploy_mujoco.py
 3. 后续单键切换与仿真保持一致：`A / B / D-pad DOWN / D-pad UP / R2 / R1`。
    任意时刻可按 **F1** 进入阻尼保护模式（PassiveMode）。
 
-4. **Score 踢球策略（R1）真机额外步骤**：Score 策略依赖机载雷达对球的实时感知，需在启动前先运行感知服务，并通过 DDS topic `rt/ball_state` 发布球的位置。未启动感知服务时请勿激活 Score 策略。
+4. **FreeKick 踢球策略（R1）真机额外步骤**：FreeKick 策略依赖机载雷达对球的实时感知，需在启动前先运行感知服务，并通过 DDS topic `rt/ball_state` 发布球的位置。未启动感知服务时请勿激活 FreeKick 策略。
 
 5. **Sensor Dashboard**：启动 `tools/start_tmux_layout.sh` 后，在浏览器中打开 `http://<机器人IP>:8091/` 即可查看所有传感器位置（目标、各球感知源、偏置后坐标）及橙色"Current Bias"卡片中的当前偏置值。手动启动：
    ```bash
@@ -200,7 +200,7 @@ Mimic策略不保证100%成功率，特别是在湿滑/沙地等复杂地面上�
 - 按下`Select`键立即终止控制程序
 
 ### 3. 当前保留策略的真机提示
-当前部署入口已简化为 `LocoMode / AMP / Score / BeyondMimicMJ / StandUpMJ / Pinocchio1.6MJ`。
+当前部署入口已简化为 `LocoMode / AMP / FreeKick / BeyondMimicMJ / StandUpMJ / Pinocchio1.6MJ`。
 
 ⚠️ **重要注意事项**：
 - **建议拆除手掌**：部分策略的原始训练未考虑手掌碰撞（作者的G1初始无手掌）

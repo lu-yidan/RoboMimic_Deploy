@@ -197,7 +197,7 @@ def _compile_action_clip_bounds(cfg, fallback_clip):
                 matched_this_pattern = True
 
         if not matched_this_pattern:
-            raise ValueError(f"action_clip pattern '{pattern}' did not match any Score joint")
+            raise ValueError(f"action_clip pattern '{pattern}' did not match any FreeKick joint")
 
     return lo, hi
 
@@ -206,7 +206,7 @@ def _compile_action_clip_bounds(cfg, fallback_clip):
 # Policy
 # ---------------------------------------------------------------------------
 
-class Score(FSMState):
+class FreeKick(FSMState):
     TARGET_SOURCE_TO_CODE = {
         "none": 0.0,
         "fixed": 1.0,
@@ -220,11 +220,11 @@ class Score(FSMState):
         super().__init__()
         self.state_cmd    = state_cmd
         self.policy_output = policy_output
-        self.name     = FSMStateName.SKILL_SCORE
-        self.name_str = "skill_score"
+        self.name     = FSMStateName.SKILL_FREEKICK
+        self.name_str = "skill_freekick"
 
         current_dir = os.path.dirname(os.path.abspath(__file__))
-        config_path = os.path.join(current_dir, "config", "score.yaml")
+        config_path = os.path.join(current_dir, "config", "freekick.yaml")
         with open(config_path, "r") as f:
             cfg = yaml.load(f, Loader=yaml.FullLoader)
 
@@ -253,7 +253,7 @@ class Score(FSMState):
         self.motion_body_pos  = body_pos_full[i0:i1]
         self.motion_total_steps = self.motion_joint_pos.shape[0]
 
-        print(f"Score motion window: {i0 * self.control_dt:.2f}s ~ "
+        print(f"FreeKick motion window: {i0 * self.control_dt:.2f}s ~ "
               f"{i1 * self.control_dt:.2f}s  ({self.motion_total_steps} frames)")
 
         # ---- Config (Isaac Lab / MuJoCo order) ----
@@ -327,10 +327,10 @@ class Score(FSMState):
         for _ in range(5):
             self.ort_session.run(["actions"], {"obs": _dummy_obs})
 
-        print("Score policy initialized "
+        print("FreeKick policy initialized "
               f"(547-dim, {self.motion_total_steps} motion frames).")
         print(
-            f"[Score config] runtime={self.runtime_mode} target={self.target_source}"
+            f"[FreeKick config] runtime={self.runtime_mode} target={self.target_source}"
         )
 
     # ------------------------------------------------------------------
@@ -360,7 +360,7 @@ class Score(FSMState):
         # ---- Target position in entry pelvis frame (real robot only) ----
         # On real robot we have no absolute world coords, so we fix the target
         # direction at entry time: target_pos_w expressed relative to the
-        # pelvis at the moment Score is activated, then kept constant.
+        # pelvis at the moment FreeKick is activated, then kept constant.
         if self.use_body_frame_ball:
             # target_pos is a body-frame offset at entry (+x = forward).
             # Record entry yaw so _build_obs() can track target direction as robot rotates.
@@ -385,7 +385,7 @@ class Score(FSMState):
         self._t0_target_q = self.warmup_target_q_mj.copy()
 
         max_delta = np.abs(self._t0_target_q - self._entry_q).max()
-        print(f"Score enter: warmup {self.WARMUP_STEPS} steps, "
+        print(f"FreeKick enter: warmup {self.WARMUP_STEPS} steps, "
               f"max joint delta = {max_delta:.3f} rad")
 
     # ------------------------------------------------------------------
@@ -625,7 +625,7 @@ class Score(FSMState):
 
         # Debug: print for first 3 policy steps
         if policy_step < 30:
-            print(f"\n[Score policy_step={policy_step}]")
+            print(f"\n[FreeKick policy_step={policy_step}]")
             print(f"  anchor_pos_b  : {obs[58:61]}")
             print(f"  anchor_ori_6d : {obs[61:67]}")
             print(f"  ball_pos_b    : {obs[529:532]}")   # newest frame of ball_hist   [517:532]
@@ -759,4 +759,4 @@ class Score(FSMState):
             self.state_cmd.skill_cmd = FSMCommand.INVALID
             return FSMStateName.FIXEDPOSE
         else:
-            return FSMStateName.SKILL_SCORE
+            return FSMStateName.SKILL_FREEKICK

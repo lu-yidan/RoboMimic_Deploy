@@ -1,12 +1,12 @@
 # motion_anchor_pos_b / motion_anchor_ori_b 计算详解
 
-> 对应代码：`policy/score/Score.py` → `_build_obs()` 中的 anchor 部分
+> 对应代码：`policy/robonaldo/FreeKick.py` → `_build_obs()` 中的 anchor 部分
 
 ---
 
 ## 背景：anchor 是什么，为什么需要它
 
-Score 策略的目标是让机器人**模仿参考动作的同时把球踢向目标**。Policy 的输入中需要告诉它：
+FreeKick 策略的目标是让机器人**模仿参考动作的同时把球踢向目标**。Policy 的输入中需要告诉它：
 **"你的 torso（上半身根节点）当前相对于参考动作，差在哪里、差多少"**。
 
 这个"差"就是 anchor 观测：
@@ -51,15 +51,15 @@ Pelvis Body Frame（pelvis body 系）
 
 ## 第一步：`enter()` 什么时候被调用
 
-`enter()` 在玩家切换到 Score 状态时，**只执行一次**：
+`enter()` 在玩家切换到 FreeKick 状态时，**只执行一次**：
 
 ```
 玩家按下 R1+Down
     → FSMCommand.SKILL_8
     → FSM 检测到状态切换
     → old_policy.exit()
-    → Score.enter()   ← 在这里，只执行一次
-    → 之后每帧 Score.run()
+    → FreeKick.enter()   ← 在这里，只执行一次
+    → 之后每帧 FreeKick.run()
 ```
 
 `enter()` 里做的事：
@@ -396,7 +396,7 @@ MuJoCo 实时（机器人世界系）
   d.qpos[0:3]  →  pelvis_pos_w  ──┐
   d.qpos[3:7]  →  pelvis_quat_w ──┤  ball/target obs 基于 pelvis
   d.xpos[ball] →  ball_pos_w  ────┤  （与训练 root_state_w 一致）
-  score.yaml   →  target_pos_w ───┘
+  freekick.yaml   →  target_pos_w ───┘
                                    │
               ┌────────────────────┴────────────────────┐
               │ 球                                       │ 目标点
@@ -562,7 +562,7 @@ anchor_pos_b = R_torso_w.T @ (anchor_disp_w - actual_robot_disp_w)
 ### ball_pos 的计算差异
 
 ```python
-# score.yaml: use_body_frame_ball 控制分支
+# freekick.yaml: use_body_frame_ball 控制分支
 
 # 仿真（false）：
 ball_pos_b = R_pelvis.T @ (ball_pos_w - pelvis_pos_w)   # MuJoCo 世界坐标 → pelvis body 系

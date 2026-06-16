@@ -49,7 +49,7 @@
                                 │ DDS（网线同网段）
 ┌──────────────────────────────▼───────────────────────────────────┐
 │ 本地电脑 deploy_real.py                                            │
-│  BallStateSubscriber → state_cmd.ball_pos_b → Score._build_obs() │
+│  BallStateSubscriber → state_cmd.ball_pos_b → FreeKick._build_obs() │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -130,7 +130,7 @@ for box in result.boxes:
 
 ## 4. Coasting（惯性保持）
 
-YOLO 在运动模糊、部分遮挡、光照变化时可能漏检。若漏检时立即清零位置，DDS 输出会出现跳变，影响 Score 策略的观测。
+YOLO 在运动模糊、部分遮挡、光照变化时可能漏检。若漏检时立即清零位置，DDS 输出会出现跳变，影响 FreeKick 策略的观测。
 
 实现：允许连续漏检最多 `COAST_FRAMES=10` 帧，期间继续使用最后一次成功检测的 BBox 位置。
 
@@ -271,7 +271,7 @@ dds.publish(x, y, z, valid=True)   # valid=False 表示未检测到球
 - **QoS**：BestEffort，KeepLast(1)
 - **频率**：与 YOLO 推理帧率相同，约 25~40 Hz（受 Orin NX 算力限制）
 
-> 雷达方案发布频率约 10 Hz（受 MID360 点云帧率限制）。相机方案可以更高频，Score 策略通常以 50Hz 运行，插值逻辑在 `deploy_real.py` 中处理。
+> 雷达方案发布频率约 10 Hz（受 MID360 点云帧率限制）。相机方案可以更高频，FreeKick 策略通常以 50Hz 运行，插值逻辑在 `deploy_real.py` 中处理。
 
 `deploy_real.py` 的本地验证：
 

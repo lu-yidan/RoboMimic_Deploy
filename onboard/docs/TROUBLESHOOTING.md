@@ -636,7 +636,7 @@ p_base: [x,y,z]（pelvis body 系）
 "rt/ball_state"（DDS BestEffort KeepLast(1)）
     │
     ▼
-deploy_real.py / bridge policy runtime → Score._build_obs() → state_cmd.ball_pos_b
+deploy_real.py / bridge policy runtime → FreeKick._build_obs() → state_cmd.ball_pos_b
 ```
 
 ---
@@ -1536,7 +1536,7 @@ rs-enumerate-devices | grep USB   # 应显示 USB 3.2
 
 - 摄像头正对球时，发布的 `x` 很大、`y` 很小，像 camera/torso frame。
 - pelvis 已经转到侧向，但 `rt/ball_state` / `rt/target_state` 没有对应旋转。
-- Score 里的 `ball_pos_b` / `target_pos_b` 看起来 yaw 参考了 torso。
+- FreeKick 里的 `ball_pos_b` / `target_pos_b` 看起来 yaw 参考了 torso。
 
 #### 运行时证据
 
@@ -1651,7 +1651,7 @@ ip -o link show
 python tools/check_dds_connection.py <网卡名>
 ```
 
-注意：Score 的 `anchor_pos_b` / `anchor_ori_6d` 按训练设置是 torso-link 相关；
+注意：FreeKick 的 `anchor_pos_b` / `anchor_ori_6d` 按训练设置是 torso-link 相关；
 不要把它们和 policy observation 里的 `soccer_pos_b` / `target_pos_b` 混淆。
 本问题只针对 detector 发布到 `rt/lidar_ball_state`、`rt/ball_state`、`rt/target_state`
 的 pelvis-frame 观测。

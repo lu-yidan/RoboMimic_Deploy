@@ -1,6 +1,6 @@
-# Score 策略配置说明
+# FreeKick 策略配置说明
 
-`Score` 从 `config/score.yaml` 读取参数，加载 ONNX 与参考动作 NPZ，构造 **547 维**观测并输出关节目标。本文说明各配置项的含义与典型用法。
+`FreeKick` 从 `config/freekick.yaml` 读取参数，加载 ONNX 与参考动作 NPZ，构造 **547 维**观测并输出关节目标。本文说明各配置项的含义与典型用法。
 
 ---
 
@@ -8,8 +8,8 @@
 
 | 项 | 说明 |
 |----|------|
-| `onnx_path` | 相对 `policy/score/model/` 的 ONNX 文件名。 |
-| `motion_path` | 相对 `policy/score/model/` 的参考动作 NPZ（需含 `joint_pos` / `joint_vel` / `body_quat_w` / `body_pos_w` 等）。 |
+| `onnx_path` | 相对 `policy/robonaldo/model/` 的 ONNX 文件名。 |
+| `motion_path` | 相对 `policy/robonaldo/model/` 的参考动作 NPZ（需含 `joint_pos` / `joint_vel` / `body_quat_w` / `body_pos_w` 等）。 |
 
 ---
 
@@ -48,7 +48,7 @@
 
 ## 锚点位置 `anchor_pos_b`（躯干体系，观测中 3 维）
 
-三者互斥优先级：**`zero_anchor_pos` > `ball_as_anchor_pos` > 位移/绝对公式**（见 `Score._build_obs`）。
+三者互斥优先级：**`zero_anchor_pos` > `ball_as_anchor_pos` > 位移/绝对公式**（见 `FreeKick._build_obs`）。
 
 | 键 | 说明 |
 |----|------|
@@ -87,7 +87,7 @@
 | `default_joint_pos` | 网络输出为相对该中立位的偏移（经 `action_scale` 缩放后加到中立位得到目标角）。 |
 | `action_scale` | 逐关节动作缩放。 |
 | `kps` / `kds` | 位置环 PD，写入 `policy_output` 供下游发扭矩。 |
-| `tau_limit` | 当前 `Score` 仅从 YAML 加载，需与训练元数据一致；若后续在代码里做力矩限幅可与此对齐。 |
+| `tau_limit` | 当前 `FreeKick` 仅从 YAML 加载，需与训练元数据一致；若后续在代码里做力矩限幅可与此对齐。 |
 
 ---
 

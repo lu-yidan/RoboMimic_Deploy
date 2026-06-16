@@ -1,12 +1,12 @@
-# Score Refactor Notes
+# FreeKick Refactor Notes
 
 ## 背景
 
-这次重构的目标不是改功能，而是把 `policy/score/Score.py` 中由多个布尔配置隐式组合出来的行为整理清楚，降低阅读和维护成本。
+这次重构的目标不是改功能，而是把 `policy/robonaldo/FreeKick.py` 中由多个布尔配置隐式组合出来的行为整理清楚，降低阅读和维护成本。
 
 重构前的主要问题：
 
-- `score.yaml` 中有多个语义重叠的布尔开关，例如：
+- `freekick.yaml` 中有多个语义重叠的布尔开关，例如：
   - `zero_anchor_pos`
   - `ball_as_anchor_pos`
   - `ball_facing_anchor_ori`
@@ -21,13 +21,13 @@
 - `run()` 中 motion trigger / burst / reset 逻辑与时间索引逻辑耦合较重。
 - 一些配置项有历史遗留问题：
   - `adapt_play_motion` 实际未接线
-  - `tau_limit` 在 `Score.py` 中读取，但并未真正参与 `Score` 的逻辑
+  - `tau_limit` 在 `FreeKick.py` 中读取，但并未真正参与 `FreeKick` 的逻辑
 
 ## 这次重构做了什么
 
 ### 1. 引入内部模式
 
-在 `Score.__init__()` 中，仍然兼容旧 YAML 字段，但会先解析出几个内部模式：
+在 `FreeKick.__init__()` 中，仍然兼容旧 YAML 字段，但会先解析出几个内部模式：
 
 - `runtime_mode`
   - `real`
@@ -49,7 +49,7 @@
 启动时会打印类似：
 
 ```text
-[Score config] runtime=sim anchor=ball_cmd anchor_ori=ball_facing motion=freeze
+[FreeKick config] runtime=sim anchor=ball_cmd anchor_ori=ball_facing motion=freeze
 ```
 
 方便确认当前配置组合实际落到了哪条逻辑分支。
@@ -103,16 +103,16 @@
   - 在代码里保留 deprecated 兼容读取
   - 如果还传这个字段，会打印 ignored 提示
 - `tau_limit`
-  - 从 `Score.py` 中移除读取
-  - 从 `score.yaml` 中移除
-  - `tau_limit` 仍由 `deploy_mujoco` 侧控制，不属于 `Score` 策略本身
+  - 从 `FreeKick.py` 中移除读取
+  - 从 `freekick.yaml` 中移除
+  - `tau_limit` 仍由 `deploy_mujoco` 侧控制，不属于 `FreeKick` 策略本身
 - `ball_vel_b_alpha`
-  - 显式加入 `score.yaml`
+  - 显式加入 `freekick.yaml`
   - 用于 real 模式下由 `ball_pos_b` 差分估计 `ball_vel_b` 的平滑
 
 ## 模式总览
 
-这一版 `Score` 可以先理解成 4 条互相独立的“模式轴”：
+这一版 `FreeKick` 可以先理解成 4 条互相独立的“模式轴”：
 
 | 模式轴 | 内部模式 | 作用 |
 |---|---|---|
@@ -280,7 +280,7 @@ motion=freeze 或 play
 
 ### 4. 球靠近后触发关键动作
 
-这是现在 `Score` 最像“踢球技能”的模式。
+这是现在 `FreeKick` 最像“踢球技能”的模式。
 
 ```yaml
 ball_as_anchor_pos: true
@@ -350,16 +350,16 @@ real 模式下 `ball_facing_anchor_ori` 已改成更明确的 **yaw-only** 语�
 
 - 旧的 YAML 主要布尔字段仍然有效
 - 没有强制引入新的嵌套配置结构
-- 外部调用 `Score` 的方式不需要改
+- 外部调用 `FreeKick` 的方式不需要改
 
 但有两点需要注意：
 
 1. `adapt_play_motion` 已被视为废弃字段
-2. `tau_limit` 不再属于 `score.yaml` 的职责范围
+2. `tau_limit` 不再属于 `freekick.yaml` 的职责范围
 
 ## 阅读代码时建议的顺序
 
-如果以后再看 `Score.py`，建议按这个顺序读：
+如果以后再看 `FreeKick.py`，建议按这个顺序读：
 
 1. `__init__()`
    - 看配置如何解析成 `runtime_mode / anchor_mode / anchor_ori_mode / motion_mode`
@@ -398,8 +398,8 @@ motion:
 
 ## 涉及文件
 
-- `policy/score/Score.py`
-- `policy/score/config/score.yaml`
+- `policy/robonaldo/FreeKick.py`
+- `policy/robonaldo/config/freekick.yaml`
 
 ## 本次重构总结
 

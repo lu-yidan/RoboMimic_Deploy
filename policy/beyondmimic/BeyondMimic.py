@@ -325,9 +325,9 @@ class BeyondMimic(FSMState):
         elif cmd == FSMCommand.CMD_AMP:
             self.state_cmd.skill_cmd = FSMCommand.INVALID
             return FSMStateName.SKILL_AMP
-        elif cmd == FSMCommand.CMD_SCORE:
+        elif cmd == FSMCommand.CMD_FREEKICK:
             self.state_cmd.skill_cmd = FSMCommand.INVALID
-            return FSMStateName.SKILL_SCORE
+            return FSMStateName.SKILL_FREEKICK
         elif cmd == FSMCommand.CMD_BEYONDMIMIC_MJ:
             self.state_cmd.skill_cmd = FSMCommand.INVALID
             return FSMStateName.SKILL_BEYONDMIMIC_MJ

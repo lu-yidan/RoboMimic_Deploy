@@ -14,10 +14,18 @@
 > [**opendrivelab/RoboNaldo**](https://github.com/opendrivelab/RoboNaldo); this repository runs the
 > trained policies on the real and simulated Unitree G1.
 
-<div align="center">
-  <video src="https://github.com/OpenDriveLab/RoboNaldo_Deploy/raw/main/docs/free_kick.mp4" controls muted width="80%"></video>
-  <br/><em>Free-kick demo — RoboNaldo policy on a Unitree G1</em>
-</div>
+<table align="center">
+  <tr>
+    <td align="center"><b>Simulation</b></td>
+    <td align="center"><b>Real robot</b></td>
+  </tr>
+  <tr>
+    <td><video src="https://github.com/user-attachments/assets/97be3852-cd7e-400d-836b-13f701cea9d1" controls muted width="100%"></video></td>
+    <td><video src="https://github.com/user-attachments/assets/45fbf473-060e-49b1-9204-c43bbcc89a3c" controls muted width="100%"></video></td>
+  </tr>
+</table>
+
+<p align="center"><em>Free-kick demo — RoboNaldo policy on a Unitree G1</em></p>
 
 ## Preface
 
@@ -27,7 +35,7 @@
   
 - **When deploying real robots, if something goes wrong, it's probably the policy's fault—not your hardware. Don't waste time second-guessing your robot's physical setup.**
 
-- **[video instruction](https://www.bilibili.com/video/BV1VTKHzSE6C/?vd_source=713b35f59bdf42930757aea07a44e7cb#reply114743994027967)**
+- **[video instruction](https://www.youtube.com/watch?v=BuHNzqebIqc&feature=youtu.be)**
 
 ## Installation and Configuration
 

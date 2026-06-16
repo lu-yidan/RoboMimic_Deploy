@@ -14,10 +14,18 @@
 > [**opendrivelab/RoboNaldo**](https://github.com/opendrivelab/RoboNaldo)；本仓库负责把训练好的策略
 > 部署到真机与仿真的宇树 G1 上。
 
-<div align="center">
-  <video src="https://github.com/OpenDriveLab/RoboNaldo_Deploy/raw/main/docs/free_kick.mp4" controls muted width="80%"></video>
-  <br/><em>任意球 demo —— RoboNaldo 策略部署在宇树 G1 上</em>
-</div>
+<table align="center">
+  <tr>
+    <td align="center"><b>仿真 Simulation</b></td>
+    <td align="center"><b>真机 Real robot</b></td>
+  </tr>
+  <tr>
+    <td><video src="https://github.com/user-attachments/assets/97be3852-cd7e-400d-836b-13f701cea9d1" controls muted width="100%"></video></td>
+    <td><video src="https://github.com/user-attachments/assets/45fbf473-060e-49b1-9204-c43bbcc89a3c" controls muted width="100%"></video></td>
+  </tr>
+</table>
+
+<p align="center"><em>任意球 demo —— RoboNaldo 策略部署在宇树 G1 上</em></p>
 
 ## 写在前面
 
@@ -27,7 +35,7 @@
 
 - **实际机器人部署中出现的问题，十有八九是策略适应性不足所致，大家不必过度怀疑硬件层面的缺陷。**
 
-- **[视频教程](https://www.bilibili.com/video/BV1VTKHzSE6C/?vd_source=713b35f59bdf42930757aea07a44e7cb#reply114743994027967)**
+- **[视频教程](https://www.youtube.com/watch?v=BuHNzqebIqc&feature=youtu.be)**
 
 ## 安装配置
 

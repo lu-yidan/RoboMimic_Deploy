@@ -18,7 +18,6 @@ Known-good setup from this install:
 
 - Ubuntu 22.04 / JetPack 6, L4T R36.4.3
 - CUDA 12.6
-- TensorRT 10.3
 - Python 3.10 conda environment named `robomimic`
 - RealSense D435I on USB 3.2
 
@@ -43,32 +42,11 @@ uv pip install --python /home/unitree/miniconda3/envs/robomimic/bin/python \
   "torch==2.8.0" "torchvision==0.23.0"
 
 uv pip install --python /home/unitree/miniconda3/envs/robomimic/bin/python \
-  "numpy<2" ultralytics onnx onnxruntime mujoco pupil-apriltags
+  "numpy<2" onnx onnxruntime mujoco pupil-apriltags
 ```
 
 Do not use the default PyPI `torch` on Jetson. It will either be CPU-only or
 pull a wheel that expects libraries missing from the robot.
-
-## TensorRT Python Binding
-
-JetPack installs TensorRT bindings for system Python 3.10 at
-`/usr/lib/python3.10/dist-packages`. Link only TensorRT into conda; do not prepend
-the whole system dist-packages directory to `PYTHONPATH`, because that can make
-conda load system `cv2`, `protobuf`, or `sympy`.
-
-```bash
-CONDA_SITE=$(/home/unitree/miniconda3/envs/robomimic/bin/python -c 'import site; print(site.getsitepackages()[0])')
-for name in \
-  tensorrt tensorrt_lean tensorrt_dispatch \
-  tensorrt-10.3.0.dist-info \
-  tensorrt_lean-10.3.0.dist-info \
-  tensorrt_dispatch-10.3.0.dist-info
-do
-  if [ -e "/usr/lib/python3.10/dist-packages/$name" ] && [ ! -e "$CONDA_SITE/$name" ]; then
-    ln -s "/usr/lib/python3.10/dist-packages/$name" "$CONDA_SITE/$name"
-  fi
-done
-```
 
 ## CycloneDDS Python Binding
 

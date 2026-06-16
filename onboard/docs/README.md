@@ -155,8 +155,7 @@ python onboard/perception/lidar/ball_detector.py
 新的推荐链路是 raw sensor topic + fuser：lidar 发布 `rt/lidar_ball_state`，
 camera 发布 `rt/cam_ball_state`，`ball_fuser.py` 按 `lidar > camera` 选择观测并
 统一 Kalman 平滑后发布 `rt/ball_state`。详见
-`onboard/docs/CAMERA_PERCEPTION_ARCHITECTURE.md`；近期重构变更和现场检查项见
-`onboard/docs/CAMERA_PERCEPTION_REFACTOR_NOTE.md`。
+`onboard/docs/CAMERA_PERCEPTION_ARCHITECTURE.md`。
 
 ### 方案 B — Grayscale AprilTag + Bright Ball
 

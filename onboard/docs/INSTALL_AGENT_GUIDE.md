@@ -160,7 +160,7 @@ If `/opt/ros` and `ws_livox` are missing, those scripts will not fully start.
 Install or restore the robot's ROS2 + Unitree message workspace before running:
 
 ```bash
-bash onboard/perception/camera/run_apriltag_target.sh --show
+bash onboard/perception/camera/_launch.sh --show
 bash onboard/perception/lidar/run.sh
 bash onboard/perception/run_sensor_dashboard.sh
 ```

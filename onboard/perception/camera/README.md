@@ -24,12 +24,12 @@
 
 ```
 onboard/perception/camera/
-├── apriltag_detector.py    ← 主检测器：AprilTag → rt/target_state
+├── target_ball_detector.py    ← 主检测器：AprilTag → rt/target_state
 │                              --ball-bright  灰度/IR 亮球检测
 ├── camera_to_base.py       ← 坐标变换：相机系 → pelvis 系（含胸部外参）
-├── run_apriltag_target.sh  ← 主启动脚本（tmux 使用）
-├── run_gray_perception.sh  ← 灰度 AprilTag + 亮球（+可选 fuser）启动脚本
-├── run_gray_perception.sh  ← 灰度感知启动脚本
+├── _launch.sh  ← 主启动脚本（tmux 使用）
+├── run_gray.sh  ← 灰度 AprilTag + 亮球（+可选 fuser）启动脚本
+├── run_gray.sh  ← 灰度感知启动脚本
 ├── debug/
 │   ├── generate_apriltag_template.py ← 生成可打印 A4 AprilTag 模板
 │   ├── apriltag_tag36h11_id0_120mm_a4.pdf ← 已生成的 120mm tag0 模板
@@ -57,7 +57,7 @@ onboard/perception/camera/
 ### 2.1 AprilTag 目标检测（当前主用）
 
 ```bash
-bash onboard/perception/camera/run_apriltag_target.sh --show
+bash onboard/perception/camera/_launch.sh --show
 ```
 
 默认使用 4-tag 板（tag 0/1/2/3），自动融合估计公共目标点，发布到 `rt/target_state`。
@@ -66,10 +66,10 @@ bash onboard/perception/camera/run_apriltag_target.sh --show
 
 ```bash
 # 只检测单个 tag
-bash onboard/perception/camera/run_apriltag_target.sh --tag-id 0 --tag-size 0.12 --show
+bash onboard/perception/camera/_launch.sh --tag-id 0 --tag-size 0.12 --show
 
 # 自定义多 tag 偏移（见脚本注释）
-bash onboard/perception/camera/run_apriltag_target.sh \
+bash onboard/perception/camera/_launch.sh \
     --tag-id 5 --tag-id 8 --tag-size 0.10 \
     --tag-offset 5 0.20 0.00 0.00 \
     --tag-offset 8 -0.20 0.00 0.00
@@ -185,7 +185,7 @@ _CHEST_RPY = (0.00, 0.30, 0.00)   # TODO: 标定后替换（rad）
 | `EMA_GATE` | 检测器 | 0.6 m | 跳变重置门限 |
 | `COAST_FRAMES` | 检测器 | 10 帧 | 漏检时保持位置的最大帧数 |
 
-### 命令行参数（`apriltag_detector.py`）
+### 命令行参数（`target_ball_detector.py`）
 
 | 参数 | 默认值 | 含义 |
 |------|--------|------|

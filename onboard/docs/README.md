@@ -18,11 +18,12 @@ onboard/
     │   ├── mid360_to_base.py     ← 坐标变换：MID360 系 → pelvis (base) 系
     │   └── README.md             ← Lidar 使用手册（含 RViz2 配置）
     └── camera/
-        ├── apriltag_detector.py  ← AprilTag + 灰度 bright-ball 检测 → DDS 发布
-        ├── run_gray_perception.sh ← 灰度 AprilTag + bright-ball 启动脚本
-        ├── camera_to_base.py     ← 坐标变换：相机系 → pelvis 系（含胸部占位外参）
-        ├── README.md             ← Camera 使用手册（本地文档）
-        └── TROUBLESHOOTING.md    ← 性能优化全记录
+        ├── run_gray.sh              ← 入口：灰度 AprilTag + 亮球（+可选 fuser）
+        ├── _launch.sh               ← 内部：环境 + 默认参数，启动 detector
+        ├── target_ball_detector.py  ← 干活：AprilTag target + 灰度亮球 → DDS
+        ├── camera_to_base.py        ← 坐标变换：相机系 → pelvis 系（含胸部占位外参）
+        ├── README.md                ← Camera 使用手册（本地文档）
+        └── TROUBLESHOOTING.md       ← 性能优化全记录
 ```
 
 ---
@@ -160,8 +161,8 @@ camera 发布 `rt/cam_ball_state`，`ball_fuser.py` 按 `lidar > camera` 选择�
 ### 方案 B — Grayscale AprilTag + Bright Ball
 
 ```bash
-bash onboard/perception/camera/run_gray_perception.sh
-bash onboard/perception/camera/run_gray_perception.sh --with-fuser
+bash onboard/perception/camera/run_gray.sh
+bash onboard/perception/camera/run_gray.sh --with-fuser
 ```
 
 灰度链路默认使用 `/dev/video3`、`GREY`、`30Hz`，发布 AprilTag target 到

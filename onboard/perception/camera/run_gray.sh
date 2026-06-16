@@ -5,7 +5,7 @@
 #   - bright camera ball -> rt/cam_ball_state
 #   - optional fuser -> rt/ball_state
 #
-# This launches run_apriltag_target.sh with the grayscale/IR V4L2 defaults so a
+# This launches _launch.sh with the grayscale/IR V4L2 defaults so a
 # single process owns the GREY node. Pass --with-fuser to also start ball_fuser.py.
 # Override the camera node/rate via env: V4L2_DEVICE / V4L2_FOURCC / V4L2_FPS /
 # BALL_BRIGHT_MAX_HZ.
@@ -50,7 +50,7 @@ if [[ "$with_fuser" -eq 1 ]]; then
         shutting_down=1
 
         echo
-        echo "[run_gray_perception.sh] Stopping managed perception processes..."
+        echo "[run_gray.sh] Stopping managed perception processes..."
         for pid in "${camera_pid:-}" "${fuser_pid:-}"; do
             if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
                 # Children are started with setsid, so -PID targets the whole
@@ -68,28 +68,28 @@ if [[ "$with_fuser" -eq 1 ]]; then
 
         wait "${camera_pid:-}" 2>/dev/null || true
         wait "${fuser_pid:-}" 2>/dev/null || true
-        echo "[run_gray_perception.sh] Done."
+        echo "[run_gray.sh] Done."
         return "$status"
     }
     trap cleanup INT TERM EXIT
 
     fuser_log="${FUSER_LOG:-/tmp/ball_fuser.log}"
-    echo "[run_gray_perception.sh] Starting fuser... log=$fuser_log"
+    echo "[run_gray.sh] Starting fuser... log=$fuser_log"
     : > "$fuser_log"
     setsid bash onboard/perception/run_ball_fuser.sh > "$fuser_log" 2>&1 &
     fuser_pid=$!
-    echo "[run_gray_perception.sh] fuser pid=$fuser_pid pgid=$fuser_pid"
+    echo "[run_gray.sh] fuser pid=$fuser_pid pgid=$fuser_pid"
 
-    echo "[run_gray_perception.sh] Starting AprilTag/bright-ball camera..."
-    setsid bash onboard/perception/camera/run_apriltag_target.sh \
+    echo "[run_gray.sh] Starting AprilTag/bright-ball camera..."
+    setsid bash onboard/perception/camera/_launch.sh \
         "${gray_args[@]}" "${args[@]}" &
     camera_pid=$!
-    echo "[run_gray_perception.sh] camera pid=$camera_pid pgid=$camera_pid"
+    echo "[run_gray.sh] camera pid=$camera_pid pgid=$camera_pid"
 
-    echo "[run_gray_perception.sh] Press Ctrl+C to stop camera and fuser."
+    echo "[run_gray.sh] Press Ctrl+C to stop camera and fuser."
     wait -n "$camera_pid" "$fuser_pid"
     exit $?
 fi
 
-exec bash onboard/perception/camera/run_apriltag_target.sh \
+exec bash onboard/perception/camera/_launch.sh \
     "${gray_args[@]}" "${args[@]}"

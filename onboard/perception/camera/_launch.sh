@@ -9,15 +9,15 @@
 #
 # 用法：
 #   只检测 tag 0：
-#   bash onboard/perception/camera/run_apriltag_target.sh --tag-id 0 --tag-size 0.12 --show
+#   bash onboard/perception/camera/_launch.sh --tag-id 0 --tag-size 0.12 --show
 #
 #   使用默认 4-tag 板（0/1/2/3）并融合估计主目标点：
-#   bash onboard/perception/camera/run_apriltag_target.sh --show
-#   bash onboard/perception/camera/run_apriltag_target.sh --tag-size 0.12 --show
-#   bash onboard/perception/camera/run_apriltag_target.sh --tag-size 0.10
+#   bash onboard/perception/camera/_launch.sh --show
+#   bash onboard/perception/camera/_launch.sh --tag-size 0.12 --show
+#   bash onboard/perception/camera/_launch.sh --tag-size 0.10
 #
 #   如需覆盖默认 4-tag 板配置，可显式传入你自己的 --tag-id / --tag-offset：
-#   bash onboard/perception/camera/run_apriltag_target.sh \
+#   bash onboard/perception/camera/_launch.sh \
 #       --tag-id 5 --tag-id 8 --tag-size 0.10 \
 #       --tag-offset 5 0.20 0.00 0.00 \
 #       --tag-offset 8 -0.20 0.00 0.00
@@ -33,7 +33,7 @@
 set -e
 cd "$(dirname "$0")/../../.."
 
-echo "[run_apriltag_target.sh] Unlocking Jetson clocks..."
+echo "[_launch.sh] Unlocking Jetson clocks..."
 echo "123" | sudo -S nvpmodel -m 0 2>/dev/null || true
 echo "123" | sudo -S jetson_clocks 2>/dev/null || true
 
@@ -99,7 +99,7 @@ default_board_args=(
 
 PYTHON_BIN="${PYTHON_BIN:-/home/unitree/miniconda3/envs/robomimic/bin/python}"
 cmd=(
-    "$PYTHON_BIN" -u onboard/perception/camera/apriltag_detector.py
+    "$PYTHON_BIN" -u onboard/perception/camera/target_ball_detector.py
 )
 
 if [[ "$use_default_camera_args" -eq 1 ]]; then
@@ -116,7 +116,7 @@ if [[ "$use_default_camera_args" -eq 1 ]]; then
 fi
 
 if [[ "$use_default_board_layout" -eq 1 ]]; then
-    echo "[run_apriltag_target.sh] Using default 4-tag board layout (ids 0/1/2/3, offsets in metres)."
+    echo "[_launch.sh] Using default 4-tag board layout (ids 0/1/2/3, offsets in metres)."
     cmd+=("${default_board_args[@]}")
 fi
 

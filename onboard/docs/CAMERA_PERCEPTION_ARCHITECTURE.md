@@ -7,7 +7,7 @@ detection, camera ball detection, lidar ball detection, and final ball fusion.
 
 ```mermaid
 flowchart TD
-    grayCamera["RealSense D435 GREY UVC /dev/video3 @30Hz"] --> cameraOwner["single camera owner: apriltag_detector.py"]
+    grayCamera["RealSense D435 GREY UVC /dev/video3 @30Hz"] --> cameraOwner["single camera owner: target_ball_detector.py"]
     cameraOwner --> april["AprilTag target detection"]
     cameraOwner --> bright["bright_ball worker: latest frame only"]
     lowstate["rt/lowstate waist joints"] --> april
@@ -53,13 +53,13 @@ near-range detections share the same smoothed output used by policy.
 Run grayscale camera target + bright-ball perception:
 
 ```bash
-bash onboard/perception/camera/run_gray_perception.sh
+bash onboard/perception/camera/run_gray.sh
 ```
 
 Also start the final ball fuser:
 
 ```bash
-bash onboard/perception/camera/run_gray_perception.sh --with-fuser
+bash onboard/perception/camera/run_gray.sh --with-fuser
 ```
 
 Run lidar raw ball detection:
@@ -77,7 +77,7 @@ bash onboard/perception/run_ball_fuser.sh
 Profiling example:
 
 ```bash
-bash onboard/perception/camera/run_gray_perception.sh \
+bash onboard/perception/camera/run_gray.sh \
     --profile-timing \
     --profile-window 30 \
     --preview-max-hz 10 \

@@ -12,8 +12,8 @@
 ### 0.1 当前推荐启动命令
 
 ```bash
-pkill -f "onboard/perception/camera/apriltag_detector.py" 2>/dev/null || true
-./onboard/perception/camera/run_gray_perception.sh --show
+pkill -f "onboard/perception/camera/target_ball_detector.py" 2>/dev/null || true
+./onboard/perception/camera/run_gray.sh --show
 ```
 
 默认脚本会做这些事：
@@ -28,13 +28,13 @@ pkill -f "onboard/perception/camera/apriltag_detector.py" 2>/dev/null || true
 如需同时启动 final ball fuser：
 
 ```bash
-./onboard/perception/camera/run_gray_perception.sh --with-fuser
+./onboard/perception/camera/run_gray.sh --with-fuser
 ```
 
 如需定位低于 20Hz 的瓶颈：
 
 ```bash
-./onboard/perception/camera/run_gray_perception.sh --profile-timing --preview-max-hz 10 --status-hz 4
+./onboard/perception/camera/run_gray.sh --profile-timing --preview-max-hz 10 --status-hz 4
 ```
 
 灰度/IR 入口默认 `/dev/video3` + `GREY`。
@@ -48,7 +48,7 @@ http://192.168.123.164:8080/stream
 如果端口被占用：
 
 ```bash
-./onboard/perception/camera/run_apriltag_target.sh --show --show-port 8081
+./onboard/perception/camera/_launch.sh --show --show-port 8081
 ```
 
 ### 0.2 现在这路相机到底是什么模式？
@@ -117,7 +117,7 @@ RuntimeError: failed to set power state
 先清旧进程：
 
 ```bash
-pkill -f "apriltag_detector.py" 2>/dev/null || true
+pkill -f "target_ball_detector.py" 2>/dev/null || true
 ```
 
 确认相机还在：
@@ -158,7 +158,7 @@ source ~/unitree_ros2/cyclonedds_ws/install/setup.bash
   "from unitree_hg.msg import LowState; print('unitree_hg OK')"
 ```
 
-`run_apriltag_target.sh` 已默认 source：
+`_launch.sh` 已默认 source：
 
 ```bash
 ~/unitree_ros2/cyclonedds_ws/install/setup.bash
@@ -193,7 +193,7 @@ ip -o -4 addr show scope global
 必要时手动指定：
 
 ```bash
-CYCLONEDDS_IFACE=enP8p1s0 ./onboard/perception/camera/run_apriltag_target.sh --show
+CYCLONEDDS_IFACE=enP8p1s0 ./onboard/perception/camera/_launch.sh --show
 ```
 
 ### 0.7 8080 端口占用
@@ -208,19 +208,19 @@ OSError: [Errno 98] Address already in use
 
 ```bash
 ss -ltnp 'sport = :8080'
-pgrep -af "apriltag_detector.py"
+pgrep -af "target_ball_detector.py"
 ```
 
 解决：
 
 ```bash
-pkill -f "onboard/perception/camera/apriltag_detector.py"
+pkill -f "onboard/perception/camera/target_ball_detector.py"
 ```
 
 或者换端口：
 
 ```bash
-./onboard/perception/camera/run_apriltag_target.sh --show --show-port 8081
+./onboard/perception/camera/_launch.sh --show --show-port 8081
 ```
 
 ### 0.8 白球 bright detector
@@ -229,7 +229,7 @@ pkill -f "onboard/perception/camera/apriltag_detector.py"
 
 ```bash
 # 灰度 / IR，适合 AprilTag + 白球/反光点阵球
-./onboard/perception/camera/run_gray_perception.sh --show
+./onboard/perception/camera/run_gray.sh --show
 ```
 
 截图参考：
@@ -255,7 +255,7 @@ pkill -f "onboard/perception/camera/apriltag_detector.py"
 如果现场标定出更准的值，仍可直接覆盖：
 
 ```bash
-./onboard/perception/camera/run_gray_perception.sh --show \
+./onboard/perception/camera/run_gray.sh --show \
   --fx 675 --fy 650 --cx 640 --cy 360 \
   --chest-xyz 0.13444 0.020 0.06228 \
   --chest-rpy 0.0 0.2902482546 0.0
@@ -331,13 +331,13 @@ VIDEOIO(V4L2): failed VIDIOC_REQBUFS: errno=19 (No such device)
 如果经常丢球，降低阈值：
 
 ```bash
-./onboard/perception/camera/run_gray_perception.sh --show --ball-bright-threshold 160
+./onboard/perception/camera/run_gray.sh --show --ball-bright-threshold 160
 ```
 
 如果误检白鞋、墙面、反光物，提高阈值：
 
 ```bash
-./onboard/perception/camera/run_gray_perception.sh --show --ball-bright-threshold 190
+./onboard/perception/camera/run_gray.sh --show --ball-bright-threshold 190
 ```
 
 如果白鞋仍被识别成球，优先调这些参数：
@@ -431,7 +431,7 @@ select() timeout
 
 ```bash
 # 相机进程
-pgrep -af "apriltag_detector.py|sensor_dashboard.py"
+pgrep -af "target_ball_detector.py|sensor_dashboard.py"
 
 # 相机 USB
 lsusb | grep -i RealSense
@@ -449,9 +449,9 @@ source ~/unitree_ros2/cyclonedds_ws/install/setup.bash
   "from unitree_hg.msg import LowState; print('OK')"
 
 # Python 语法检查
-python -m py_compile onboard/perception/camera/apriltag_detector.py
-bash -n onboard/perception/camera/run_apriltag_target.sh
-bash -n onboard/perception/camera/run_gray_perception.sh
+python -m py_compile onboard/perception/camera/target_ball_detector.py
+bash -n onboard/perception/camera/_launch.sh
+bash -n onboard/perception/camera/run_gray.sh
 ```
 
 ---
@@ -529,7 +529,7 @@ p.stop()
 # color.copy ≈ 2ms  get_distance ≈ 0.01ms
 
 # ── 完整流水线验证 ────────────────────────────────────────
-python -u onboard/perception/camera/apriltag_detector.py
+python -u onboard/perception/camera/target_ball_detector.py
 ```
 
 ---
@@ -540,7 +540,7 @@ python -u onboard/perception/camera/apriltag_detector.py
 
 #### 现象
 
-任何调用 ROS2 的脚本（`run_apriltag_target.sh`、`run_target.sh`、
+任何调用 ROS2 的脚本（`_launch.sh`、`run_target.sh`、
 `run_dual_d435.sh` 等）在 Jetson 上通过 SSH 启动时，Python **在打印第一行之前**
 就被杀死，stderr 只显示：
 
@@ -689,7 +689,7 @@ rs-enumerate-devices | grep USB   # 应显示 USB 3.2
 
 #### 运行时证据
 
-在 `apriltag_detector.py` 的 camera-to-pelvis transform 后加日志，复现时看到：
+在 `target_ball_detector.py` 的 camera-to-pelvis transform 后加日志，复现时看到：
 
 ```json
 {"waist_q":[0.0,0.0,0.0],"joint_age_s":null,"p_cam_body":[2.58,-0.22,0.14],"p_base_pelvis":[2.64,-0.20,-0.50]}
@@ -727,7 +727,7 @@ Exception: channel factory init error.
 
 #### 修复
 
-`apriltag_detector.py` 改为直接订阅 Unitree DDS `rt/lowstate`：
+`target_ball_detector.py` 改为直接订阅 Unitree DDS `rt/lowstate`：
 
 ```text
 rt/lowstate -> LowStateHG -> q[12], q[13], q[14]

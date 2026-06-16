@@ -49,7 +49,7 @@ def _build_marker(family: str, tag_id: int, side_px: int) -> np.ndarray:
     marker = np.zeros((side_px, side_px), dtype=np.uint8)
     # OpenCV generates the square marker image directly; the caller is
     # responsible for printing it at 100% scale so the physical edge matches
-    # --tag-size used by apriltag_detector.py.
+    # --tag-size used by target_ball_detector.py.
     cv2.aruco.generateImageMarker(marker_dict, int(tag_id), side_px, marker, 1)
     return marker
 

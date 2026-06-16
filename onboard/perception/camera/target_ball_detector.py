@@ -1,20 +1,20 @@
-"""Chest-camera AprilTag target detector service for G1 onboard computer.
+"""Chest-camera AprilTag target + bright-ball detector for the G1 onboard computer.
+
+One grayscale/IR camera process detects BOTH the AprilTag target and the bright
+ball, each published on its own DDS topic.
 
 Subscribes to:
   /lowstate  (Unitree G1 joint states via ROS2, for waist angles)
 
 Publishes via DDS:
-  "rt/target_state"  (target position in pelvis body frame)
+  "rt/target_state"    (AprilTag target position in pelvis body frame)
+  "rt/cam_ball_state"  (bright-ball position in pelvis body frame; with --ball-bright)
 
-Usage:
-    bash onboard/perception/camera/run_apriltag_target.sh
-    bash onboard/perception/camera/run_apriltag_target.sh --show
-    bash onboard/perception/camera/run_apriltag_target.sh --tag-id 0 --tag-size 0.12
-    bash onboard/perception/camera/run_apriltag_target.sh --tag-size 0.12 --show
-    bash onboard/perception/camera/run_apriltag_target.sh \
-        --tag-id 5 --tag-id 8 --tag-size 0.10 \
-        --tag-offset 5 0.20 0.00 0.00 \
-        --tag-offset 8 -0.20 0.00 0.00
+Usage (launch via run_gray.sh, which fills the grayscale/IR V4L2 defaults):
+    bash onboard/perception/camera/run_gray.sh
+    bash onboard/perception/camera/run_gray.sh --show
+    bash onboard/perception/camera/run_gray.sh --with-fuser --show
+    bash onboard/perception/camera/run_gray.sh --tag-id 0 --tag-size 0.12
 """
 
 from __future__ import annotations

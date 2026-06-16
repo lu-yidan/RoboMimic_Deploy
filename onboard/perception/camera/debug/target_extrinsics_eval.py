@@ -2,7 +2,7 @@
 
 Workflow:
 1. Place a static target in front of the robot.
-2. Run apriltag_detector.py with optional --chest-xyz/--chest-rpy overrides.
+2. Run target_ball_detector.py with optional --chest-xyz/--chest-rpy overrides.
 3. Run this script to inspect mean/std of the published pelvis-frame target pose.
 4. Adjust extrinsics until the position is physically reasonable and stable.
 """

@@ -1,12 +1,12 @@
 <div align="center">
-  <h1 align="center">RoboMimic Deploy</h1>
+  <h1 align="center">RoboNaldo Deploy</h1>
   <p align="center">
     <a href="README.md">🌎 English</a> | <span>🇨🇳 中文</span>
   </p>
 </div>
 
 <p align="center">
-  🎮🚪 <strong>RoboMimic Deploy 是一个基于状态切换机制的机器人多策略部署框架，目前包含的策略适用于宇树G1机器人(29dof)</strong> 🚪🎮
+  🎮🚪 <strong>RoboNaldo Deploy 是一个基于状态切换机制的机器人多策略部署框架，目前包含的策略适用于宇树G1机器人(29dof)</strong> 🚪🎮
 </p>
 
 > 🤖 **本仓库是 [RoboNaldo](https://opendrivelab.com/RoboNaldo/) 的部署仓库。**
@@ -69,7 +69,7 @@ PyTorch 是一个神经网络计算框架，用于模型训练和推理。使用
 conda install pytorch==2.3.1 torchvision==0.18.1 torchaudio==2.3.1 pytorch-cuda=12.1 -c pytorch -c nvidia
 ```
 
-### 2.2 安装 RoboMimic_Deploy
+### 2.2 安装 RoboNaldo_Deploy
 
 #### 2.2.1 下载
 
@@ -84,7 +84,7 @@ git clone https://github.com/OpenDriveLab/RoboNaldo_Deploy.git
 进入目录并安装：
 
 ```bash
-cd RoboMimic_Deploy
+cd RoboNaldo_Deploy
 pip install -r requirements.txt
 ```
 #### 2.2.3 安装unitree_sdk2_python
@@ -167,7 +167,7 @@ python deploy_mujoco/deploy_mujoco.py
 ---
 ## 4. 真机操作说明
 
-1. 开机后将机器人吊起来，按 L2+R2 进入调试模式。
+1. 开机后将机器人吊起来。先按 **L2+B** 进入阻尼保护模式（头部蓝灯变紫），再按 **L2+R2** 进入调试模式（头部灯变黄）。
 
 2. **推荐方式（机载 Orin）**：使用 tmux 启动脚本，一键启动 C++ bridge、policy 推理、感知服务和 Sensor Dashboard：
    ```bash

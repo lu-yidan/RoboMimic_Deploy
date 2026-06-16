@@ -1,12 +1,12 @@
 <div align="center">
-  <h1 align="center">RoboMimic Deploy</h1>
+  <h1 align="center">RoboNaldo Deploy</h1>
   <p align="center">
     <span> 🌎English </span> | <a href="README_zh.md"> 🇨🇳中文 </a>
   </p>
 </div>
 
 <p align="center">
-  <strong>​RoboMimic Deploy​​ is a multi-policy robot deployment framework based on a state-switching mechanism. Currently, the included policies are designed for the ​​Unitree G1 robot (29-DoF)​​.</strong> 
+  <strong>​RoboNaldo Deploy​​ is a multi-policy robot deployment framework based on a state-switching mechanism. Currently, the included policies are designed for the ​​Unitree G1 robot (29-DoF)​​.</strong> 
 </p>
 
 > 🤖 **This is the deployment repository for [RoboNaldo](https://opendrivelab.com/RoboNaldo/).**
@@ -66,7 +66,7 @@ PyTorch is a neural network computation framework used for model training and in
 conda install pytorch==2.3.1 torchvision==0.18.1 torchaudio==2.3.1 pytorch-cuda=12.1 -c pytorch -c nvidia
 ```
 
-### 2.2 Install RoboMimic_Deploy
+### 2.2 Install RoboNaldo_Deploy
 
 #### 2.2.1 Download
 Clone the repository via git:
@@ -79,7 +79,7 @@ git clone https://github.com/OpenDriveLab/RoboNaldo_Deploy.git
 
 Navigate to the directory and install:
 ```bash
-cd RoboMimic_Deploy
+cd RoboNaldo_Deploy
 pip install -r requirements.txt
 ```
 
@@ -156,7 +156,7 @@ python deploy_mujoco/deploy_mujoco.py
 ---
 ## 4. Real Robot Operation Instructions
 
-1. Power on the robot and suspend it (e.g., with a harness), then hold **L2+R2** to enter debug mode.
+1. Power on the robot and suspend it (e.g., with a harness). First hold **L2+B** to enter damping protection mode (the head light changes from blue to purple), then hold **L2+R2** to enter debug mode (the head light turns yellow).
 
 2. **Recommended (onboard Orin):** Use the tmux launcher, which starts the C++ bridge, policy runtime, perception services and sensor dashboard in one shot:
    ```bash

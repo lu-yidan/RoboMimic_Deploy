@@ -77,7 +77,7 @@ bash onboard/perception/run_ball_fuser.sh
 Profiling example:
 
 ```bash
-bash onboard/perception/camera/run_apriltag_gray_ball.sh \
+bash onboard/perception/camera/run_gray_perception.sh \
     --profile-timing \
     --profile-window 30 \
     --preview-max-hz 10 \

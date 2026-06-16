@@ -28,7 +28,7 @@ onboard/perception/camera/
 │                              --ball-bright  灰度/IR 亮球检测
 ├── camera_to_base.py       ← 坐标变换：相机系 → pelvis 系（含胸部外参）
 ├── run_apriltag_target.sh  ← 主启动脚本（tmux 使用）
-├── run_apriltag_gray_ball.sh ← AprilTag + 灰度亮球启动脚本
+├── run_gray_perception.sh  ← 灰度 AprilTag + 亮球（+可选 fuser）启动脚本
 ├── run_gray_perception.sh  ← 灰度感知启动脚本
 ├── debug/
 │   ├── generate_apriltag_template.py ← 生成可打印 A4 AprilTag 模板

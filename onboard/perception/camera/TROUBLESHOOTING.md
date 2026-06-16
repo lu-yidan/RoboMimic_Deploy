@@ -34,7 +34,7 @@ pkill -f "onboard/perception/camera/apriltag_detector.py" 2>/dev/null || true
 如需定位低于 20Hz 的瓶颈：
 
 ```bash
-./onboard/perception/camera/run_apriltag_gray_ball.sh --profile-timing --preview-max-hz 10 --status-hz 4
+./onboard/perception/camera/run_gray_perception.sh --profile-timing --preview-max-hz 10 --status-hz 4
 ```
 
 灰度/IR 入口默认 `/dev/video3` + `GREY`。
@@ -229,7 +229,7 @@ pkill -f "onboard/perception/camera/apriltag_detector.py"
 
 ```bash
 # 灰度 / IR，适合 AprilTag + 白球/反光点阵球
-./onboard/perception/camera/run_apriltag_gray_ball.sh --show
+./onboard/perception/camera/run_gray_perception.sh --show
 ```
 
 截图参考：
@@ -255,7 +255,7 @@ pkill -f "onboard/perception/camera/apriltag_detector.py"
 如果现场标定出更准的值，仍可直接覆盖：
 
 ```bash
-./onboard/perception/camera/run_apriltag_gray_ball.sh --show \
+./onboard/perception/camera/run_gray_perception.sh --show \
   --fx 675 --fy 650 --cx 640 --cy 360 \
   --chest-xyz 0.13444 0.020 0.06228 \
   --chest-rpy 0.0 0.2902482546 0.0
@@ -331,13 +331,13 @@ VIDEOIO(V4L2): failed VIDIOC_REQBUFS: errno=19 (No such device)
 如果经常丢球，降低阈值：
 
 ```bash
-./onboard/perception/camera/run_apriltag_gray_ball.sh --show --ball-bright-threshold 160
+./onboard/perception/camera/run_gray_perception.sh --show --ball-bright-threshold 160
 ```
 
 如果误检白鞋、墙面、反光物，提高阈值：
 
 ```bash
-./onboard/perception/camera/run_apriltag_gray_ball.sh --show --ball-bright-threshold 190
+./onboard/perception/camera/run_gray_perception.sh --show --ball-bright-threshold 190
 ```
 
 如果白鞋仍被识别成球，优先调这些参数：
@@ -451,7 +451,7 @@ source ~/unitree_ros2/cyclonedds_ws/install/setup.bash
 # Python 语法检查
 python -m py_compile onboard/perception/camera/apriltag_detector.py
 bash -n onboard/perception/camera/run_apriltag_target.sh
-bash -n onboard/perception/camera/run_apriltag_gray_ball.sh
+bash -n onboard/perception/camera/run_gray_perception.sh
 ```
 
 ---

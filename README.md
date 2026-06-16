@@ -20,7 +20,7 @@
     <td align="center"><b>Real robot</b></td>
   </tr>
   <tr>
-    <td><video src="https://github.com/user-attachments/assets/97be3852-cd7e-400d-836b-13f701cea9d1" controls muted width="100%"></video></td>
+    <td><video src="https://github.com/user-attachments/assets/f1365c83-3764-43b7-9ecf-57ba89854cf1" controls muted width="100%"></video></td>
     <td><video src="https://github.com/user-attachments/assets/45fbf473-060e-49b1-9204-c43bbcc89a3c" controls muted width="100%"></video></td>
   </tr>
 </table>

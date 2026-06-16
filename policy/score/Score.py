@@ -273,11 +273,6 @@ class Score(FSMState):
         )
         if self.warmup_target_q_mj.shape != (29,):
             raise ValueError("warmup_target_joint_pos must contain 29 joint values in MuJoCo order")
-        self.freeze_motion_at_first_frame = bool(cfg.get("freeze_motion_at_first_frame", False))
-        self.zero_anchor_pos        = bool(cfg.get("zero_anchor_pos",        False))
-        self.ball_as_anchor_pos     = bool(cfg.get("ball_as_anchor_pos",     False))
-        self.ball_anchor_cmd_scale  = float(cfg.get("ball_anchor_cmd_scale", 0.5))
-        self.ball_facing_anchor_ori = bool(cfg.get("ball_facing_anchor_ori", False))
         self.target_pos_w     = np.array(cfg["target_pos"],        dtype=np.float32)  # world frame
         self.target_source    = str(cfg.get("target_source", "fixed")).strip().lower()
         if self.target_source not in {"fixed", "apriltag"}:
@@ -296,44 +291,7 @@ class Score(FSMState):
             np.array(_lost_default, dtype=np.float32) if _lost_default is not None else None
         )
         self._ball_obs_lost_norm_max = float(cfg.get("ball_obs_lost_norm_max", 1e-3))
-        self._ball_vel_kf_pos_std = float(cfg.get("ball_vel_kf_pos_std", 0.04))
-        self._ball_vel_kf_accel_std = float(cfg.get("ball_vel_kf_accel_std", 5.0))
-        self._ball_vel_kf_init_vel_std = float(cfg.get("ball_vel_kf_init_vel_std", 2.0))
-        self._ball_vel_kf_outlier_dist = float(cfg.get("ball_vel_kf_outlier_dist", 0.8))
         self.runtime_mode = "real" if self.use_body_frame_ball else "sim"
-        self.anchor_mode = (
-            "zero"
-            if self.zero_anchor_pos else
-            "ball_cmd"
-            if self.ball_as_anchor_pos else
-            "motion_ref"
-        )
-        self.anchor_ori_mode = "ball_facing" if self.ball_facing_anchor_ori else "motion_ref"
-
-        # ---- Ball-trigger gate: hold at frame 0 until ball enters the circle ----
-        self.wait_for_ball    = bool(cfg.get("wait_for_ball",    False))
-        self.trigger_radius   = float(cfg.get("trigger_radius",  0.5))
-        self.trigger_horizon  = float(cfg.get("trigger_horizon", 0.5))
-        self.trigger_base_offset_xy = np.array(
-            cfg.get("trigger_base_offset_xy", [0.0, 0.0]),
-            dtype=np.float64,
-        )
-        if self.trigger_base_offset_xy.shape != (2,):
-            raise ValueError("trigger_base_offset_xy must be a 2D list, e.g. [-0.1, 0.1]")
-        self.trigger_frame    = int(cfg.get("trigger_frame",     252))
-        _tpe = cfg.get("trigger_play_end_frame", None)
-        self.trigger_play_end_frame = int(_tpe) if _tpe is not None else None
-        self.trigger_play_once = bool(cfg.get("trigger_play_once", False))
-        self.motion_mode = (
-            "freeze"
-            if self.freeze_motion_at_first_frame else
-            "triggered_once"
-            if self.wait_for_ball and self.trigger_play_once else
-            "triggered"
-            if self.wait_for_ball else
-            "play"
-        )
-        self._adapt_play_motion_deprecated = bool(cfg.get("adapt_play_motion", False))
 
         # Default joint pos in Isaac Lab order (for joint_pos_rel obs)
         self.default_q_il = self.default_q_mj[ISAAC_TO_MUJOCO]
@@ -347,15 +305,6 @@ class Score(FSMState):
         self._init_to_world = np.eye(3, dtype=np.float64)
         self._entry_q       = self.default_q_mj.copy()
         self._t0_target_q   = self.default_q_mj.copy()
-        self._motion_triggered    = True   # overwritten in enter()
-        self._trigger_policy_step = 0
-        # After a finite trigger burst, require ball to leave trigger zone before re-arming.
-        self._burst_need_ball_clear = False
-        self._prev_ball_pos_b_for_trigger = None
-        self._ball_vel_b_est = np.zeros(3, dtype=np.float32)
-        self._ball_vel_kf_initialized = False
-        self._ball_vel_kf_x = np.zeros(4, dtype=np.float64)  # [x, y, vx, vy] in pelvis frame
-        self._ball_vel_kf_P = np.eye(4, dtype=np.float64)
         self._entry_yaw_mat = np.eye(3, dtype=np.float64)
         self._target_world_yaw_vec = None
         self._debug_target_pos_w = np.zeros(3, dtype=np.float32)
@@ -381,12 +330,8 @@ class Score(FSMState):
         print("Score policy initialized "
               f"(547-dim, {self.motion_total_steps} motion frames).")
         print(
-            f"[Score config] runtime={self.runtime_mode} "
-            f"anchor={self.anchor_mode} anchor_ori={self.anchor_ori_mode} "
-            f"motion={self.motion_mode} target={self.target_source}"
+            f"[Score config] runtime={self.runtime_mode} target={self.target_source}"
         )
-        if self._adapt_play_motion_deprecated:
-            print("[Score config] `adapt_play_motion` is deprecated and ignored.")
 
     # ------------------------------------------------------------------
 
@@ -439,144 +384,15 @@ class Score(FSMState):
         self._entry_q     = self.state_cmd.q.copy()
         self._t0_target_q = self.warmup_target_q_mj.copy()
 
-        # ---- Trigger gate ----
-        # If wait_for_ball is on, hold at frame 0 until ball enters the circle.
-        self._motion_triggered    = not self.wait_for_ball
-        self._trigger_policy_step = 0
-        self._burst_need_ball_clear = False
-        self._prev_ball_pos_b_for_trigger = None
-        self._reset_ball_vel_kf()
-
         max_delta = np.abs(self._t0_target_q - self._entry_q).max()
-        if self.wait_for_ball:
-            if self.trigger_play_once:
-                s0 = int(np.clip(self.trigger_frame, 0, self.motion_total_steps - 1))
-                trigger_note = (f", waiting for ball (r={self.trigger_radius}m, "
-                                f"h={self.trigger_horizon}s → play once {s0}..end)")
-            elif self.trigger_play_end_frame is not None:
-                s0 = int(np.clip(self.trigger_frame, 0, self.motion_total_steps - 1))
-                s1 = int(np.clip(self.trigger_play_end_frame, 0, self.motion_total_steps - 1))
-                s1 = max(s0, s1)
-                trigger_note = (f", waiting for ball (r={self.trigger_radius}m, "
-                                f"h={self.trigger_horizon}s → play frames {s0}..{s1}, then wait)")
-            else:
-                trigger_note = (f", waiting for ball (r={self.trigger_radius}m, "
-                                f"h={self.trigger_horizon}s → frame {self.trigger_frame}..end)")
-        else:
-            trigger_note = ""
         print(f"Score enter: warmup {self.WARMUP_STEPS} steps, "
-              f"max joint delta = {max_delta:.3f} rad{trigger_note}")
+              f"max joint delta = {max_delta:.3f} rad")
 
     # ------------------------------------------------------------------
 
-    def _trigger_segment_bounds(self):
-        """Inclusive segment [s0, s1] in loaded motion indices (clamped)."""
-        s0 = int(np.clip(self.trigger_frame, 0, self.motion_total_steps - 1))
-        s1 = int(np.clip(
-            self.trigger_play_end_frame
-            if self.trigger_play_end_frame is not None else self.motion_total_steps - 1,
-            0, self.motion_total_steps - 1))
-        if s1 < s0:
-            s1 = s0
-        return s0, s1
-
     def _motion_frame_index(self, policy_step: int) -> int:
         """Motion frame index for obs / ghost (policy_step excludes warmup)."""
-        if self.freeze_motion_at_first_frame or not self._motion_triggered:
-            return 0
-        steps_since_trigger = policy_step - self._trigger_policy_step
-        if self.wait_for_ball and self.trigger_play_once:
-            return min(
-                int(np.clip(self.trigger_frame, 0, self.motion_total_steps - 1)) + steps_since_trigger,
-                self.motion_total_steps - 1,
-            )
-        if self.wait_for_ball and self.trigger_play_end_frame is not None:
-            s0, s1 = self._trigger_segment_bounds()
-            t_lin = s0 + steps_since_trigger
-            return int(min(t_lin, s1))
-        if self.wait_for_ball:
-            return min(self.trigger_frame + steps_since_trigger, self.motion_total_steps - 1)
         return min(max(policy_step, 0), self.motion_total_steps - 1)
-
-    def _trigger_play_once_finished(self, policy_step: int) -> bool:
-        if not (self.wait_for_ball and self.trigger_play_once and self._motion_triggered):
-            return False
-        start_t = int(np.clip(self.trigger_frame, 0, self.trigger_play_end_frame - 1))
-        return (start_t + (policy_step - self._trigger_policy_step)) >= (self.trigger_play_end_frame - 1)
-
-    def _reset_ball_vel_kf(self):
-        self._prev_ball_pos_b_for_trigger = None
-        self._ball_vel_b_est[:] = 0.0
-        self._ball_vel_kf_initialized = False
-        self._ball_vel_kf_x[:] = 0.0
-        self._ball_vel_kf_P = np.eye(4, dtype=np.float64)
-
-    def _estimate_ball_vel_b(self) -> np.ndarray:
-        """Estimate pelvis-frame ball velocity on real robot from `ball_pos_b`.
-
-        Triggering only needs horizontal velocity, so use a 2D constant-velocity
-        Kalman filter on [x, y, vx, vy] instead of raw position differencing.
-        """
-        if not self.use_body_frame_ball:
-            return np.zeros(3, dtype=np.float32)
-
-        if not self.state_cmd.ball_valid:
-            self._reset_ball_vel_kf()
-            return self._ball_vel_b_est.copy()
-
-        z = self.state_cmd.ball_pos_b[:2].astype(np.float64)
-        if not self._ball_vel_kf_initialized:
-            self._ball_vel_kf_x[:] = [z[0], z[1], 0.0, 0.0]
-            pos_var = max(self._ball_vel_kf_pos_std, 1e-4) ** 2
-            vel_var = max(self._ball_vel_kf_init_vel_std, 1e-4) ** 2
-            self._ball_vel_kf_P = np.diag([pos_var, pos_var, vel_var, vel_var]).astype(np.float64)
-            self._ball_vel_kf_initialized = True
-            self._ball_vel_b_est[:] = 0.0
-            return self._ball_vel_b_est.copy()
-
-        dt = max(float(self.control_dt), 1e-3)
-        F = np.array([
-            [1.0, 0.0, dt,  0.0],
-            [0.0, 1.0, 0.0, dt ],
-            [0.0, 0.0, 1.0, 0.0],
-            [0.0, 0.0, 0.0, 1.0],
-        ], dtype=np.float64)
-        accel_var = max(self._ball_vel_kf_accel_std, 1e-4) ** 2
-        dt2 = dt * dt
-        dt3 = dt2 * dt
-        dt4 = dt2 * dt2
-        Q = accel_var * np.array([
-            [0.25 * dt4, 0.0,       0.5 * dt3, 0.0      ],
-            [0.0,        0.25 * dt4, 0.0,       0.5 * dt3],
-            [0.5 * dt3, 0.0,        dt2,       0.0      ],
-            [0.0,        0.5 * dt3, 0.0,       dt2      ],
-        ], dtype=np.float64)
-        H = np.array([
-            [1.0, 0.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0, 0.0],
-        ], dtype=np.float64)
-        R = (max(self._ball_vel_kf_pos_std, 1e-4) ** 2) * np.eye(2, dtype=np.float64)
-
-        x_pred = F @ self._ball_vel_kf_x
-        P_pred = F @ self._ball_vel_kf_P @ F.T + Q
-        innovation = z - H @ x_pred
-        if (
-            self._ball_vel_kf_outlier_dist > 0.0
-            and float(np.linalg.norm(innovation)) > self._ball_vel_kf_outlier_dist
-        ):
-            self._ball_vel_kf_initialized = False
-            self._ball_vel_b_est[:] = 0.0
-            return self._ball_vel_b_est.copy()
-
-        S = H @ P_pred @ H.T + R
-        K = P_pred @ H.T @ np.linalg.inv(S)
-        self._ball_vel_kf_x = x_pred + K @ innovation
-        I = np.eye(4, dtype=np.float64)
-        self._ball_vel_kf_P = (I - K @ H) @ P_pred
-        self._ball_vel_kf_P = 0.5 * (self._ball_vel_kf_P + self._ball_vel_kf_P.T)
-
-        self._ball_vel_b_est[:] = [self._ball_vel_kf_x[2], self._ball_vel_kf_x[3], 0.0]
-        return self._ball_vel_b_est.copy()
 
     def _get_effective_ball_pos_b(self):
         """Return pelvis-frame ball position used by the policy.
@@ -599,90 +415,13 @@ class Score(FSMState):
             ).astype(np.float32)
         return ball_b_effective
 
-    def _pelvis_to_torso_offset_pelvis(self) -> np.ndarray:
-        """Return torso origin relative to pelvis, expressed in pelvis frame."""
-        waist_yaw = float(self.state_cmd.q[12])
-        R_waist_yaw = _quat_to_matrix(
-            np.array(
-                [np.cos(waist_yaw * 0.5), 0.0, 0.0, np.sin(waist_yaw * 0.5)],
-                dtype=np.float64,
-            )
-        )
-        return R_waist_yaw @ np.array([-0.0039635, 0.0, 0.044], dtype=np.float64)
-
-    def _get_ball_pos_torso_b(
-        self,
-        ball_b_effective,
-        torso_pos_w: np.ndarray,
-        R_torso_w: np.ndarray,
-    ):
-        """Return ball position relative to torso, expressed in torso frame."""
-        if self.runtime_mode == "real":
-            if ball_b_effective is None:
-                return None
-            R_pelvis_w = _quat_to_matrix(self.state_cmd.pelvis_quat_w.astype(np.float64))
-            ball_rel_torso_pelvis = (
-                ball_b_effective.astype(np.float64) - self._pelvis_to_torso_offset_pelvis()
-            )
-            return (R_torso_w.T @ (R_pelvis_w @ ball_rel_torso_pelvis)).astype(np.float32)
-
-        ball_rel_torso_w = (
-            self.state_cmd.ball_pos_w.astype(np.float64) - torso_pos_w
-        )
-        return (R_torso_w.T @ ball_rel_torso_w).astype(np.float32)
-
     def _compute_anchor_pos_b(
         self,
-        ball_b_effective,
         torso_pos_w: np.ndarray,
         R_torso_w: np.ndarray,
         aligned_anchor_pos_w: np.ndarray,
     ) -> np.ndarray:
-        """Compute anchor position observation in torso body frame."""
-        if self.anchor_mode == "zero":
-            return np.zeros(3, dtype=np.float32)
-
-        if self.anchor_mode == "ball_cmd":
-            ball_pos_torso_b = self._get_ball_pos_torso_b(
-                ball_b_effective, torso_pos_w, R_torso_w
-            )
-            if self.runtime_mode == "real":
-                anchor_pos_b_ref = (
-                    R_torso_w.T @ (aligned_anchor_pos_w - torso_pos_w)
-                ).astype(np.float32)
-                if self.state_cmd.ball_valid and ball_pos_torso_b is not None:
-                    anchor_cmd_xy = ball_pos_torso_b[:2].astype(np.float32)
-                    norm_xy = float(np.linalg.norm(anchor_cmd_xy))
-                    if norm_xy > 1e-6:
-                        clipped_norm_xy = np.clip(self.ball_anchor_cmd_scale * norm_xy, 0, 1.0)
-                        anchor_pos_b_ball = (
-                            self.ball_anchor_cmd_scale * clipped_norm_xy * (anchor_cmd_xy / norm_xy)
-                        )
-                        anchor_pos_b = np.concatenate(
-                            [anchor_pos_b_ball, [aligned_anchor_pos_w[2] - torso_pos_w[2]]]
-                        )
-                    else:
-                        anchor_pos_b = anchor_pos_b_ref
-                else:
-                    anchor_pos_b = anchor_pos_b_ref
-                anchor_pos_b[2] = aligned_anchor_pos_w[2] - torso_pos_w[2]
-                return anchor_pos_b.astype(np.float32)
-
-            _adisp = aligned_anchor_pos_w - self._ref_anchor_world_origin
-            _rdisp = torso_pos_w - self._entry_torso_pos_w
-            anchor_pos_b_ref = (R_torso_w.T @ (_adisp - _rdisp)).astype(np.float32)
-            anchor_cmd_xy = ball_pos_torso_b[:2]
-            norm_xy = float(np.linalg.norm(anchor_cmd_xy))
-            if norm_xy > 1e-6:
-                clipped_norm_xy = np.clip(self.ball_anchor_cmd_scale * norm_xy, 0, 1.0)
-                anchor_pos_b_ball = (
-                    self.ball_anchor_cmd_scale * clipped_norm_xy * (anchor_cmd_xy / norm_xy)
-                )
-                return np.concatenate(
-                    [anchor_pos_b_ball, [aligned_anchor_pos_w[2] - torso_pos_w[2]]]
-                ).astype(np.float32)
-            return anchor_pos_b_ref
-
+        """Compute anchor position observation in torso body frame (reference-motion anchor)."""
         anchor_disp_w = aligned_anchor_pos_w - self._ref_anchor_world_origin
         robot_disp_w  = torso_pos_w - self._entry_torso_pos_w
         return (R_torso_w.T @ (anchor_disp_w - robot_disp_w)).astype(np.float32)
@@ -690,62 +429,10 @@ class Score(FSMState):
     def _compute_anchor_ori_6d(
         self,
         t: int,
-        ball_b_effective,
         torso_quat_w: np.ndarray,
-        torso_pos_w: np.ndarray,
-        aligned_anchor_pos_w: np.ndarray,
         init_world_quat: np.ndarray,
     ) -> np.ndarray:
-        """Compute anchor orientation observation in torso/body frame."""
-        if self.anchor_ori_mode == "ball_facing":
-            if self.runtime_mode == "real":
-                # Real robot: use the ball direction relative to torso.
-                # Only horizontal relative yaw is kept here.
-                R_torso_w = _quat_to_matrix(torso_quat_w)
-                ball_pos_torso_b = self._get_ball_pos_torso_b(
-                    ball_b_effective, torso_pos_w, R_torso_w
-                )
-                ball_relevant_pos_to_torso = (
-                    np.zeros(2, dtype=np.float64)
-                    if ball_pos_torso_b is None else
-                    ball_pos_torso_b[:2].astype(np.float64)
-                )
-                norm_xy = float(np.linalg.norm(ball_relevant_pos_to_torso))
-                yaw_rel = (
-                    0.0 if norm_xy < 1e-6 else
-                    float(np.arctan2(
-                        ball_relevant_pos_to_torso[1],
-                        ball_relevant_pos_to_torso[0],
-                    ))
-                )
-                rel_quat = np.array(
-                    [np.cos(yaw_rel * 0.5), 0.0, 0.0, np.sin(yaw_rel * 0.5)],
-                    dtype=np.float64,
-                )
-                return _rot6d_from_quat(rel_quat)
-
-            ball_pos_w_f64 = self.state_cmd.ball_pos_w.astype(np.float64)
-            to_ball_w = ball_pos_w_f64 - torso_pos_w
-            to_ball_w[2] = aligned_anchor_pos_w[2] - torso_pos_w[2]
-            norm = np.linalg.norm(to_ball_w)
-            if norm < 1e-6:
-                to_ball_dir = np.array([1.0, 0.0, 0.0])
-            else:
-                to_ball_dir = to_ball_w / norm
-
-            x_axis = np.array([1.0, 0.0, 0.0])
-            d = float(np.dot(x_axis, to_ball_dir))
-            if d < -1.0 + 1e-6:
-                ball_facing_quat_w = np.array([0.0, 0.0, 0.0, 1.0])
-            else:
-                c = np.cross(x_axis, to_ball_dir)
-                q_unnorm = np.array([1.0 + d, c[0], c[1], c[2]])
-                ball_facing_quat_w = q_unnorm / np.linalg.norm(q_unnorm)
-
-            rel_quat = _quat_mul(_quat_conj(torso_quat_w), ball_facing_quat_w)
-            rel_quat = rel_quat / np.linalg.norm(rel_quat)
-            return _rot6d_from_quat(rel_quat)
-
+        """Compute anchor orientation observation in torso/body frame (reference-motion anchor)."""
         ref_anchor_quat_w = self.motion_body_quat[t, NPZ_ANCHOR_IDX].astype(np.float64)
         aligned_quat = _quat_mul(init_world_quat, ref_anchor_quat_w)
         rel_quat = _quat_mul(_quat_conj(torso_quat_w), aligned_quat)
@@ -820,70 +507,6 @@ class Score(FSMState):
         self._target_debug_source = "none"
         return np.zeros(3, dtype=np.float32)
 
-    def _get_trigger_ball_state_b(self):
-        """Return `(ball_pos_b, ball_vel_b, anchor_xy)` in torso frame for trigger gating."""
-        R_torso_w = _quat_to_matrix(self.state_cmd.torso_quat_w.astype(np.float64))
-        if self.runtime_mode == "real":
-            ball_pos_b = self._get_ball_pos_torso_b(
-                self.state_cmd.ball_pos_b.astype(np.float32),
-                self.state_cmd.torso_pos_w.astype(np.float64),
-                R_torso_w,
-            ).astype(np.float64)
-            R_pelvis_w = _quat_to_matrix(self.state_cmd.pelvis_quat_w.astype(np.float64))
-            ball_vel_b = (
-                R_torso_w.T @ (R_pelvis_w @ self._estimate_ball_vel_b().astype(np.float64))
-            )
-        else:
-            R_pelvis = _quat_to_matrix(self.state_cmd.pelvis_quat_w.astype(np.float64))
-            ball_pos_b = R_torso_w.T @ (
-                self.state_cmd.ball_pos_w.astype(np.float64)
-                - self.state_cmd.torso_pos_w.astype(np.float64)
-            )
-            ball_vel_b = (
-                R_torso_w.T @ self.state_cmd.ball_vel_w.astype(np.float64)
-                - R_torso_w.T @ (R_pelvis @ self.state_cmd.root_lin_vel_b.astype(np.float64))
-            )
-        return ball_pos_b, ball_vel_b, self.trigger_base_offset_xy.copy()
-
-    def _update_motion_trigger_state(self, policy_step: int):
-        """Update finite-burst state machine before trigger evaluation."""
-        if (self.wait_for_ball and not self.trigger_play_once and self._motion_triggered
-                and self.trigger_play_end_frame is not None):
-            s0, s1 = self._trigger_segment_bounds()
-            if policy_step - self._trigger_policy_step > (s1 - s0):
-                self._motion_triggered = False
-                self._burst_need_ball_clear = True
-                print(
-                    f"\n[Score] Played frames {s0}..{s1} → hold frame 0, wait for next ball",
-                    flush=True,
-                )
-
-    def _ball_enters_circle(
-        self,
-        ball_pos_xy: np.ndarray,  # (2,)
-        ball_vel_xy: np.ndarray,  # (2,)
-        anchor_xy: np.ndarray,    # (2,)
-        radius: float,
-        horizon: float,
-    ) -> bool:
-        """True if the ball's linear trajectory passes within `radius` m of
-        `anchor_xy` at any t ∈ [0, horizon] seconds.
-
-        d²(t) = |dp + t·v|²  (dp = ball_pos - anchor)
-              = |v|²·t² + 2·dot(dp,v)·t + |dp|²
-        Minimum at t* = −dot(dp,v)/|v|²,  clamped to [0, horizon].
-        """
-        dp  = ball_pos_xy - anchor_xy
-        v2  = float(np.dot(ball_vel_xy, ball_vel_xy))
-        dpv = float(np.dot(dp, ball_vel_xy))
-        dp2 = float(np.dot(dp, dp))
-
-        t_star    = (-dpv / v2) if v2 > 1e-6 else 0.0
-        t_clamp   = float(np.clip(t_star, 0.0, horizon))
-        min_dist2 = v2 * t_clamp ** 2 + 2.0 * dpv * t_clamp + dp2
-
-        return min_dist2 < radius * radius
-
     @staticmethod
     def _fmt_vec3(vec: np.ndarray) -> str:
         vec = np.asarray(vec, dtype=np.float32).reshape(3)
@@ -916,14 +539,9 @@ class Score(FSMState):
         init_world_quat      = _matrix_to_quat(self._init_to_world)
         ref_anchor_pos_w     = self.motion_body_pos[t, NPZ_ANCHOR_IDX].astype(np.float64)
         aligned_anchor_pos_w = self._init_to_world @ ref_anchor_pos_w
-        if self._trigger_play_once_finished(policy_step):
-            _adisp = aligned_anchor_pos_w - self._ref_anchor_world_origin
-            _rdisp = torso_pos_w - self._entry_torso_pos_w
-            anchor_pos_b = (R_torso_w.T @ (_adisp - _rdisp)).astype(np.float32)
-        else:
-            anchor_pos_b = self._compute_anchor_pos_b(
-                ball_b_effective, torso_pos_w, R_torso_w, aligned_anchor_pos_w
-            )
+        anchor_pos_b = self._compute_anchor_pos_b(
+            torso_pos_w, R_torso_w, aligned_anchor_pos_w
+        )
 
         # Cache for visualization (world-frame anchor position).
         self._debug_anchor_pos_w = (torso_pos_w + R_torso_w @ anchor_pos_b.astype(np.float64)).astype(np.float32)
@@ -931,7 +549,7 @@ class Score(FSMState):
 
         # ---- motion_anchor_ori_b (relative to torso orientation, in torso body frame) ----
         anchor_ori_6d = self._compute_anchor_ori_6d(
-            t, ball_b_effective, torso_quat_w, torso_pos_w, aligned_anchor_pos_w, init_world_quat
+            t, torso_quat_w, init_world_quat
         )
         anchor_x_axis_b = np.array(
             [anchor_ori_6d[0], anchor_ori_6d[2], anchor_ori_6d[4]],
@@ -991,33 +609,6 @@ class Score(FSMState):
         # ---- Policy phase ----
         policy_step = self.time_step - self.WARMUP_STEPS
 
-        # Finite burst finished → hold frame 0 until next ball.
-        self._update_motion_trigger_state(policy_step)
-
-        # ---- Ball-trigger gate ----
-        if not self._motion_triggered:
-            ball_pos_b, ball_vel_b, anchor_xy = self._get_trigger_ball_state_b()
-            in_circle = self._ball_enters_circle(
-                ball_pos_b[:2], ball_vel_b[:2], anchor_xy,
-                self.trigger_radius, self.trigger_horizon)
-            if self._burst_need_ball_clear:
-                if not in_circle:
-                    self._burst_need_ball_clear = False
-            elif in_circle:
-                self._motion_triggered = True
-                self._trigger_policy_step = policy_step
-                if self.trigger_play_once:
-                    s0 = int(np.clip(self.trigger_frame, 0, self.motion_total_steps - 1))
-                    print(f"\n[Score] Ball trigger at policy_step={policy_step} "
-                          f"→ play once from frame {s0} to clip end")
-                elif self.trigger_play_end_frame is not None:
-                    s0, s1 = self._trigger_segment_bounds()
-                    print(f"\n[Score] Ball trigger at policy_step={policy_step} "
-                          f"→ play frames {s0}..{s1}")
-                else:
-                    print(f"\n[Score] Ball trigger at policy_step={policy_step} "
-                          f"→ from frame {self.trigger_frame} to clip end")
-
         obs = self._build_obs()
 
         out = self.ort_session.run(
@@ -1050,7 +641,7 @@ class Score(FSMState):
             self._target_debug_source, 0.0
         )
 
-        # ---- Visualization: anchor, anchor orientation, target, and trigger circle ----
+        # ---- Visualization: anchor, anchor orientation, and target ----
         anchor_ori_arrow_to = (
             self._debug_anchor_pos_w.astype(np.float64)
             + 0.45 * self._debug_anchor_x_axis_w.astype(np.float64)
@@ -1085,49 +676,13 @@ class Score(FSMState):
             )
             viz.append({"pos": corrected_marker_pos, "size": np.array([0.002, 0.15, 0.15]),
                         "rgba": np.array([0.0, 1.0, 0.4, 0.90], dtype=np.float32)})
-        # While waiting for the ball: show a semi-transparent cyan sphere indicating
-        # the trigger circle radius around the configured torso-frame offset.
-        if self.wait_for_ball and not self._motion_triggered:
-            R_torso_yaw_w = _quat_to_matrix(
-                _yaw_quat(self.state_cmd.torso_quat_w.astype(np.float64))
-            )
-            trigger_offset_w = R_torso_yaw_w @ np.array(
-                [self.trigger_base_offset_xy[0], self.trigger_base_offset_xy[1], 0.0],
-                dtype=np.float64,
-            )
-            trigger_center = np.array([
-                self.state_cmd.torso_pos_w[0] + trigger_offset_w[0],
-                self.state_cmd.torso_pos_w[1] + trigger_offset_w[1],
-                0.1,
-            ], dtype=np.float64)
-            viz.append({"pos": trigger_center, "radius": self.trigger_radius,
-                        "rgba": np.array([0.0, 1.0, 1.0, 0.15], dtype=np.float32)})
         self.policy_output.viz_spheres = viz
 
         self.time_step += 1
         capped = self._motion_frame_index(policy_step)
         self.policy_output.ghost_qpos = self._compute_ghost_qpos(capped)
-        if self.wait_for_ball and self.trigger_play_once:
-            s0 = int(np.clip(self.trigger_frame, 0, self.motion_total_steps - 1))
-            span_ct = self.motion_total_steps - s0
-            bar_total = span_ct * self.control_dt
-            if self._motion_triggered:
-                st = policy_step - self._trigger_policy_step
-                bar_prog = min(st + 1, span_ct) * self.control_dt
-            else:
-                bar_prog = 0.0
-        elif self.wait_for_ball and self.trigger_play_end_frame is not None:
-            s0, s1 = self._trigger_segment_bounds()
-            span_ct = s1 - s0 + 1
-            bar_total = span_ct * self.control_dt
-            if self._motion_triggered:
-                st = policy_step - self._trigger_policy_step
-                bar_prog = min(st + 1, span_ct) * self.control_dt
-            else:
-                bar_prog = 0.0
-        else:
-            bar_total = self.motion_total_steps * self.control_dt
-            bar_prog = capped * self.control_dt
+        bar_total = self.motion_total_steps * self.control_dt
+        bar_prog  = capped * self.control_dt
         status_line = progress_bar(bar_prog, bar_total)
         status_line += f" ball_b={self._fmt_vec3(self._debug_ball_pos_b)}"
         status_line += f" target_b={self._fmt_vec3(self._debug_target_pos_b)}"

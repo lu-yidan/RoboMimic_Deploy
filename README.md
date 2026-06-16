@@ -14,14 +14,14 @@
 > [**opendrivelab/RoboNaldo**](https://github.com/opendrivelab/RoboNaldo); this repository runs the
 > trained policies on the real and simulated Unitree G1.
 
-<table align="center">
+<table align="center" width="100%">
   <tr>
-    <td align="center"><b>Simulation</b></td>
-    <td align="center"><b>Real robot</b></td>
+    <td width="50%" align="center"><b>Simulation</b></td>
+    <td width="50%" align="center"><b>Real robot</b></td>
   </tr>
   <tr>
-    <td><video src="https://github.com/user-attachments/assets/f1365c83-3764-43b7-9ecf-57ba89854cf1" controls muted width="100%"></video></td>
-    <td><video src="https://github.com/user-attachments/assets/45fbf473-060e-49b1-9204-c43bbcc89a3c" controls muted width="100%"></video></td>
+    <td width="50%"><video src="https://github.com/user-attachments/assets/f1365c83-3764-43b7-9ecf-57ba89854cf1" controls muted width="100%"></video></td>
+    <td width="50%"><video src="https://github.com/user-attachments/assets/45fbf473-060e-49b1-9204-c43bbcc89a3c" controls muted width="100%"></video></td>
   </tr>
 </table>
 

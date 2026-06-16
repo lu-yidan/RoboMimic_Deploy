@@ -14,6 +14,11 @@
 > [**opendrivelab/RoboNaldo**](https://github.com/opendrivelab/RoboNaldo)；本仓库负责把训练好的策略
 > 部署到真机与仿真的宇树 G1 上。
 
+<div align="center">
+  <video src="https://github.com/OpenDriveLab/RoboNaldo_Deploy/raw/main/docs/free_kick.mp4" controls muted width="80%"></video>
+  <br/><em>任意球 demo —— RoboNaldo 策略部署在宇树 G1 上</em>
+</div>
+
 ## 写在前面
 
 - **本部署框架仅适用于具有三自由度腰部的G1机器人，如果装有腰部固定件的话需要按照官网教程解锁，然后才能正常使用该部署框架。**
@@ -63,7 +68,7 @@ conda install pytorch==2.3.1 torchvision==0.18.1 torchaudio==2.3.1 pytorch-cuda=
 通过 Git 克隆仓库：
 
 ```bash
-git clone https://github.com/ccrpRepo/RoboMimic_Deploy.git
+git clone https://github.com/OpenDriveLab/RoboNaldo_Deploy.git
 ```
 
 #### 2.2.2 安装组件

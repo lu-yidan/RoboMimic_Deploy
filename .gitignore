@@ -44,8 +44,11 @@ Thumbs.db
 *.onnx
 *.engine
 
+# Large source video clips stay out of the repo
 *.mp4
+*.webm
+recordings/*.mp4
+# ...except the small trimmed README demo clip (overrides *.mp4 above)
+!docs/free_kick.mp4
 
 .tmp_pkg/
-recordings/*.mp4
-*.mp4

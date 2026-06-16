@@ -14,6 +14,11 @@
 > [**opendrivelab/RoboNaldo**](https://github.com/opendrivelab/RoboNaldo); this repository runs the
 > trained policies on the real and simulated Unitree G1.
 
+<div align="center">
+  <video src="https://github.com/OpenDriveLab/RoboNaldo_Deploy/raw/main/docs/free_kick.mp4" controls muted width="80%"></video>
+  <br/><em>Free-kick demo — RoboNaldo policy on a Unitree G1</em>
+</div>
+
 ## Preface
 
 - **​This deployment framework is only applicable to G1 robots with a 3-DOF waist. If a waist fixing bracket is installed, it must be unlocked according to the official tutorial before this framework can be used normally.​​**
@@ -59,7 +64,7 @@ conda install pytorch==2.3.1 torchvision==0.18.1 torchaudio==2.3.1 pytorch-cuda=
 Clone the repository via git:
 
 ```bash
-git clone https://github.com/ccrpRepo/RoboMimic_Deploy.git
+git clone https://github.com/OpenDriveLab/RoboNaldo_Deploy.git
 ```
 
 #### 2.2.2 Install Components

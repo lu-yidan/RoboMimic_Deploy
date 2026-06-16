@@ -169,61 +169,9 @@ PY
 
 Expected: one D435/D435I/D455 device, USB `3.x`, and `pipeline ok True True`.
 
-## Model Export
-
-Export the TensorRT engine once per robot:
-
-```bash
-bash onboard/perception/camera/models/download_and_export.sh --model yolo11m
-```
-
-The build can take 7-15 minutes. Warnings about missing `onnxruntime-gpu` are OK
-on aarch64 if ONNX export and TensorRT build continue.
-
-Verify engine load speed:
-
-```bash
-source onboard/perception/setup_runtime_env.sh
-conda run -n robomimic --no-capture-output python - <<'PY'
-from ultralytics import YOLO
-import numpy as np, time
-model = YOLO("onboard/perception/camera/models/yolo11m.engine")
-img = np.zeros((320, 320, 3), dtype=np.uint8)
-for _ in range(3):
-    model(img, verbose=False)
-t0 = time.perf_counter()
-for _ in range(20):
-    model(img, verbose=False)
-print("engine avg ms", (time.perf_counter() - t0) / 20 * 1000)
-PY
-```
-
-Known-good result on Orin: about `7-9 ms`.
-
-## Smoke Test
-
-Use the YOLO web viewer first because it does not need ROS2:
-
-```bash
-bash onboard/perception/camera/run_yolo_web.sh \
-  --camera-serial <SERIAL_FROM_REALSENSE_TEST> \
-  --port 18081
-```
-
-Expected output:
-
-```text
-RealSense pipeline OK ...
-TensorRT engine found ...
-warmup[1]: ~8ms
-MJPEG stream started -> http://<robot-ip>:18081/stream
-[YOLO] ... fps=~60
-```
-
 ## ROS2 / LiDAR / Unitree Messages
 
-The pure camera + YOLO stack can be installed without ROS2. The AprilTag target
-publisher, camera ball publisher, and LiDAR detector also import:
+The AprilTag target publisher, camera ball publisher, and LiDAR detector import:
 
 - `rclpy`
 - `unitree_hg.msg`
@@ -257,7 +205,7 @@ conda run -n robomimic --no-capture-output python -c \
   "import torch; print(torch.__version__, torch.cuda.is_available(), torch.cuda.get_device_name(0))"
 
 conda run -n robomimic --no-capture-output python -c \
-  "import cv2, pyrealsense2, ultralytics, tensorrt; print('vision stack ok')"
+  "import cv2, pyrealsense2; print('vision stack ok')"
 
 conda run -n robomimic --no-capture-output python -c \
   "from cyclonedds.domain import DomainParticipant; DomainParticipant(0); print('dds ok')"

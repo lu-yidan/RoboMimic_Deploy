@@ -38,9 +38,8 @@ unitree_sdk2_python/
 .DS_Store
 Thumbs.db
 
-# YOLO model weights and compiled TRT binaries
-# These are large (6–80 MB) and hardware-specific; use
-# onboard/perception/camera/models/download_and_export.sh to reproduce.
+# Model weights and compiled binaries (large, hardware-specific).
+# Policy ONNX files live under policy/*/model/ and are distributed out-of-band.
 *.pt
 *.onnx
 *.engine

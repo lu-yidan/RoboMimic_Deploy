@@ -18,18 +18,11 @@ onboard/
     │   ├── mid360_to_base.py     ← 坐标变换：MID360 系 → pelvis (base) 系
     │   └── README.md             ← Lidar 使用手册（含 RViz2 配置）
     └── camera/
-        ├── ball_detector.py      ← 单相机：RealSense D435 + YOLO11m TRT → DDS 发布
+        ├── apriltag_detector.py  ← AprilTag + 灰度 bright-ball 检测 → DDS 发布
         ├── run_gray_perception.sh ← 灰度 AprilTag + bright-ball 启动脚本
-        ├── ball_detector_dual.py ← 双相机：2×D435 + 共享 YOLO → DDS 发布
         ├── camera_to_base.py     ← 坐标变换：相机系 → pelvis 系（含胸部占位外参）
-        ├── run.sh                ← 单相机启动脚本（含 TRT 路径、GPU 解锁）
-        ├── run_dual.sh           ← 双相机启动脚本
         ├── README.md             ← Camera 使用手册（本地文档）
-        ├── TROUBLESHOOTING.md    ← 性能优化全记录
-        └── models/
-            ├── download_and_export.sh  ← 一键下载 .pt + 导出 TRT engine
-            ├── README.md               ← 模型精度/速度对比
-            └── .gitignore              ← 排除 *.pt / *.onnx / *.engine
+        └── TROUBLESHOOTING.md    ← 性能优化全记录
 ```
 
 ---
@@ -159,73 +152,13 @@ python onboard/perception/lidar/ball_detector.py
 
 ---
 
-### 方案 B — Camera（RealSense D435 + YOLO11m TRT）
-
-#### 1. 依赖
-
-```bash
-# ROS2 Foxy（已预装）
-# cyclonedds Python 绑定（见上方步骤）
-
-# pyrealsense2（conda-forge，不能用 pip）
-conda install -c conda-forge pyrealsense2 -y
-
-# ultralytics（YOLOv8/v11）
-pip install ultralytics
-```
-
-#### 2. 首次使用：下载模型并导出 TRT engine（约 15 分钟，只需一次）
-
-```bash
-bash onboard/perception/camera/models/download_and_export.sh
-# 下载 yolo11m.pt + 导出 yolo11m.engine（TRT FP16，imgsz=320）
-```
-
-#### 3a. 单相机启动
-
-```bash
-bash onboard/perception/camera/run.sh
-bash onboard/perception/camera/run.sh --show          # +MJPEG 预览 (port 8080)
-bash onboard/perception/camera/run.sh --model models/yolov8n.pt  # 切换更快的模型
-```
-
-#### 3b. 双相机启动（head + chest，任意一台检测到即发布）
-
-```bash
-# 查看两台相机序列号
-bash onboard/perception/camera/run_dual.sh --list-cameras
-
-# 启动双相机（推荐指定序列号，防止枚举顺序变化）
-bash onboard/perception/camera/run_dual.sh \
-    --head-serial 117322071089 --chest-serial 334622071404
-bash onboard/perception/camera/run_dual.sh --show     # +双路 MJPEG 预览 (port 8080)
-```
-
-终端持续打印：
-
-```
-[BALL ] pelvis=(+0.823, -0.012, -0.673)  surf=0.71m  ctr=0.82m  YOLO=35.2fps
-[COAST] pelvis=(+0.821, -0.011, -0.672)  surf=0.71m  ctr=0.82m  YOLO=35.2fps
-[     ] no ball  YOLO=35.2fps
-```
-
-> **BALL**：当帧 YOLO 检测到球；**COAST**：YOLO 漏检，保持最后位置最多 10 帧；空：无球。
-
-| 配置 | 模型 | 推理时间 | FPS | COCO mAP |
-|------|------|---------|-----|---------|
-| 单相机 | yolov8n.engine | 4.9 ms | ~40 FPS | 37.3 |
-| **单相机（默认）** | **yolo11m.engine** | **8.6 ms** | **~35 FPS** | **51.5** |
-| 双相机 | yolo11m.engine | 8.6 ms（共享） | ~24 FPS/路 | 51.5 |
-
-> 详见 `onboard/perception/camera/README.md`。
-
 新的推荐链路是 raw sensor topic + fuser：lidar 发布 `rt/lidar_ball_state`，
 camera 发布 `rt/cam_ball_state`，`ball_fuser.py` 按 `lidar > camera` 选择观测并
 统一 Kalman 平滑后发布 `rt/ball_state`。详见
 `onboard/docs/CAMERA_PERCEPTION_ARCHITECTURE.md`；近期重构变更和现场检查项见
 `onboard/docs/CAMERA_PERCEPTION_REFACTOR_NOTE.md`。
 
-### 方案 C — Grayscale AprilTag + Bright Ball
+### 方案 B — Grayscale AprilTag + Bright Ball
 
 ```bash
 bash onboard/perception/camera/run_gray_perception.sh
@@ -288,51 +221,6 @@ deploy_real.py → state_cmd.ball_pos_b → FreeKick._build_obs()
 
 ---
 
-## 感知流程（camera 方案）
-
-```
-RealSense D435（color + depth，60 Hz）
-        │  color: 640×480 BGR, fx≈607  │  depth: 640×480 Z16, fx≈386, 基线-14.5mm
-        │
-        ▼ [主线程] pipeline.wait_for_frames()（释放 GIL，~16ms）
-raw frameset（USB DMA 缓冲区）
-        │
-        ▼ [YOLO 线程] get_color/depth_frame, color.copy(), depth_arr.copy()
-color numpy (640×480×3)  │  depth_arr numpy uint16 (640×480)
-        │
-        ▼ cv2.resize → (imgsz×imgsz)，model.track() → BBox（GPU TRT ~8.6ms）
-BBox 中心 (cx, cy) in 640×480
-        │
-        ▼ Color→Depth 像素映射（修正 FOV 差异 + 基线视差）
-        │   ndcx = (cx - ppx_c) / fx_c          ← 归一化方向（去 Color 内参）
-        │   dx   = ndcx × fx_d + ppx_d + tx/Z × fx_d  ← 加 Depth 内参 + 视差
-        │   patch = depth_arr[dy±5, dx±5]        ← 11×11 numpy slice
-depth_m（中位数，单位 m）
-        │
-        ▼ rs2_deproject_pixel_to_point(color_intrin, [cx, cy], depth_m)
-p_optical [X, Y, Z]（光学坐标系：Z前，X右，Y下）
-        │
-        ▼ optical_to_body()
-p_cam（camera body 系：X前，Y左，Z上）
-        │
-        ▼ EMA 时间滤波（α=0.6）
-        │   跳变 < 0.6m → EMA 更新：center = 0.6×新 + 0.4×旧
-        │   跳变 ≥ 0.6m → [WARN] 打印 + 直接重置（避免永久冻结）
-p_cam（平滑后）
-        │
-        ▼ transform_point_camera_to_base()
-        │  链式正运动学：pelvis → waist_yaw(q_wy) → waist_roll(q_wr)
-        │                       → waist_pitch(q_wp) → head(q_head) → camera
-球心（pelvis body 系）
-        │
-        ▼ DDS publish "rt/ball_state"  (~35 Hz)
-deploy_real.py → state_cmd.ball_pos_b → FreeKick._build_obs()
-```
-
-> Color→Depth 映射详解见 `onboard/perception/camera/TROUBLESHOOTING.md` 第九章。
-
----
-
 ## 添加新的感知方案
 
 如需新增其他感知方式，只需：
@@ -365,30 +253,4 @@ dds.publish(x, y, z, valid=True)
 | `z_low / z_high` | ±1.5 m | 高度范围 |
 | `alpha` | 0.6 | EMA 平滑系数，越大跟踪越灵敏，越小越平滑 |
 
-### Camera 方案（`onboard/perception/camera/ball_detector.py` / `ball_detector_dual.py`）
-
-**代码常量**（直接修改源文件）：
-
-| 常量 | 默认值 | 含义 |
-|------|--------|------|
-| `CONF_THRESHOLD` | 0.3 | YOLO 置信度阈值，调高可减少误检 |
-| `DEPTH_SAMPLE_RADIUS` | 5 | 深度采样半径（像素），采样区域为 (2R+1)² |
-| `DEPTH_MIN / DEPTH_MAX` | 0.1 / 10.0 m | 有效深度范围，过滤无效深度值 |
-| `EMA_ALPHA` | 0.6 | EMA 平滑系数，越大响应越快，越小越平滑 |
-| `EMA_GATE` | 0.6 m | 跳变重置门限，超过此距离时 EMA 直接重置 |
-| `COAST_FRAMES` | 10 | YOLO 漏检时保持上一帧位置的最大帧数 |
-| `VALID_HOLD_SEC` | 0.5 s | 双相机：两路都静默超过此时长才发布 valid=0 |
-
-**命令行参数**：
-
-| 参数 | 默认值 | 含义 |
-|------|--------|------|
-| `--model` | `models/yolo11m.pt` | 模型路径（自动检测同名 `.engine`） |
-| `--imgsz` | 320 | YOLO 输入分辨率，越小越快，越大越准 |
-| `--width / --height` | 640 / 480 | 相机采集分辨率 |
-| `--show` | False | 开启 MJPEG 预览流（port 8080） |
-| `--head-serial` | 第一台 | 双相机：指定 head 相机序列号 |
-| `--chest-serial` | 第二台 | 双相机：指定 chest 相机序列号 |
-| `--list-cameras` | — | 双相机：打印所有 D435 序列号后退出 |
-
-> 完整文档见 `onboard/perception/camera/README.md`。
+> Camera 灰度方案的参数详见 `onboard/perception/camera/README.md`。

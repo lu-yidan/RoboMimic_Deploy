@@ -2,8 +2,7 @@
 
 > 硬件：**Unitree G1**，机载电脑 NVIDIA Jetson Orin NX 16 GB，JetPack 5.1.2  
 > 相机：**Intel RealSense D455**（USB 3.0）× 1  
-> 模型：**YOLO11m → TensorRT FP16 engine**（~35 FPS）  
-> 当前模式：**仅 AprilTag 目标识别**（球检测暂时停用，由雷达负责）
+> 当前模式：**AprilTag 目标识别 + 灰度亮球检测**（球检测当前由雷达负责）
 
 ---
 
@@ -12,14 +11,12 @@
 1. [文件结构](#一文件结构)
 2. [快速启动](#二快速启动)
    - [AprilTag 目标检测（当前主用）](#21-apriltag-目标检测当前主用)
-   - [独立球检测（YOLO，备用）](#22-独立球检测-yolo备用)
 3. [浏览器预览 --show](#三浏览器预览---show)
 4. [检测流程](#四检测流程)
 5. [坐标变换与外参](#五坐标变换与外参)
 6. [参数速查](#六参数速查)
-7. [模型选择](#七模型选择)
-8. [深度精度说明](#八深度精度说明)
-9. [常见问题](#九常见问题)
+7. [深度精度说明](#七深度精度说明)
+8. [常见问题](#八常见问题)
 
 ---
 
@@ -28,24 +25,16 @@
 ```
 onboard/perception/camera/
 ├── apriltag_detector.py    ← 主检测器：AprilTag → rt/target_state
-│                              --ball       YOLO 球检测（暂停用）
-│                              --ball-hsv   HSV 球检测（暂停用）
-├── ball_detector.py        ← 备用：独立 YOLO 球检测 → rt/ball_state（当前不用）
+│                              --ball-bright  灰度/IR 亮球检测
 ├── camera_to_base.py       ← 坐标变换：相机系 → pelvis 系（含胸部外参）
 ├── run_apriltag_target.sh  ← 主启动脚本（tmux 使用）
-├── run.sh                  ← ball_detector.py 的启动脚本（备用）
-├── run_yolo_web.sh         ← 调试：YOLO 全类别网页预览
+├── run_apriltag_gray_ball.sh ← AprilTag + 灰度亮球启动脚本
+├── run_gray_perception.sh  ← 灰度感知启动脚本
 ├── debug/
-│   ├── hsv_tuner.py              ← HSV 参数交互调试（网页 UI，--web）
 │   ├── generate_apriltag_template.py ← 生成可打印 A4 AprilTag 模板
 │   ├── apriltag_tag36h11_id0_120mm_a4.pdf ← 已生成的 120mm tag0 模板
 │   ├── target_state_echo.py      ← 打印 rt/target_state 最新值
-│   ├── target_extrinsics_eval.py ← 统计目标位姿均值/方差，辅助外参标定
-│   └── yolo_web_viewer.py        ← YOLO 全类别网页调试流
-├── models/
-│   ├── download_and_export.sh  ← 一键下载 .pt + 导出 TRT engine
-│   ├── README.md               ← 模型精度/速度对比
-│   └── .gitignore              ← 排除 *.pt / *.onnx / *.engine
+│   └── target_extrinsics_eval.py ← 统计目标位姿均值/方差，辅助外参标定
 ├── README.md               ← 本文档
 └── TROUBLESHOOTING.md      ← 性能优化全记录（GIL/DMA/TRT 等）
 ```
@@ -64,14 +53,6 @@ onboard/perception/camera/
 ---
 
 ## 二、快速启动
-
-### 首次使用：下载模型并导出 TRT engine（约 15 分钟，只需一次）
-
-```bash
-bash onboard/perception/camera/models/download_and_export.sh
-```
-
----
 
 ### 2.1 AprilTag 目标检测（当前主用）
 
@@ -119,35 +100,6 @@ python onboard/perception/camera/debug/target_state_echo.py
 
 ---
 
-### 2.2 独立球检测（YOLO，备用）
-
-> **注意**：当前球检测由雷达负责（`lidar/run.sh --dds-topic rt/ball_state`），相机球检测暂时停用。  
-> 如需重新启用，见 `ball_detector.py` 和 `apriltag_detector.py` 的 `--ball` 参数。
-
-独立 YOLO 球检测（使用 D455 彩色+深度流）：
-
-```bash
-bash onboard/perception/camera/run.sh --show
-```
-
-`apriltag_detector.py` 同时做 AprilTag + 球检测：
-
-```bash
-# YOLO 球（需 depth 流，~+5ms GIL）
-bash onboard/perception/camera/run_apriltag_target.sh --ball --show
-
-# HSV 球（无需 depth 流，~+2ms，适合颜色鲜明的球）
-bash onboard/perception/camera/run_apriltag_target.sh --ball-hsv --show
-```
-
-**如需重新启用相机球检测并与雷达融合：**
-
-1. 将 `lidar/run.sh` 的 `--dds-topic` 改回 `rt/lidar_ball_state`
-2. `run_apriltag_target.sh` 加 `--ball`（或 `--ball-hsv`）
-3. 启动 `run_ball_fuser.sh`（`ball_fuser.py` 已保留）
-
----
-
 ## 三、浏览器预览 `--show`
 
 启动时加 `--show` 参数，程序在 **port 8080** 开启 HTTP MJPEG 服务：
@@ -162,13 +114,6 @@ http://<robot-ip>:8080/
 - 左下角黄字：目标在 pelvis 系的坐标
 - 左上角白字：相机名称 + 实时 FPS
 
-**YOLO 全类别调试预览**（不发布 DDS，用于排查检测问题）：
-
-```bash
-bash onboard/perception/camera/run_yolo_web.sh
-# 访问 http://<robot-ip>:8081/
-```
-
 ---
 
 ## 四、检测流程
@@ -179,15 +124,7 @@ D455（color 1280×720@30Hz + depth 848×480@30Hz，USB 3.0）
          ▼ [主线程] pipeline.wait_for_frames()  ← 释放 GIL，~33ms
 raw frameset
          │
-         ├─▶ [主循环] AprilTag 检测（cv2 CPU，~5ms）→ rt/target_state
-         │
-         └─▶ [后台线程，仅 --ball 时] YOLO 推理（GPU TRT ~8.6ms）
-                  │
-                  ▼ Color→Depth 像素映射（见第八章）
-                  depth 采样 → 中位数 → + BALL_RADIUS(0.115m)
-                  │
-                  ▼ rs2_deproject → optical_to_body → EMA → transform_to_base
-                  球心（pelvis body 系）→ rt/cam_ball_state
+         └─▶ [主循环] AprilTag 检测（cv2 CPU，~5ms）→ rt/target_state
 ```
 
 ---
@@ -240,7 +177,7 @@ _CHEST_RPY = (0.00, 0.30, 0.00)   # TODO: 标定后替换（rad）
 
 | 常量 | 位置 | 默认值 | 含义 |
 |------|------|--------|------|
-| `CONF_THRESHOLD` | 检测器 | 0.3 | YOLO 置信度阈值 |
+| `CONF_THRESHOLD` | 检测器 | 0.3 | 检测置信度阈值 |
 | `DEPTH_SAMPLE_RADIUS` | 检测器 | 5 px | 深度采样半径 |
 | `DEPTH_MIN / MAX` | 检测器 | 0.1 / 10.0 m | 有效深度范围 |
 | `BALL_RADIUS` | 检测器 | 0.115 m | 球半径（前表面→球心补偿） |
@@ -256,33 +193,13 @@ _CHEST_RPY = (0.00, 0.30, 0.00)   # TODO: 标定后替换（rad）
 | `--tag-size` | 0.12 m | tag 黑色方形边长 |
 | `--tag-offset` | 见脚本 | 各 tag 到公共目标点的偏移 |
 | `--show` | 关闭 | 开启 MJPEG 预览（port 8080） |
-| `--ball` | 关闭 | 同时启用 YOLO 球检测 |
-| `--ball-hsv` | 关闭 | 同时启用 HSV 球检测 |
+| `--ball-bright` | 关闭 | 同时启用灰度/IR 亮球检测 |
 | `--chest-xyz` | 见代码 | 覆盖胸部相机位置外参（m） |
 | `--chest-rpy` | 见代码 | 覆盖胸部相机姿态外参（rad） |
 
 ---
 
-## 七、模型选择
-
-| 后端 | 推理时间 | FPS | COCO mAP50-95 | 推荐场景 |
-|------|---------|-----|---------------|---------|
-| `yolov8n.engine` | 4.9 ms | ~40 | 37.3 | 最高速 |
-| `yolov8n.pt` | 17 ms | ~25 | 37.3 | 无 TRT 时备用 |
-| **`yolo11m.engine`（默认）** | **8.6 ms** | **~35** | **51.5** | **推荐** |
-| `yolo11m.pt` | 28 ms | ~18 | 51.5 | TRT 导出失败时备用 |
-
-切换模型：
-
-```bash
-bash onboard/perception/camera/run.sh --model models/yolov8n.pt
-```
-
-> TRT engine 与硬件绑定，换机器或升级 JetPack 后需重新执行 `download_and_export.sh`。
-
----
-
-## 八、深度精度说明
+## 七、深度精度说明
 
 D455 的 Color 和 Depth 传感器不共光心（基线约 -14.5 mm，FOV 也不同），直接将 Color 像素坐标用于查找 `depth_arr` 会引入最大约 70 px / 18 cm 的横向误差。
 
@@ -301,7 +218,7 @@ Step 2 — 基线视差修正
 
 ---
 
-## 九、常见问题
+## 八、常见问题
 
 ### Q1：`RuntimeError: Couldn't resolve requests`（RealSense pipeline.start 失败）
 
@@ -316,26 +233,7 @@ Step 2 — 基线视差修正
 
 ---
 
-### Q2：`ModuleNotFoundError: No module named 'tensorrt'`
-
-必须通过 `run_apriltag_target.sh` 或 `run.sh` 启动，不能直接 `python apriltag_detector.py`。启动脚本设置了：
-
-```bash
-export LD_LIBRARY_PATH=/usr/local/cuda-12.1/compat:$LD_LIBRARY_PATH
-export PYTHONPATH=/usr/lib/python3.8/dist-packages:$PYTHONPATH
-```
-
----
-
-### Q3：YOLO 无法检测到球（all `no ball`）
-
-1. `--show` 查看画面，确认球在视野内
-2. 降低 `CONF_THRESHOLD`（如 `0.15`）临时测试
-3. 确认模型包含 COCO class 32（sports ball）
-
----
-
-### Q4：深度值为 0 或球心 z 坐标异常
+### Q2：深度值为 0 或球心 z 坐标异常
 
 1. 检查深度流是否正常（`--show` 画面观察球周围深度孔洞）
 2. 适当增大 `DEPTH_SAMPLE_RADIUS`
@@ -343,7 +241,7 @@ export PYTHONPATH=/usr/lib/python3.8/dist-packages:$PYTHONPATH
 
 ---
 
-### Q5：性能优化参考
+### Q3：性能优化参考
 
 详见 `TROUBLESHOOTING.md`：
 - 第三章：每步耗时分析

@@ -2,7 +2,7 @@
 
 > 硬件：**Unitree G1**，机载电脑 NVIDIA Jetson Orin NX 16 GB，JetPack 5.1.2  
 > 相机：**Intel RealSense D455**（USB 3.0）× 1  
-> 当前模式：**AprilTag 目标识别 + 灰度亮球检测**（球检测当前由雷达负责）
+> 模式：**灰度相机 → AprilTag 目标 + 亮球**；雷达出近距离球，由 `ball_fuser.py` 融合（雷达优先）
 
 ---
 
@@ -24,29 +24,29 @@
 
 ```
 onboard/perception/camera/
-├── target_ball_detector.py    ← 主检测器：AprilTag → rt/target_state
-│                              --ball-bright  灰度/IR 亮球检测
-├── camera_to_base.py       ← 坐标变换：相机系 → pelvis 系（含胸部外参）
-├── _launch.sh  ← 主启动脚本（tmux 使用）
-├── run_gray.sh  ← 灰度 AprilTag + 亮球（+可选 fuser）启动脚本
-├── run_gray.sh  ← 灰度感知启动脚本
+├── run_gray.sh                ← 入口：灰度 AprilTag + 亮球（+可选 fuser）
+├── _launch.sh                 ← 内部：环境 + 默认参数，启动 detector
+├── target_ball_detector.py    ← 干活：AprilTag → rt/target_state；
+│                                      --ball-bright 灰度亮球 → rt/cam_ball_state
+├── camera_to_base.py          ← 坐标变换：相机系 → pelvis 系（含胸部外参）
+├── timing.py                  ← StageTimer 阶段耗时分析（--profile-timing）
 ├── debug/
 │   ├── generate_apriltag_template.py ← 生成可打印 A4 AprilTag 模板
 │   ├── apriltag_tag36h11_id0_120mm_a4.pdf ← 已生成的 120mm tag0 模板
 │   ├── target_state_echo.py      ← 打印 rt/target_state 最新值
 │   └── target_extrinsics_eval.py ← 统计目标位姿均值/方差，辅助外参标定
-├── README.md               ← 本文档
-└── TROUBLESHOOTING.md      ← 性能优化全记录（GIL/DMA/TRT 等）
+├── README.md                  ← 本文档
+└── TROUBLESHOOTING.md         ← 排障与现场调试记录
 ```
 
 相关感知模块（`onboard/perception/` 层）：
 
 | 文件 | 说明 |
 |------|------|
-| `lidar/ball_detector.py` | 雷达球检测 → `rt/ball_state`（当前主球检测） |
+| `lidar/ball_detector.py` | 雷达球检测 → `rt/lidar_ball_state`（近距离球） |
 | `lidar/run.sh` | 雷达启动脚本（tmux 使用） |
-| `ball_fuser.py` | 融合相机+雷达球（相机球暂停时不用，保留备用） |
-| `run_ball_fuser.sh` | 融合器启动脚本（备用） |
+| `ball_fuser.py` | 融合相机+雷达球 → `rt/ball_state`（policy 读这个） |
+| `run_ball_fuser.sh` | 融合器启动脚本（`run_gray.sh --with-fuser` 会自动起） |
 | `run_sensor_dashboard.sh` | 启动传感器全览仪表盘（port 8091） |
 | `debug/sensor_dashboard.py` | 订阅 DDS topic，浏览器显示 target + 球位置 |
 
@@ -57,7 +57,7 @@ onboard/perception/camera/
 ### 2.1 AprilTag 目标检测（当前主用）
 
 ```bash
-bash onboard/perception/camera/_launch.sh --show
+bash onboard/perception/camera/run_gray.sh --show
 ```
 
 默认使用 4-tag 板（tag 0/1/2/3），自动融合估计公共目标点，发布到 `rt/target_state`。
@@ -66,10 +66,10 @@ bash onboard/perception/camera/_launch.sh --show
 
 ```bash
 # 只检测单个 tag
-bash onboard/perception/camera/_launch.sh --tag-id 0 --tag-size 0.12 --show
+bash onboard/perception/camera/run_gray.sh --tag-id 0 --tag-size 0.12 --show
 
 # 自定义多 tag 偏移（见脚本注释）
-bash onboard/perception/camera/_launch.sh \
+bash onboard/perception/camera/run_gray.sh \
     --tag-id 5 --tag-id 8 --tag-size 0.10 \
     --tag-offset 5 0.20 0.00 0.00 \
     --tag-offset 8 -0.20 0.00 0.00
@@ -119,12 +119,10 @@ http://<robot-ip>:8080/
 ## 四、检测流程
 
 ```
-D455（color 1280×720@30Hz + depth 848×480@30Hz，USB 3.0）
+V4L2 GREY /dev/video3 @30Hz（单进程独占相机）
          │
-         ▼ [主线程] pipeline.wait_for_frames()  ← 释放 GIL，~33ms
-raw frameset
-         │
-         └─▶ [主循环] AprilTag 检测（cv2 CPU，~5ms）→ rt/target_state
+         ├─▶ [主循环]   AprilTag 检测（cv2.aruco CPU，~5ms）→ rt/target_state
+         └─▶ [worker进程] 亮球检测（latest-frame，--ball-bright）→ rt/cam_ball_state
 ```
 
 ---
@@ -177,7 +175,6 @@ _CHEST_RPY = (0.00, 0.30, 0.00)   # TODO: 标定后替换（rad）
 
 | 常量 | 位置 | 默认值 | 含义 |
 |------|------|--------|------|
-| `CONF_THRESHOLD` | 检测器 | 0.3 | 检测置信度阈值 |
 | `DEPTH_SAMPLE_RADIUS` | 检测器 | 5 px | 深度采样半径 |
 | `DEPTH_MIN / MAX` | 检测器 | 0.1 / 10.0 m | 有效深度范围 |
 | `BALL_RADIUS` | 检测器 | 0.115 m | 球半径（前表面→球心补偿） |
@@ -214,7 +211,7 @@ Step 2 — 基线视差修正
   dx   = ndcx × fx_d + ppx_d + tx/Z × fx_d   (tx = -14.5mm)
 ```
 
-详细推导见 `TROUBLESHOOTING.md` 第九章。
+该视差修正仅在 `--ball-bright-use-depth` 启用深度校验时生效；灰度链路默认用单目球半径估距，不需要深度流。
 
 ---
 
@@ -241,9 +238,10 @@ Step 2 — 基线视差修正
 
 ---
 
-### Q3：性能优化参考
+### Q3：性能与现场调试参考
 
-详见 `TROUBLESHOOTING.md`：
-- 第三章：每步耗时分析
-- 第五章：从 1 FPS 到 35 FPS 的完整优化历程
-- 第八章：进一步优化方向
+- `TROUBLESHOOTING.md` 第 0 章：现场速查手册（AprilTag + IR 白球）
+- `TROUBLESHOOTING.md` 第十章：诊断命令速查（GPU 频率 / 流水线验证）
+- `TROUBLESHOOTING.md` 第 15 章：`--ball-bright` 亮球检测排障
+- 灰度链路性能规则见 `onboard/docs/CAMERA_PERCEPTION_ARCHITECTURE.md` 的
+  "Grayscale Camera Performance Rules"

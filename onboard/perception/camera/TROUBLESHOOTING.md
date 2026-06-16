@@ -48,7 +48,7 @@ http://192.168.123.164:8080/stream
 如果端口被占用：
 
 ```bash
-./onboard/perception/camera/_launch.sh --show --show-port 8081
+./onboard/perception/camera/run_gray.sh --show --show-port 8081
 ```
 
 ### 0.2 现在这路相机到底是什么模式？
@@ -193,7 +193,7 @@ ip -o -4 addr show scope global
 必要时手动指定：
 
 ```bash
-CYCLONEDDS_IFACE=enP8p1s0 ./onboard/perception/camera/_launch.sh --show
+CYCLONEDDS_IFACE=enP8p1s0 ./onboard/perception/camera/run_gray.sh --show
 ```
 
 ### 0.7 8080 端口占用
@@ -220,7 +220,7 @@ pkill -f "onboard/perception/camera/target_ball_detector.py"
 或者换端口：
 
 ```bash
-./onboard/perception/camera/_launch.sh --show --show-port 8081
+./onboard/perception/camera/run_gray.sh --show --show-port 8081
 ```
 
 ### 0.8 白球 bright detector
@@ -540,8 +540,8 @@ python -u onboard/perception/camera/target_ball_detector.py
 
 #### 现象
 
-任何调用 ROS2 的脚本（`_launch.sh`、`run_target.sh`、
-`run_dual_d435.sh` 等）在 Jetson 上通过 SSH 启动时，Python **在打印第一行之前**
+任何调用 ROS2 的脚本（`run_gray.sh`、`_launch.sh`、
+`lidar/run.sh` 等）在 Jetson 上通过 SSH 启动时，Python **在打印第一行之前**
 就被杀死，stderr 只显示：
 
 ```

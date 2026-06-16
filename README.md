@@ -9,6 +9,11 @@
   <strong>​RoboMimic Deploy​​ is a multi-policy robot deployment framework based on a state-switching mechanism. Currently, the included policies are designed for the ​​Unitree G1 robot (29-DoF)​​.</strong> 
 </p>
 
+> 🤖 **This is the deployment repository for [RoboNaldo](https://opendrivelab.com/RoboNaldo/).**
+> The policy **training** code lives in the companion repository
+> [**opendrivelab/RoboNaldo**](https://github.com/opendrivelab/RoboNaldo); this repository runs the
+> trained policies on the real and simulated Unitree G1.
+
 ## Preface
 
 - **​This deployment framework is only applicable to G1 robots with a 3-DOF waist. If a waist fixing bracket is installed, it must be unlocked according to the official tutorial before this framework can be used normally.​​**
@@ -201,3 +206,13 @@ Only the retained deploy policies remain in the repository. Other historical pol
 
 ### 5. Strong Recommendation
 **Always** master operations in simulation before attempting physical robot deployment.
+
+## Acknowledgements
+
+This deployment framework is built on top of
+[**ccrpRepo/RoboMimic_Deploy**](https://github.com/ccrpRepo/RoboMimic_Deploy). We thank the
+authors for open-sourcing the original state-switching multi-policy deployment framework that
+this repository extends.
+
+It is the deployment counterpart of [**RoboNaldo**](https://opendrivelab.com/RoboNaldo/) —
+training code: [opendrivelab/RoboNaldo](https://github.com/opendrivelab/RoboNaldo).

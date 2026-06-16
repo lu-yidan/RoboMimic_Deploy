@@ -9,6 +9,11 @@
   🎮🚪 <strong>RoboMimic Deploy 是一个基于状态切换机制的机器人多策略部署框架，目前包含的策略适用于宇树G1机器人(29dof)</strong> 🚪🎮
 </p>
 
+> 🤖 **本仓库是 [RoboNaldo](https://opendrivelab.com/RoboNaldo/) 的部署仓库。**
+> 策略的**训练**代码在配套仓库
+> [**opendrivelab/RoboNaldo**](https://github.com/opendrivelab/RoboNaldo)；本仓库负责把训练好的策略
+> 部署到真机与仿真的宇树 G1 上。
+
 ## 写在前面
 
 - **本部署框架仅适用于具有三自由度腰部的G1机器人，如果装有腰部固定件的话需要按照官网教程解锁，然后才能正常使用该部署框架。**
@@ -212,6 +217,14 @@ Mimic策略不保证100%成功率，特别是在湿滑/沙地等复杂地面上�
 
 ### 5. 强烈建议
 **务必**先在仿真环境中熟练操作，再尝试真机部署。
+
+## 致谢
+
+本部署框架基于 [**ccrpRepo/RoboMimic_Deploy**](https://github.com/ccrpRepo/RoboMimic_Deploy)
+构建。感谢原作者开源了这套基于状态切换的多策略部署框架，本仓库在其基础上扩展而来。
+
+本仓库是 [**RoboNaldo**](https://opendrivelab.com/RoboNaldo/) 的部署仓库 ——
+训练代码见 [opendrivelab/RoboNaldo](https://github.com/opendrivelab/RoboNaldo)。
 
 
 

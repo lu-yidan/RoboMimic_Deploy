@@ -44,6 +44,11 @@ Thumbs.db
 *.pt
 *.onnx
 *.engine
+# ...except the released FreeKick policy weights, which ship with the repo.
+!policy/robonaldo/model/policy-obs-aic.onnx
+
+# Local-only docs with sensitive infrastructure details (never publish)
+docs/vps_reverse_tunnel_zh.md
 
 # Video clips stay out of the repo (README demos are GitHub user-attachments)
 *.mp4

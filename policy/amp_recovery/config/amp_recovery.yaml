@@ -1,14 +1,16 @@
 # G1 AMP get-up / recovery policy (trained in Isaac Lab, legged_lab g1_rec).
-# Task: LeggedLab-Isaac-AMP-G1-GET-UP-v0, checkpoint model_49999.pt.
+# Task: LeggedLab-Isaac-AMP-G1-GET-UP-NoKeyBody-v0, checkpoint model_49999.pt.
 #
 # Deployment notes
 # ----------------
-# * Policy is an actor MLP only: obs(570) -> action(29).  NO obs normalization,
+# * Policy is an actor MLP only: obs(480) -> action(29).  NO obs normalization,
 #   NO reference trajectory, NO discriminator at deploy time.
+# * This is the NO-KEYBODY variant: key_body_pos_b was removed from the policy
+#   observation during training, so deployment is proprioception-only — no
+#   forward kinematics / key-body plumbing needed on hardware.
 # * obs layout (term-major, each term carries 5 history frames, OLDEST-first):
 #     [ base_ang_vel x5 (15) | root_local_rot_tan_norm x5 (30) |
-#       joint_pos x5 (145) | joint_vel x5 (145) | last_action x5 (145) |
-#       key_body_pos_b x5 (90) ]  = 570
+#       joint_pos x5 (145) | joint_vel x5 (145) | last_action x5 (145) ]  = 480
 #   - joint_pos is ABSOLUTE (NOT relative to default_joint_pos).
 #   - "root" == pelvis (the Isaac Lab articulation root).
 # * action: target_q_mj = default_joint_pos + action_scale * action  (per BeyondMimic mapping).
@@ -18,21 +20,10 @@ model_path: "g1amp_recovery.onnx"
 
 # ── Observation ───────────────────────────────────────────────────────────────
 history_len: 5
-num_obs: 570
+num_obs: 480
 action_scale: 0.25
 clip_actions: 100.0     # training did not clip; large value = effectively no clip
 control_dt: 0.02        # sim dt 0.005 * decimation 4
-
-# 6 key bodies in Isaac Lab KEY_BODY_NAMES order (preserve_order=True).
-# These are read from MuJoCo d.xpos by deploy_mujoco and transformed to the
-# pelvis (root) frame inside the policy.
-key_body_names:
-  - left_ankle_roll_link
-  - right_ankle_roll_link
-  - left_wrist_yaw_link
-  - right_wrist_yaw_link
-  - left_shoulder_roll_link
-  - right_shoulder_roll_link
 
 # ── Default joint positions (MuJoCo / SDK motor order, 29) ────────────────────
 # From UNITREE_G1_29DOF_CFG.init_state.joint_pos (Isaac Lab), reordered to motor order.

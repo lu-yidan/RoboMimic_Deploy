@@ -22,10 +22,6 @@ class StateAndCmd:
         # pelvis (floating base) state for FreeKick controller (world frame, filled in deploy_mujoco)
         self.pelvis_pos_w  = np.zeros(3, dtype=np.float32)
         self.pelvis_quat_w = np.array([1., 0., 0., 0.], dtype=np.float32)  # [w,x,y,z]
-        # key-body world positions for AMP recovery policy, in KEY_BODY_NAMES order.
-        # (6, 3) world frame; filled in deploy_mujoco from d.xpos. On the real robot
-        # this would come from forward kinematics. Transformed to pelvis frame in-policy.
-        self.key_body_pos_w = np.zeros((6, 3), dtype=np.float32)
         # ball state for FreeKick controller
         # Simulation: ball_pos_w (world frame, filled by deploy_mujoco from MuJoCo)
         # Real robot: ball_pos_b (pelvis body frame, filled by deploy_real from DDS)

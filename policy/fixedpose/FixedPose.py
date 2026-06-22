@@ -82,6 +82,9 @@ class FixedPose(FSMState):
         elif(self.state_cmd.skill_cmd == FSMCommand.CMD_FREEKICK):
             self.state_cmd.skill_cmd = FSMCommand.INVALID
             return FSMStateName.SKILL_FREEKICK
+        elif(self.state_cmd.skill_cmd == FSMCommand.CMD_AMP_RECOVERY):
+            self.state_cmd.skill_cmd = FSMCommand.INVALID
+            return FSMStateName.SKILL_AMP_RECOVERY
         else:
             self.state_cmd.skill_cmd = FSMCommand.INVALID
             return FSMStateName.FIXEDPOSE

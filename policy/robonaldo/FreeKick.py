@@ -758,5 +758,8 @@ class FreeKick(FSMState):
         elif cmd == FSMCommand.POS_RESET:
             self.state_cmd.skill_cmd = FSMCommand.INVALID
             return FSMStateName.FIXEDPOSE
+        elif cmd == FSMCommand.CMD_AMP_RECOVERY:
+            self.state_cmd.skill_cmd = FSMCommand.INVALID
+            return FSMStateName.SKILL_AMP_RECOVERY
         else:
             return FSMStateName.SKILL_FREEKICK

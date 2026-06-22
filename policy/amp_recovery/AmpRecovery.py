@@ -2,19 +2,20 @@
 
 Autonomous fall-recovery: when the robot is on the ground, this policy drives
 it back to standing.  No reference trajectory or discriminator is needed at
-deploy time — only the actor MLP (obs 570 -> action 29).
+deploy time — only the actor MLP (obs 480 -> action 29).
+
+This is the NO-KEYBODY variant: key_body_pos_b was removed from the policy
+observation during training, so deployment is PROPRIOCEPTION-ONLY (IMU + joint
+encoders + last action).  No forward kinematics / key-body plumbing is required.
 
 Observation (term-major, each term keeps 5 history frames, OLDEST-first):
     [ base_ang_vel x5 (15) | root_local_rot_tan_norm x5 (30) |
-      joint_pos x5 (145) | joint_vel x5 (145) | last_action x5 (145) |
-      key_body_pos_b x5 (90) ]  = 570
+      joint_pos x5 (145) | joint_vel x5 (145) | last_action x5 (145) ]  = 480
 
 Key correctness points vs the existing AMP locomotion policy:
   * joint_pos is ABSOLUTE (not relative to default).
   * no observation scaling.
   * "root" == pelvis (Isaac Lab articulation root) -> use pelvis_quat_w / root_ang_vel_b.
-  * key_body_pos_b are 6 key-body positions expressed in the pelvis frame;
-    deploy_mujoco fills their world positions into state_cmd.key_body_pos_w.
 """
 
 import os
@@ -77,12 +78,11 @@ class AmpRecovery(FSMState):
 
         # History ring buffers, one per obs term. deque keeps OLDEST at the left,
         # which matches Isaac Lab's CircularBuffer.buffer (oldest-first) flatten.
-        self._h_ang_vel   = deque(maxlen=self.hist_len)   # (3,)
-        self._h_rot6d     = deque(maxlen=self.hist_len)   # (6,)
-        self._h_jpos      = deque(maxlen=self.hist_len)   # (29,)
-        self._h_jvel      = deque(maxlen=self.hist_len)   # (29,)
-        self._h_action    = deque(maxlen=self.hist_len)   # (29,)
-        self._h_keybody   = deque(maxlen=self.hist_len)   # (18,)
+        self._h_ang_vel = deque(maxlen=self.hist_len)   # (3,)
+        self._h_rot6d   = deque(maxlen=self.hist_len)   # (6,)
+        self._h_jpos    = deque(maxlen=self.hist_len)   # (29,)
+        self._h_jvel    = deque(maxlen=self.hist_len)   # (29,)
+        self._h_action  = deque(maxlen=self.hist_len)   # (29,)
 
         self._last_action_il = np.zeros(29, dtype=np.float32)
 
@@ -102,7 +102,7 @@ class AmpRecovery(FSMState):
     # ── obs construction ──────────────────────────────────────────────────────
 
     def _current_frame(self):
-        """Compute the six per-term observation vectors for the current step."""
+        """Compute the per-term observation vectors for the current step."""
         # base_ang_vel: root (pelvis) angular velocity in body frame.
         ang_vel = self.state_cmd.root_ang_vel_b.astype(np.float32)            # (3,)
 
@@ -113,24 +113,15 @@ class AmpRecovery(FSMState):
         jpos_il = self.state_cmd.q[ISAAC_TO_MUJOCO].astype(np.float32)        # (29,)
         jvel_il = self.state_cmd.dq[ISAAC_TO_MUJOCO].astype(np.float32)       # (29,)
 
-        # key_body_pos_b: world positions -> pelvis frame, in KEY_BODY order.
-        # quat_apply_inverse(root_quat, p_w - root_pos)  (per legged_lab).
-        pelvis_pos = self.state_cmd.pelvis_pos_w.astype(np.float64)
-        R_root = _quat_to_matrix(self.state_cmd.pelvis_quat_w.astype(np.float64))  # world<-body
-        kp_w = self.state_cmd.key_body_pos_w.astype(np.float64)               # (6, 3) world
-        kp_b = (kp_w - pelvis_pos[None, :]) @ R_root                          # (R_root.T @ v) for each row
-        keybody = kp_b.reshape(-1).astype(np.float32)                        # (18,)
-
-        return ang_vel, rot6d, jpos_il, jvel_il, self._last_action_il.copy(), keybody
+        return ang_vel, rot6d, jpos_il, jvel_il, self._last_action_il.copy()
 
     def _push_frame(self):
-        ang_vel, rot6d, jpos, jvel, action, keybody = self._current_frame()
+        ang_vel, rot6d, jpos, jvel, action = self._current_frame()
         self._h_ang_vel.append(ang_vel)
         self._h_rot6d.append(rot6d)
         self._h_jpos.append(jpos)
         self._h_jvel.append(jvel)
         self._h_action.append(action)
-        self._h_keybody.append(keybody)
 
     def _build_obs(self) -> np.ndarray:
         # Each term: concatenate its 5 frames OLDEST-first, then concatenate terms
@@ -143,7 +134,6 @@ class AmpRecovery(FSMState):
             flat(self._h_jpos),       # 145
             flat(self._h_jvel),       # 145
             flat(self._h_action),     # 145
-            flat(self._h_keybody),    # 90
         ], axis=0).astype(np.float32)
         return obs
 
@@ -152,7 +142,7 @@ class AmpRecovery(FSMState):
     def enter(self):
         self._last_action_il[:] = 0.0
         for d in (self._h_ang_vel, self._h_rot6d, self._h_jpos,
-                  self._h_jvel, self._h_action, self._h_keybody):
+                  self._h_jvel, self._h_action):
             d.clear()
         # Prime history with the current state repeated hist_len times.
         for _ in range(self.hist_len):
@@ -177,7 +167,7 @@ class AmpRecovery(FSMState):
     def exit(self):
         self._last_action_il[:] = 0.0
         for d in (self._h_ang_vel, self._h_rot6d, self._h_jpos,
-                  self._h_jvel, self._h_action, self._h_keybody):
+                  self._h_jvel, self._h_action):
             d.clear()
 
     def checkChange(self) -> FSMStateName:

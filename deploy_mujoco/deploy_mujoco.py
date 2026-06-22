@@ -137,16 +137,6 @@ def main(cfg: DictConfig):
     m.opt.timestep = simulation_dt
     torso_body_id = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_BODY, "torso_link")
     ball_body_id  = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_BODY, "ball")  # -1 if no ball in scene
-    # Key bodies for AMP recovery policy (Isaac Lab KEY_BODY_NAMES order, preserve_order=True).
-    KEY_BODY_NAMES = [
-        "left_ankle_roll_link", "right_ankle_roll_link",
-        "left_wrist_yaw_link",  "right_wrist_yaw_link",
-        "left_shoulder_roll_link", "right_shoulder_roll_link",
-    ]
-    key_body_ids = np.array(
-        [mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_BODY, n) for n in KEY_BODY_NAMES],
-        dtype=np.int64,
-    )
     ball_reset_pos_w = np.array(cfg.get("ball_reset_pos_w", [1.0, 0.0, 0.115]), dtype=np.float64)
     ball_reset_vel_w = np.array(cfg.get("ball_reset_vel_w", [0.0, 0.0, 0.0]), dtype=np.float64)
     ball_reset_quat_w = np.array(cfg.get("ball_reset_quat_w", [1.0, 0.0, 0.0, 0.0]), dtype=np.float64)
@@ -300,8 +290,6 @@ def main(cfg: DictConfig):
                     state_cmd.torso_quat_w = d.xquat[torso_body_id].astype(np.float32)  # [w,x,y,z]
                     state_cmd.pelvis_pos_w  = d.qpos[0:3].astype(np.float32)
                     state_cmd.pelvis_quat_w = d.qpos[3:7].astype(np.float32)  # [w,x,y,z]
-                    # Key-body world positions for AMP recovery (KEY_BODY_NAMES order).
-                    state_cmd.key_body_pos_w = d.xpos[key_body_ids].astype(np.float32)  # (6, 3)
 
                     # Ball state (only valid when scene_with_ball.xml is loaded).
                     # Throttled to ball_sensor_hz to simulate real-sensor update rate.

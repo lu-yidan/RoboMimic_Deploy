@@ -43,6 +43,9 @@ class PassiveMode(FSMState):
         if(self.state_cmd.skill_cmd == FSMCommand.POS_RESET):
             self.state_cmd.skill_cmd = FSMCommand.INVALID
             return FSMStateName.FIXEDPOSE
+        elif(self.state_cmd.skill_cmd == FSMCommand.CMD_AMP_RECOVERY):
+            self.state_cmd.skill_cmd = FSMCommand.INVALID
+            return FSMStateName.SKILL_AMP_RECOVERY
         else:
             self.state_cmd.skill_cmd = FSMCommand.INVALID
             return FSMStateName.PASSIVE

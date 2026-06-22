@@ -25,6 +25,11 @@ action_scale: 0.25
 clip_actions: 100.0     # training did not clip; large value = effectively no clip
 control_dt: 0.02        # sim dt 0.005 * decimation 4
 
+# Switch-in warm-up: on enter(), ramp the PD target from the robot's measured
+# entry pose to the policy target over this many control steps (0.5 s @ 50 Hz).
+# Prevents the jolt/waist-shake when switching in from LocoMode etc.
+warmup_steps: 10
+
 # ── Default joint positions (MuJoCo / SDK motor order, 29) ────────────────────
 # From UNITREE_G1_29DOF_CFG.init_state.joint_pos (Isaac Lab), reordered to motor order.
 default_joint_pos: [

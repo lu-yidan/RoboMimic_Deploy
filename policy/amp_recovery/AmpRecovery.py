@@ -75,6 +75,11 @@ class AmpRecovery(FSMState):
         self.control_dt = float(cfg["control_dt"])
         self.hist_len = int(cfg["history_len"])
         self.num_obs = int(cfg["num_obs"])
+        self.warmup_steps = int(cfg.get("warmup_steps", 0))
+
+        # Switch-in warm-up state.
+        self._entry_q = self.default_q_mj.copy()   # measured pose at enter() (MuJoCo order)
+        self._warmup_i = 0
 
         # History ring buffers, one per obs term. deque keeps OLDEST at the left,
         # which matches Isaac Lab's CircularBuffer.buffer (oldest-first) flatten.
@@ -147,6 +152,9 @@ class AmpRecovery(FSMState):
         # Prime history with the current state repeated hist_len times.
         for _ in range(self.hist_len):
             self._push_frame()
+        # Snapshot the measured entry pose (MuJoCo order) for the warm-up ramp.
+        self._entry_q = self.state_cmd.q.copy()
+        self._warmup_i = 0
 
     def run(self):
         self._push_frame()
@@ -159,6 +167,14 @@ class AmpRecovery(FSMState):
         # Isaac Lab order -> MuJoCo order, then scale + default offset.
         actions_mj = actions_il[MUJOCO_TO_ISAAC]
         target_q = self.default_q_mj + self.action_scale * actions_mj
+
+        # Switch-in warm-up: ramp the PD target from the measured entry pose to
+        # the policy target over warmup_steps, so the controller eases in instead
+        # of jumping (kills the waist-shake when switching from LocoMode, etc.).
+        if self._warmup_i < self.warmup_steps:
+            alpha = (self._warmup_i + 1) / self.warmup_steps
+            target_q = (1.0 - alpha) * self._entry_q + alpha * target_q
+            self._warmup_i += 1
 
         self.policy_output.actions = target_q
         self.policy_output.kps = self.kps

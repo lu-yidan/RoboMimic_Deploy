@@ -153,6 +153,8 @@ class PolicyRuntime:
             self.state_cmd.skill_cmd = FSMCommand.CMD_STANDUP_MJ
         elif self.remote_controller.is_button_pressed(KeyMap.R2):
             self.state_cmd.skill_cmd = FSMCommand.CMD_PINOCCHIO_1_6_MJ
+        elif self.remote_controller.is_button_pressed(KeyMap.Y):            # AMP Recovery (get-up), Y
+            self.state_cmd.skill_cmd = FSMCommand.CMD_AMP_RECOVERY
 
         self.state_cmd.vel_cmd[0] = self.remote_controller.ly
         self.state_cmd.vel_cmd[1] = -self.remote_controller.lx

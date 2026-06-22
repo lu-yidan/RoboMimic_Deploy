@@ -1,8 +1,16 @@
-# Camera 感知模块
+# Camera 感知模块 — 使用手册
 
-> 硬件：**Unitree G1**，机载电脑 NVIDIA Jetson Orin NX 16 GB，JetPack 5.1.2  
-> 相机：**Intel RealSense D455**（USB 3.0）× 1  
-> 模式：**灰度相机 → AprilTag 目标 + 亮球**；雷达出近距离球，由 `ball_fuser.py` 融合（雷达优先）
+灰度相机负责发布 raw topic：
+
+- AprilTag 目标：`rt/target_state`
+- 相机亮球：`rt/cam_ball_state`
+
+最终策略读取的 `rt/ball_state` 由 `onboard/perception/ball_fuser.py` 发布。
+全系统启动与环境配置见：
+
+- 总览：`onboard/docs/README.md`
+- 安装：`onboard/docs/INSTALL_AGENT_GUIDE.md`
+- 真机 tmux 拓扑：`tools/start_tmux_layout.sh`
 
 ---
 
@@ -46,7 +54,7 @@ onboard/perception/camera/
 | `lidar/ball_detector.py` | 雷达球检测 → `rt/lidar_ball_state`（近距离球） |
 | `lidar/run.sh` | 雷达启动脚本（tmux 使用） |
 | `ball_fuser.py` | 融合相机+雷达球 → `rt/ball_state`（policy 读这个） |
-| `run_ball_fuser.sh` | 融合器启动脚本（`run_gray.sh --with-fuser` 会自动起） |
+| `run_ball_fuser.sh` | 融合器启动脚本，full-system/tmux 中应单独启动且保持单例 |
 | `run_sensor_dashboard.sh` | 启动传感器全览仪表盘（port 8091） |
 | `debug/sensor_dashboard.py` | 订阅 DDS topic，浏览器显示 target + 球位置 |
 
@@ -61,6 +69,18 @@ bash onboard/perception/camera/run_gray.sh --show
 ```
 
 默认使用 4-tag 板（tag 0/1/2/3），自动融合估计公共目标点，发布到 `rt/target_state`。
+同时因为 `run_gray.sh` 默认启用 `--ball-bright`，也会发布相机 raw ball 到
+`rt/cam_ball_state`。
+
+如果只做相机单独调试，可以用：
+
+```bash
+bash onboard/perception/camera/run_gray.sh --with-fuser --show
+```
+
+但在 `tools/start_tmux_layout.sh` 或手动已经启动
+`bash onboard/perception/run_ball_fuser.sh` 时，不要使用 `--with-fuser`，避免多个
+fuser 同时发布最终 `rt/ball_state`。
 
 常用参数：
 
@@ -243,5 +263,5 @@ Step 2 — 基线视差修正
 - `TROUBLESHOOTING.md` 第 0 章：现场速查手册（AprilTag + IR 白球）
 - `TROUBLESHOOTING.md` 第十章：诊断命令速查（GPU 频率 / 流水线验证）
 - `TROUBLESHOOTING.md` 第 15 章：`--ball-bright` 亮球检测排障
-- 灰度链路性能规则见 `onboard/docs/CAMERA_PERCEPTION_ARCHITECTURE.md` 的
+- 灰度链路性能规则见 `onboard/docs/PERCEPTION_ARCHITECTURE.md` 的
   "Grayscale Camera Performance Rules"

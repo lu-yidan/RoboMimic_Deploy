@@ -166,20 +166,20 @@ publish_freq = 10.0  # 10 Hz（当前默认，适合 ball_detector）
 每次修改源码后需要重新编译和启动：
 
 ```bash
-cd ~/yixuan/yichao-deploy/ws_livox
+cd "$HOME/ws_livox"
 colcon build --packages-select livox_ros_driver2 --cmake-args -DCMAKE_BUILD_TYPE=Release
 
 # 重启驱动
-source /opt/ros/foxy/setup.bash
-source ~/yixuan/yichao-deploy/ws_livox/install/setup.sh
+source /opt/ros/humble/setup.bash 2>/dev/null || source /opt/ros/foxy/setup.bash
+source "$HOME/ws_livox/install/setup.sh"
 ros2 launch livox_ros_driver2 msg_MID360_launch.py
 ```
 
 在另一个终端验证频率：
 
 ```bash
-source /opt/ros/foxy/setup.bash
-source ~/yixuan/yichao-deploy/ws_livox/install/setup.sh
+source /opt/ros/humble/setup.bash 2>/dev/null || source /opt/ros/foxy/setup.bash
+source "$HOME/ws_livox/install/setup.sh"
 ros2 topic hz /livox/lidar
 ```
 

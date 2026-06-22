@@ -1,7 +1,9 @@
 # Camera Ball Detector — 排障与性能调优全记录
 
-> 硬件：**Unitree G1**，机载电脑 NVIDIA Jetson Orin NX 16 GB，JetPack 5.1.2  
-> 相机：**Intel RealSense D435**（USB 3.0）
+> 硬件：**Unitree G1**，机载电脑 NVIDIA Jetson Orin / Orin NX  
+> 相机：**Intel RealSense D435 / D455**（USB 3.x）
+>
+> 新机器安装以 `onboard/docs/INSTALL_AGENT_GUIDE.md` 为准；本文主要保留现场排障记录。
 
 ---
 
@@ -25,11 +27,14 @@ pkill -f "onboard/perception/camera/target_ball_detector.py" 2>/dev/null || true
 - 浏览器预览端口：`8080`
 - 默认四 tag 板：id `0/1/2/3`
 
-如需同时启动 final ball fuser：
+相机单独调试时，如需顺手启动 final ball fuser：
 
 ```bash
 ./onboard/perception/camera/run_gray.sh --with-fuser
 ```
+
+全系统运行时不要用这个参数；`tools/start_tmux_layout.sh` 已经在独立 pane 中启动
+唯一 `run_ball_fuser.sh`。
 
 如需定位低于 20Hz 的瓶颈：
 
@@ -588,8 +593,8 @@ export CYCLONEDDS_URI='<CycloneDDS><Domain><General><Interfaces><NetworkInterfac
 #### 快速验证
 
 ```bash
-source /opt/ros/foxy/setup.bash
-source ~/yixuan/yichao-deploy/ws_livox/install/setup.sh
+source /opt/ros/humble/setup.bash 2>/dev/null || source /opt/ros/foxy/setup.bash
+source "$HOME/ws_livox/install/setup.sh"
 export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 export CYCLONEDDS_URI='<CycloneDDS><Domain><General><Interfaces><NetworkInterface name="eth0" priority="default" multicast="default" /></Interfaces></General></Domain></CycloneDDS>'
 source /home/unitree/miniconda3/etc/profile.d/conda.sh

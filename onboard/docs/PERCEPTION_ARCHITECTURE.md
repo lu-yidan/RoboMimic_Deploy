@@ -1,4 +1,4 @@
-# Camera Perception Architecture
+# Perception Architecture
 
 This document describes the runtime architecture for grayscale camera target
 detection, camera ball detection, lidar ball detection, and final ball fusion.
@@ -50,28 +50,42 @@ near-range detections share the same smoothed output used by policy.
 
 ## Launch
 
+Recommended full-system bring-up:
+
+```bash
+bash tools/start_tmux_layout.sh
+```
+
+The tmux layout keeps camera, lidar, policy, dashboard, and the single final
+fuser in separate panes. This is the preferred real-robot structure because
+`rt/ball_state` has exactly one publisher.
+
 Run grayscale camera target + bright-ball perception:
 
 ```bash
 bash onboard/perception/camera/run_gray.sh
 ```
 
-Also start the final ball fuser:
-
-```bash
-bash onboard/perception/camera/run_gray.sh --with-fuser
-```
-
 Run lidar raw ball detection:
 
 ```bash
-python onboard/perception/lidar/ball_detector.py
+bash onboard/perception/lidar/run.sh --show --base-y-bias 0.05 --dds-topic rt/lidar_ball_state
 ```
 
-Run the fuser separately:
+Run the final ball fuser separately:
 
 ```bash
 bash onboard/perception/run_ball_fuser.sh
+```
+
+Do not start more than one fuser. `run_gray.sh --with-fuser` remains useful for
+camera-only debugging, but do not use it together with the tmux fuser pane or a
+manual `run_ball_fuser.sh`.
+
+Monitor the final policy-facing topic:
+
+```bash
+python tools/check_ball_state.py
 ```
 
 Profiling example:

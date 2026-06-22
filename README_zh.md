@@ -94,6 +94,18 @@ git clone https://github.com/unitreerobotics/unitree_sdk2_python.git
 cd unitree_sdk2_python
 pip install -e .
 ```
+
+## 文档地图
+
+真机机载部署请先看 `onboard/docs/README.md`。它说明运行时架构、topic 归属，
+并给出新人阅读路径。
+
+- 环境配置：`onboard/docs/INSTALL_AGENT_GUIDE.md`
+- 真机启动拓扑：`tools/start_tmux_layout.sh`
+- 相机模块手册：`onboard/perception/camera/README.md`
+- LiDAR 模块手册：`onboard/perception/lidar/README.md`
+- 感知架构：`onboard/docs/PERCEPTION_ARCHITECTURE.md`
+
 ---
 ## 运行代码
 
@@ -119,8 +131,8 @@ python deploy_mujoco/deploy_mujoco.py --config-name mujoco_freekick
 | **LocoMode**       | B                             | 用于稳定行走的控制模式                                               |
 | **AMP**            | A                             | AMP 运动策略（默认进入 run 模式）                                    |
 | **FreeKick**          | R1                            | 踢球得分策略（547维obs，5帧历史，需配合机载雷达感知）               |
-| **BeyondMimicMJ**  | D-pad DOWN                    | 摔倒爬起模仿策略（MuJoCo 训练版，含参考动作跟踪）                   |
-| **StandUpMJ**      | D-pad UP                      | 站起模仿策略（MuJoCo 训练版，含参考动作跟踪）                       |
+| **BeyondMimicMJ**  | D-pad DOWN                    | 站立躺下模仿策略（MuJoCo 训练版，含参考动作跟踪）                   |
+| **StandUpMJ**      | D-pad UP                      | 躺下站起模仿策略（MuJoCo 训练版，含参考动作跟踪）                       |
 | **Pinocchio1.6MJ** | R2                            | `g1_result_pinocchio_1_6_mj.yaml` 对应的 MuJoCo 模仿策略            |
 | **BeyondMimic**    | —                             | 仍保留在仓库中，但当前默认不分配手柄按键                             |
 
@@ -167,7 +179,7 @@ python deploy_mujoco/deploy_mujoco.py
 ---
 ## 4. 真机操作说明
 
-1. 开机后将机器人吊起来。先按 **L2+B** 进入阻尼保护模式（头部蓝灯变紫），再按 **L2+R2** 进入调试模式（头部灯变黄）。
+1. 开机后将机器人吊起来。先按 **L2+B** 进入阻尼保护模式（头部紫灯变橙），再按 **L2+R2** 进入调试模式（头部橙灯变黄）。
 
 2. **推荐方式（机载 Orin）**：使用 tmux 启动脚本，一键启动 C++ bridge、policy 推理、感知服务和 Sensor Dashboard：
    ```bash
@@ -187,12 +199,12 @@ python deploy_mujoco/deploy_mujoco.py
    python bridge/python/deploy_policy.py       # 终端 2
    ```
 
-   **简单模式（直连 USB，无 Orin）**：`python deploy_real/deploy_real.py`
+   **简单模式（直连 以太网，无 Orin）**：`python deploy_real/deploy_real.py`
 
 3. 后续单键切换与仿真保持一致：`A / B / D-pad DOWN / D-pad UP / R2 / R1`。
    任意时刻可按 **F1** 进入阻尼保护模式（PassiveMode）。
 
-4. **FreeKick 踢球策略（R1）真机额外步骤**：FreeKick 策略依赖机载雷达对球的实时感知，需在启动前先运行感知服务，并通过 DDS topic `rt/ball_state` 发布球的位置。未启动感知服务时请勿激活 FreeKick 策略。
+4. **FreeKick 踢球策略（R1）真机额外步骤**：FreeKick 策略依赖机载球感知，需在启动前先运行感知服务；LiDAR / camera raw 观测由 `onboard/perception/ball_fuser.py` 融合，并发布最终 DDS topic `rt/ball_state`。未启动感知服务时请勿激活 FreeKick 策略。
 
 5. **Sensor Dashboard**：启动 `tools/start_tmux_layout.sh` 后，在浏览器中打开 `http://<机器人IP>:8091/` 即可查看所有传感器位置（目标、各球感知源、偏置后坐标）及橙色"Current Bias"卡片中的当前偏置值。手动启动：
    ```bash

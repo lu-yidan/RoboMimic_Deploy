@@ -4,6 +4,16 @@ This guide is for installing the onboard perception/runtime stack on another
 Unitree G1 Jetson robot as quickly as possible. It records the working path from
 the JetPack 6 / Orin install in this repo.
 
+Read this guide together with:
+
+- `onboard/docs/README.md` for the runtime architecture and topic ownership.
+- `tools/start_tmux_layout.sh` for the executable real-robot bring-up layout.
+
+After installation, the acceptance test is not just importing packages. Start
+the tmux layout, bring up camera, LiDAR, the single fuser, dashboard, and
+`tools/check_ball_state.py`, then confirm the final `rt/ball_state` stream is
+fresh and stable.
+
 ## Target Machine
 
 First identify the robot. Do not blindly follow older JetPack 5 instructions.
@@ -20,10 +30,46 @@ Known-good setup from this install:
 - CUDA 12.6
 - Python 3.10 conda environment named `robomimic`
 - RealSense D435I on USB 3.2
+- Python DDS: `cyclonedds==0.10.5`, linked against the user-built
+  `/home/unitree/share/opt/cyclonedds-0.10.5/lib/libddsc.so.0`
+- ROS2 RMW: `rmw_cyclonedds_cpp`
 
 If the robot is JetPack 5.1.2 / CUDA 11.4, use the older notes in
 `onboard/perception/camera/TROUBLESHOOTING.md` instead of the PyTorch commands
 below.
+
+## DDS Version Reference
+
+There are three DDS-related pieces in the runtime. Keep them separate when
+installing a new robot:
+
+- Repo Python topics such as `rt/ball_state`, `rt/lidar_ball_state`,
+  `rt/cam_ball_state`, and `rt/target_state` use the Python package
+  `cyclonedds==0.10.5`.
+- That Python package must be compiled against CycloneDDS C library `0.10.5`
+  installed at `/home/unitree/share/opt/cyclonedds-0.10.5`. Do not rely on
+  Ubuntu Jammy's `cyclonedds-dev` for this path.
+- ROS2 nodes still use `RMW_IMPLEMENTATION=rmw_cyclonedds_cpp`. The launch
+  scripts set `CYCLONEDDS_URI` to the robot network interface to avoid FastDDS
+  shared-memory OOM behavior on 16 GB Jetson systems.
+- The C++ robot bridge links Unitree SDK2's bundled DDS libraries from
+  `${UNITREE_SDK2_DIR}/thirdparty/lib/$(uname -m)`. That is separate from the
+  Python `cyclonedds` package used by repo-level perception topics.
+
+Verify the current Python DDS binding with:
+
+```bash
+source onboard/perception/setup_runtime_env.sh
+conda run -n robomimic --no-capture-output python -m pip show cyclonedds
+ldd $(conda run -n robomimic python -c \
+  "import sysconfig, glob; print(glob.glob(sysconfig.get_path('platlib') + '/cyclonedds/_clayer*.so')[0])") | grep ddsc
+```
+
+Expected `ldd` path:
+
+```text
+/home/unitree/share/opt/cyclonedds-0.10.5/lib/libddsc.so.0
+```
 
 ## Fast Install
 
@@ -112,6 +158,15 @@ adds Jetson CUDA/TensorRT runtime library paths. This avoids common errors like:
 
 ## RealSense Setup
 
+In this install, RealSense is not a separate repo workspace under `$HOME`.
+The runtime pieces are:
+
+- Python package: conda env `robomimic`, under
+  `/home/unitree/miniconda3/envs/robomimic/lib/python3.10/site-packages/pyrealsense2`
+- Udev rule, if installed: `/etc/udev/rules.d/99-realsense-libusb.rules`
+- Camera device for the grayscale ball/target pipeline: `/dev/video3`
+  (`GREY`, 30 Hz by default)
+
 Install udev rules if device access fails:
 
 ```bash
@@ -164,6 +219,49 @@ bash onboard/perception/camera/_launch.sh --show
 bash onboard/perception/lidar/run.sh
 bash onboard/perception/run_sensor_dashboard.sh
 ```
+
+Known-good LiDAR runtime layout:
+
+```bash
+# ROS2: prefer Humble on JetPack 6, with Foxy fallback only for older robots.
+source /opt/ros/humble/setup.bash
+
+# Livox MID360 ROS2 driver workspace:
+# source tree: $HOME/ws_livox/src/livox_ros_driver2
+# install tree: $HOME/ws_livox/install
+export LIVOX_WS="${LIVOX_WS:-$HOME/ws_livox}"
+source "$LIVOX_WS/install/setup.bash"
+
+# Unitree ROS2 message workspace, needed for unitree_hg.msg imports.
+export UNITREE_ROS2_WS="${UNITREE_ROS2_WS:-$HOME/unitree_ros2/cyclonedds_ws}"
+source "$UNITREE_ROS2_WS/install/setup.bash"
+
+# Livox SDK2 runtime library, needed by livox_ros_driver2_node:
+# source/build tree: $HOME/Livox-SDK2
+export LIVOX_SDK2_LIB="${LIVOX_SDK2_LIB:-$HOME/Livox-SDK2/build/sdk_core}"
+export LD_LIBRARY_PATH="$LIVOX_SDK2_LIB:$LD_LIBRARY_PATH"
+
+# MID360 config used by onboard/perception/lidar/run.sh.
+export LIVOX_CONFIG="${LIVOX_CONFIG:-$LIVOX_WS/src/livox_ros_driver2/config/MID360_config.json}"
+test -f "$LIVOX_CONFIG"
+```
+
+Quick checks:
+
+```bash
+ros2 pkg prefix livox_ros_driver2
+ros2 interface show livox_ros_driver2/msg/CustomMsg
+python -c "import rclpy; import sensor_msgs.msg; from livox_ros_driver2.msg import CustomMsg; from unitree_hg.msg import LowState; print('ros/lidar imports ok')"
+```
+
+The repo launcher normally handles these `source` and `LD_LIBRARY_PATH` steps.
+If LiDAR fails on a new robot, check these paths first:
+
+- `/opt/ros/humble/setup.bash` or `/opt/ros/foxy/setup.bash`
+- `$HOME/ws_livox/install/setup.bash`
+- `$HOME/ws_livox/src/livox_ros_driver2/config/MID360_config.json`
+- `$HOME/Livox-SDK2/build/sdk_core`
+- `$HOME/unitree_ros2/cyclonedds_ws/install/setup.bash`
 
 After ROS2 is present, keep:
 

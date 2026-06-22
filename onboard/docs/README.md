@@ -6,6 +6,25 @@
 
 ---
 
+## 新人阅读路径
+
+如果第一次接手这套机载感知/真机部署，请按下面顺序看：
+
+1. 先读本文件，理解运行时拓扑：`camera/lidar raw topic -> ball_fuser -> rt/ball_state`。
+2. 再按 `onboard/docs/INSTALL_AGENT_GUIDE.md` 配新机器环境。安装指南是环境配置的唯一权威入口。
+3. 环境装好后，看 `tools/start_tmux_layout.sh`。它是真机 bring-up 的可执行拓扑，里面每个 pane 对应一个运行组件。
+4. 启动 `bash tools/start_tmux_layout.sh`，按 pane 逐个回车启动服务。
+5. 用 `monitor` 窗口里的 `tools/check_ball_state.py` 和 Sensor Dashboard 验证最终 `rt/ball_state`。
+
+常见排障文档：
+
+- 相机/灰度/AprilTag：`onboard/perception/camera/README.md`
+- 相机性能与 RealSense 问题：`onboard/perception/camera/TROUBLESHOOTING.md`
+- LiDAR 发布频率：`onboard/docs/LIDAR_FREQ_TROUBLESHOOTING.md`
+- 感知架构图：`onboard/docs/PERCEPTION_ARCHITECTURE.md`
+
+---
+
 ## 目录结构
 
 ```
@@ -46,135 +65,78 @@ onboard/
 
 ---
 
-## 新机器环境配置（CycloneDDS Python 绑定）
+## 环境安装入口
 
-> 机载电脑已经预装了 Unitree 提供的 CycloneDDS C 库（位于
-> `~/unitree_ros2/cyclonedds_ws/install/cyclonedds`）。
-> `pip install cyclonedds` **不能直接使用**，因为它会在编译 Python 绑定时拉取
-> 系统里其他版本的头文件，导致运行时库不匹配（`DDS_RETCODE_BAD_PARAMETER` 或
-> `undefined symbol` 等错误）。
-> 必须让 Python 绑定**对准 Unitree 自带的那套 CycloneDDS** 来编译。
+新机器安装请以 `onboard/docs/INSTALL_AGENT_GUIDE.md` 为唯一入口。那里记录了
+当前真机验证过的 JetPack、Python、CycloneDDS、ROS2、Livox 和 RealSense 路径。
 
-### 步骤
+这里仅保留运行时要点，避免两套安装说明互相冲突：
 
-```bash
-# 1. 激活你的 Python 环境
-conda activate robomimic   # 按实际环境名修改
-
-# 2. 指向 Unitree 自带的 CycloneDDS（头文件 + 库）
-export CYCLONEDDS_HOME=~/unitree_ros2/cyclonedds_ws/install/cyclonedds
-export CMAKE_PREFIX_PATH="$CYCLONEDDS_HOME:${CMAKE_PREFIX_PATH:-}"
-export CPATH="$CYCLONEDDS_HOME/include:${CPATH:-}"
-export LIBRARY_PATH="$CYCLONEDDS_HOME/lib:${LIBRARY_PATH:-}"
-
-# 3. 编译安装（不使用缓存，强制重新编译）
-pip install --no-build-isolation --no-cache-dir "cyclonedds==0.10.5"
-```
-
-> **注意**：如果系统 `/usr/local/include/dds/` 里有其他版本的 CycloneDDS 头文件，
-> 上面的 `CPATH` 变量优先级高于系统路径，通常不需要手动移走，但如果 pip 编译时
-> 仍报 `conflicting types for dds_stream_*`，需要先执行：
-> ```bash
-> sudo mv /usr/local/include/dds /usr/local/include/dds.bak
-> # pip install 成功后恢复
-> sudo mv /usr/local/include/dds.bak /usr/local/include/dds
-> ```
-
-### 验证安装
-
-```bash
-# 确认运行时链接到正确的 libddsc.so
-ldd $(python -c "import sysconfig; print(sysconfig.get_path('platlib'))")/cyclonedds/_clayer.cpython-*-linux-aarch64.so | grep ddsc
-# 应显示 => ~/unitree_ros2/cyclonedds_ws/install/cyclonedds/lib/libddsc.so.0
-
-# 快速功能测试
-python -c "from cyclonedds.domain import DomainParticipant; DomainParticipant(0); print('cyclonedds ok')"
-```
-
-### ~/.bashrc 注意事项
-
-Unitree 机器默认的 `~/.bashrc` 里可能有如下几行，会在每个终端自动 `source`
-旧版 CycloneDDS RMW 并设置 `RMW_IMPLEMENTATION=rmw_cyclonedds_cpp`，
-这和 Python DDS 环境冲突，建议**注释掉**：
-
-```bash
-# 注释掉 fishros 那一整块（若有）
-# echo "ros:foxy(1) noetic(2) ?"
-# read choose
-# case $choose in
-# 1) source /opt/ros/foxy/setup.bash;
-# source ~/cyclonedds_ws/install/setup.bash;
-# export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp; ...
-# esac
-
-# 注释掉以下两行（若有）
-# source ~/unitree_ros2/setup.sh
-# export CYCLONEDDS_HOME=/usr/local
-```
-
-每次新开终端，手动按需 source：
-
-```bash
-conda activate robomimic
-source /opt/ros/foxy/setup.bash
-source ~/yixuan/yichao-deploy/ws_livox/install/setup.sh
-```
+- Python DDS 使用 `cyclonedds==0.10.5`，运行时链接到
+  `/home/unitree/share/opt/cyclonedds-0.10.5/lib/libddsc.so.0`。
+- ROS2 节点使用 `RMW_IMPLEMENTATION=rmw_cyclonedds_cpp`，脚本会按机器人网卡生成
+  `CYCLONEDDS_URI`。
+- Livox MID360 驱动默认位于 `$HOME/ws_livox`，SDK2 runtime lib 默认位于
+  `$HOME/Livox-SDK2/build/sdk_core`。
+- RealSense 灰度链路默认使用 `/dev/video3`，`GREY`，30 Hz。
+- 启动脚本会自动 source 需要的 ROS2 / Livox / Unitree message workspace；手动排障时
+  再按 `INSTALL_AGENT_GUIDE.md` 逐项检查。
 
 ---
 
 ## 快速启动
 
-### 方案 A — Lidar（Livox MID360）
+### 推荐：tmux 总控
 
-#### 1. 依赖
-
-```bash
-# ROS2 Foxy（已预装）
-# livox_ros_driver2（MID360 ROS2 驱动，已预装于 ws_livox）
-# cyclonedds Python 绑定（见上方步骤，不能直接 pip install cyclonedds）
-```
-
-#### 2. 启动 MID360 驱动
+在仓库根目录运行：
 
 ```bash
-ros2 launch livox_ros_driver2 msg_MID360_launch.py
+bash tools/start_tmux_layout.sh
 ```
 
-#### 3. 启动 raw 球检测服务
+`tools/start_tmux_layout.sh` 是当前真机运行拓扑的参考实现。文档里的手动命令应与它保持一致。
 
-在 `RoboMimicDeploy_G1` 根目录下运行：
+该脚本会预填一套真机 bring-up 窗格：
+
+- C++ bridge：机器人低层状态/控制桥接。
+- `deploy_policy.py`：策略推理与 FSM。
+- Camera raw perception：发布 `rt/target_state` 和 `rt/cam_ball_state`。
+- LiDAR raw perception：发布 `rt/lidar_ball_state`。
+- Ball fuser：唯一最终球位置发布者，发布 `rt/ball_state`。
+- Sensor Dashboard：浏览器查看传感器与偏置。
+- Monitor：运行 `tools/check_ball_state.py` 观察最终 `rt/ball_state`。
+
+### 手动分进程启动
+
+如果不使用 tmux，按下面的职责拆开启动。**同一时间只启动一个 fuser**。
 
 ```bash
-python onboard/perception/lidar/ball_detector.py
+# Camera: AprilTag target + camera raw ball
+bash onboard/perception/camera/run_gray.sh --show
+
+# LiDAR: Livox driver + lidar raw ball
+bash onboard/perception/lidar/run.sh --show --base-y-bias 0.00 --dds-topic rt/lidar_ball_state
+
+# Final fuser: lidar/camera raw -> rt/ball_state
+bash onboard/perception/run_ball_fuser.sh
+
+# Optional dashboard
+bash onboard/perception/run_sensor_dashboard.sh
 ```
 
-服务启动后发布 `rt/lidar_ball_state`。策略使用的最终 `rt/ball_state`
-由 `onboard/perception/ball_fuser.py` 发布。
+灰度相机链路默认使用 `/dev/video3`、`GREY`、`30Hz`，发布 AprilTag target 到
+`rt/target_state`，发布 camera raw ball 到 `rt/cam_ball_state`。LiDAR 链路发布
+`rt/lidar_ball_state`。`ball_fuser.py` 按 `lidar > camera` 选择原始观测，并统一
+Kalman 平滑后发布策略真正读取的 `rt/ball_state`。
 
----
-
-新的推荐链路是 raw sensor topic + fuser：lidar 发布 `rt/lidar_ball_state`，
-camera 发布 `rt/cam_ball_state`，`ball_fuser.py` 按 `lidar > camera` 选择观测并
-统一 Kalman 平滑后发布 `rt/ball_state`。详见
-`onboard/docs/CAMERA_PERCEPTION_ARCHITECTURE.md`。
-
-### 方案 B — Grayscale AprilTag + Bright Ball
-
-```bash
-bash onboard/perception/camera/run_gray.sh
-bash onboard/perception/camera/run_gray.sh --with-fuser
-```
-
-灰度链路默认使用 `/dev/video3`、`GREY`、`30Hz`，发布 AprilTag target 到
-`rt/target_state`，发布 camera raw ball 到 `rt/cam_ball_state`。使用
-`--profile-timing` 可输出 capture / bright / apriltag / preview / total 的
-mean/p95 耗时。
+`run_gray.sh --with-fuser` 仍可用于相机单独调试，但在 tmux 或手动已启动
+`run_ball_fuser.sh` 时不要使用，避免多个 fuser 同时发布 `rt/ball_state`。
 
 ---
 
 ## 本地验证
 
-本地电脑通过网线连接 G1 后，在 `RoboMimicDeploy_G1` 根目录运行：
+本地电脑通过网线连接 G1 后，在仓库根目录运行：
 
 ```bash
 python tools/check_ball_state.py
@@ -212,11 +174,15 @@ Livox MID360（点云，~10 Hz）
         │ （链式正运动学：pelvis → waist → torso → head → MID360）
         │ 使用实时关节角 q_wy / q_wr / q_wp / q_head
         ▼
-球心（pelvis body 系）
+球心（pelvis body 系，raw lidar）
+        │
+        │ DDS publish "rt/lidar_ball_state"
+        ▼
+ball_fuser.py（可同时接收 rt/cam_ball_state）
         │
         │ DDS publish "rt/ball_state"
         ▼
-deploy_real.py → state_cmd.ball_pos_b → FreeKick._build_obs()
+policy runtime → state_cmd.ball_pos_b → FreeKick._build_obs()
 ```
 
 ---
@@ -227,15 +193,21 @@ deploy_real.py → state_cmd.ball_pos_b → FreeKick._build_obs()
 
 1. 在 `onboard/perception/<方案>/` 下新建 `ball_detector.py`
 2. 用任意方式获取球在 pelvis 系的坐标
-3. 调用相同接口发布：
+3. 发布到该传感器自己的 raw topic，不要直接发布最终 `rt/ball_state`
+4. 在 `ball_fuser.py` 中接入该 raw topic，并决定优先级/距离门限
 
 ```python
-from common.ball_state_dds import BallStatePublisher
-dds = BallStatePublisher(domain_id=0)
-dds.publish(x, y, z, valid=True)
+from common.ball_state_dds import BallStatePublisher, SOURCE_CAM
+
+dds = BallStatePublisher(topic_name="rt/<sensor>_ball_state")
+dds.publish(x, y, z, valid=True, source=SOURCE_CAM)
 ```
 
-`deploy_real.py` 和 `FreeKick.py` **无需任何修改**。
+如果新增的是第三类传感器，需要先扩展 `common/ball_state_dds.py` 中的 source 常量，
+再让 fuser 和 dashboard 识别它；不要复用错误的 source 值。
+
+只要最终仍由 `ball_fuser.py` 发布 `rt/ball_state`，`deploy_real.py`、
+`deploy_policy.py` 和 `FreeKick.py` **无需任何修改**。
 
 ---
 

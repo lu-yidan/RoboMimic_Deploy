@@ -30,7 +30,7 @@ ssh unitree@10.79.215.11
 
 ```bash
 # cb
-cd /home/unitree/yixuan/yichao-deploy/RoboMimic_Deploy
+cd /home/unitree/yichao/RoboMimic_Deploy
 BRIDGE_NETWORK_INTERFACE=eth0 bridge/build/cpp_bridge_main
 ```
 
@@ -38,14 +38,14 @@ BRIDGE_NETWORK_INTERFACE=eth0 bridge/build/cpp_bridge_main
 
 ```bash
 # pp
-cd /home/unitree/yixuan/yichao-deploy/RoboMimic_Deploy
+cd /home/unitree/yichao/RoboMimic_Deploy
 python bridge/python/deploy_policy.py
 ```
 
 ### 如果 C++ bridge 还没编译过
 
 ```bash
-cd /home/unitree/yixuan/yichao-deploy/RoboMimic_Deploy
+cd /home/unitree/yichao/RoboMimic_Deploy
 cmake -S bridge -B bridge/build
 cmake --build bridge/build -j2
 ```

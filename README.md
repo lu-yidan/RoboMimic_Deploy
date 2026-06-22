@@ -90,6 +90,19 @@ git clone https://github.com/unitreerobotics/unitree_sdk2_python.git
 cd unitree_sdk2_python
 pip install -e .
 ```
+
+## Documentation Map
+
+For real-robot onboard setup, start with `onboard/docs/README.md`. It explains
+the runtime architecture, topic ownership, and the recommended reading path for
+new contributors.
+
+- Environment setup: `onboard/docs/INSTALL_AGENT_GUIDE.md`
+- Real-robot bring-up topology: `tools/start_tmux_layout.sh`
+- Camera module guide: `onboard/perception/camera/README.md`
+- LiDAR module guide: `onboard/perception/lidar/README.md`
+- Perception architecture: `onboard/docs/PERCEPTION_ARCHITECTURE.md`
+
 ---
 ## Running the Code
 
@@ -113,8 +126,8 @@ python deploy_mujoco/deploy_mujoco.py --config-name mujoco_freekick
 | **LocoMode**        | B                             | Stable walking control mode                                                              |
 | **AMP**             | A                             | AMP locomotion policy (enters run mode by default)                                       |
 | **FreeKick**           | R1                            | Ball-kicking/scoring policy (547-dim obs, 5-frame history, requires onboard LiDAR)      |
-| **BeyondMimicMJ**   | D-pad DOWN                    | Fall-and-get-up imitation policy (MuJoCo-trained, with reference motion tracking)       |
-| **StandUpMJ**       | D-pad UP                      | Stand-up imitation policy (MuJoCo-trained, with reference motion tracking)              |
+| **BeyondMimicMJ**   | D-pad DOWN                    | Stand-to-lying imitation policy (MuJoCo-trained, with reference motion tracking)        |
+| **StandUpMJ**       | D-pad UP                      | Lying-to-standing imitation policy (MuJoCo-trained, with reference motion tracking)     |
 | **Pinocchio1.6MJ**  | R2                            | MuJoCo imitation policy backed by `g1_result_pinocchio_1_6_mj.yaml`                     |
 | **BeyondMimic**     | —                             | Still kept in the repo, but not bound to a default controller shortcut                  |
 
@@ -156,7 +169,7 @@ python deploy_mujoco/deploy_mujoco.py
 ---
 ## 4. Real Robot Operation Instructions
 
-1. Power on the robot and suspend it (e.g., with a harness). First hold **L2+B** to enter damping protection mode (the head light changes from blue to purple), then hold **L2+R2** to enter debug mode (the head light turns yellow).
+1. Power on the robot and suspend it (e.g., with a harness). First hold **L2+B** to enter damping protection mode (the head light changes from purple to orange), then hold **L2+R2** to enter debug mode (the head light changes from orange to yellow).
 
 2. **Recommended (onboard Orin):** Use the tmux launcher, which starts the C++ bridge, policy runtime, perception services and sensor dashboard in one shot:
    ```bash
@@ -176,12 +189,12 @@ python deploy_mujoco/deploy_mujoco.py
    python bridge/python/deploy_policy.py       # terminal 2
    ```
 
-   **Simple mode (no Orin / direct USB):** `python deploy_real/deploy_real.py`
+   **Simple mode (no Orin / direct Ethernet):** `python deploy_real/deploy_real.py`
 
 3. The same single-button mapping applies on the real robot: **A / B / D-pad DOWN / D-pad UP / R2 / R1**.
    Press **F1** at any time for damping protection (PassiveMode).
 
-4. **FreeKick policy (R1) — additional real-robot steps**: The FreeKick policy depends on onboard LiDAR for real-time ball detection. Start the perception service before activating FreeKick, which publishes ball state to DDS topic `rt/ball_state`. Do **not** activate the FreeKick policy without the perception service running.
+4. **FreeKick policy (R1) — additional real-robot steps**: The FreeKick policy depends on onboard ball perception. Start the perception services before activating FreeKick; raw LiDAR/camera observations are fused by `onboard/perception/ball_fuser.py`, which publishes the final DDS topic `rt/ball_state`. Do **not** activate the FreeKick policy without the perception services running.
 
 5. **Sensor Dashboard**: After starting `tools/start_tmux_layout.sh`, open `http://<robot-ip>:8091/` in a browser. The dashboard shows all sensor positions (target, cam/lidar/fused ball, corrected positions) and the active bias values in the orange "Current Bias" card. To start it manually:
    ```bash

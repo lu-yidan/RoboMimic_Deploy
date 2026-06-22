@@ -1,9 +1,15 @@
 # Lidar Ball Detector — 使用手册
 
-Livox MID360 点云 → 球心检测 → DDS 发布 + RViz2 可视化。
+Livox MID360 点云 → 球心检测 → raw DDS 发布 + RViz2 可视化。
 
-> 环境配置（ROS2 Foxy、CycloneDDS Python 绑定、livox_ros_driver2）
-> 见上级目录的 [`onboard/README.md`](../../README.md)。
+LiDAR 模块发布 raw topic `rt/lidar_ball_state`。最终策略读取的
+`rt/ball_state` 由 `onboard/perception/ball_fuser.py` 发布。
+
+全系统启动与环境配置见：
+
+- 总览：`onboard/docs/README.md`
+- 安装：`onboard/docs/INSTALL_AGENT_GUIDE.md`
+- 真机 tmux 拓扑：`tools/start_tmux_layout.sh`
 
 ---
 
@@ -11,7 +17,8 @@ Livox MID360 点云 → 球心检测 → DDS 发布 + RViz2 可视化。
 
 ```
 onboard/perception/lidar/
-├── ball_detector.py          ← 主服务：订阅 /livox/lidar，发布 rt/ball_state
+├── run.sh                    ← 推荐入口：启动 Livox driver + ball_detector.py
+├── ball_detector.py          ← 主服务：订阅 /livox/lidar，发布 rt/lidar_ball_state
 ├── rviz_publisher.py         ← RViz2 可视化辅助：发布点云 + Marker
 ├── center_kalman_filter.py   ← 卡尔曼滤波器（平滑球心轨迹）
 ├── mid360_to_base.py         ← 坐标变换：MID360 系 → pelvis body 系
@@ -22,23 +29,31 @@ onboard/perception/lidar/
 
 ## 快速启动
 
-### 1. 启动 MID360 驱动
+### 推荐：使用仓库启动脚本
 
 ```bash
-source /opt/ros/foxy/setup.bash
-source ~/yixuan/yichao-deploy/ws_livox/install/setup.sh
-ros2 launch livox_ros_driver2 msg_MID360_launch.py
+bash onboard/perception/lidar/run.sh --show --base-y-bias 0.00 --dds-topic rt/lidar_ball_state
 ```
 
-### 2. 启动球检测服务
+`run.sh` 会自动处理：
 
-在 `RoboMimicDeploy_G1` 根目录下运行（保持 ROS2 source 环境）：
+- ROS2 Humble/Foxy setup
+- `$HOME/ws_livox/install/setup.bash`
+- `$HOME/unitree_ros2/cyclonedds_ws/install/setup.bash`
+- `$HOME/Livox-SDK2/build/sdk_core`
+- Livox MID360 driver
+- `ball_detector.py --msg-type pc2`
+
+它只发布 raw LiDAR 球：`rt/lidar_ball_state`。要给策略使用，必须再启动唯一 fuser：
 
 ```bash
-python onboard/perception/lidar/ball_detector.py
+bash onboard/perception/run_ball_fuser.sh
 ```
 
-启动成功后终端持续打印：
+全系统真机运行推荐直接使用 `tools/start_tmux_layout.sh`，其中右中 pane 是 LiDAR raw
+检测，右下 pane 是唯一 fuser。
+
+启动成功后终端会持续打印状态信息，Sensor Dashboard 可查看 raw/fused 球位置。
 
 ```
 [INFO] BallDetector ready.
@@ -216,7 +231,7 @@ livox_frame
 2. 观察 `/ball_detector/cloud_candidates`（黄色），若候选点很少或始终没有 → 降低 `reflect_thr`
 3. 候选点位置正确后，观察红球和绿球是否与球的实际位置一致
 4. 用 `+`/`-` 键微调 `center_offset` 直到绿球中心对准真实球心
-5. 确认 DDS 输出正常后，可取消 `# self._dds.publish(...)` 的注释启用实际发布
+5. 确认 `rt/lidar_ball_state` 与 dashboard 显示一致，再通过 fuser 验证最终 `rt/ball_state`
 
 ---
 
@@ -230,11 +245,12 @@ livox_frame
 | `/ball_detector/ball_kf` | `visualization_msgs/Marker` | 绿色球体：KF 平滑结果，lifetime=1s |
 | `/ball_detector/text_info` | `visualization_msgs/Marker` | 白色文字：`n= off= cost=`，lifetime=1s |
 
-DDS Topic（控制器订阅）：
+DDS Topic：
 
 | Topic | 类型 | 说明 |
 |-------|------|------|
-| `rt/ball_state` | BallState（自定义 DDS） | 球心在 pelvis body 系坐标，`valid` 标志位 |
+| `rt/lidar_ball_state` | BallState（自定义 DDS） | LiDAR raw 球心在 pelvis body 系坐标，`valid` 标志位 |
+| `rt/ball_state` | BallState（自定义 DDS） | fuser 最终输出，policy 读取；不是 LiDAR detector 直接发布 |
 
 调试 Topic（网页可视化订阅）：
 
@@ -249,4 +265,4 @@ DDS Topic（控制器订阅）：
 bash onboard/perception/lidar/run.sh --base-y-bias 0.02
 ```
 
-这个 bias 只加在 FK 后、发布到 `rt/ball_state` 的 pelvis-frame `y` 上；网页中的 `lidar raw MID360` 仍显示 FK 前原始 LiDAR 坐标，方便判断偏差来自检测本身还是安装/FK。
+这个 bias 只加在 FK 后、发布到 `rt/lidar_ball_state` 的 pelvis-frame `y` 上；网页中的 `lidar raw MID360` 仍显示 FK 前原始 LiDAR 坐标，方便判断偏差来自检测本身还是安装/FK。

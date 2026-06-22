@@ -122,6 +122,8 @@ class LocoMode(FSMState):
             return FSMStateName.SKILL_FREEKICK
         elif(self.state_cmd.skill_cmd == FSMCommand.CMD_AMP):
             return FSMStateName.SKILL_AMP
+        elif(self.state_cmd.skill_cmd == FSMCommand.CMD_AMP_RECOVERY):
+            return FSMStateName.SKILL_AMP_RECOVERY
         elif(self.state_cmd.skill_cmd == FSMCommand.POS_RESET):
             return FSMStateName.FIXEDPOSE
         elif(self.state_cmd.skill_cmd == FSMCommand.PASSIVE):

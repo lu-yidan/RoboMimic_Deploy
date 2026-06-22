@@ -7,6 +7,7 @@ from policy.beyondmimic.BeyondMimic import BeyondMimic
 from policy.beyondmimic_mj.BeyondMimicMJ import BeyondMimicMJ
 from policy.robonaldo.FreeKick import FreeKick
 from policy.amp.Amp import Amp
+from policy.amp_recovery.AmpRecovery import AmpRecovery
 from FSM.FSMState import *
 import time
 from common.ctrlcomp import *
@@ -42,6 +43,7 @@ class FSM:
         )
         self.freekick_policy = FreeKick(state_cmd, policy_output)
         self.amp_policy = Amp(state_cmd, policy_output)
+        self.amp_recovery_policy = AmpRecovery(state_cmd, policy_output)
 
         print("initalized all policies!!!")
         
@@ -99,6 +101,8 @@ class FSM:
             self.cur_policy = self.standup_mj_policy
         elif((policy_name == FSMStateName.SKILL_AMP)):
             self.cur_policy = self.amp_policy
+        elif((policy_name == FSMStateName.SKILL_AMP_RECOVERY)):
+            self.cur_policy = self.amp_recovery_policy
         elif((policy_name == FSMStateName.SKILL_PINOCCHIO_1_6_MJ)):
             self.cur_policy = self.pinocchio_1_6_mj_policy
         else:

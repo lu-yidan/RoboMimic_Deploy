@@ -44,8 +44,9 @@ Thumbs.db
 *.pt
 *.onnx
 *.engine
-# ...except the released FreeKick policy weights, which ship with the repo.
+# ...except the released policy weights, which ship with the repo.
 !policy/robonaldo/model/policy-obs-aic.onnx
+!policy/amp_recovery/model/g1amp_recovery.onnx
 
 # Local-only docs with sensitive infrastructure details (never publish)
 docs/vps_reverse_tunnel_zh.md

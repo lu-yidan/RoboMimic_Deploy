@@ -1,0 +1,62 @@
+# G1 AMP get-up / recovery policy (trained in Isaac Lab, legged_lab g1_rec).
+# Task: LeggedLab-Isaac-AMP-G1-GET-UP-v0, checkpoint model_49999.pt.
+#
+# Deployment notes
+# ----------------
+# * Policy is an actor MLP only: obs(570) -> action(29).  NO obs normalization,
+#   NO reference trajectory, NO discriminator at deploy time.
+# * obs layout (term-major, each term carries 5 history frames, OLDEST-first):
+#     [ base_ang_vel x5 (15) | root_local_rot_tan_norm x5 (30) |
+#       joint_pos x5 (145) | joint_vel x5 (145) | last_action x5 (145) |
+#       key_body_pos_b x5 (90) ]  = 570
+#   - joint_pos is ABSOLUTE (NOT relative to default_joint_pos).
+#   - "root" == pelvis (the Isaac Lab articulation root).
+# * action: target_q_mj = default_joint_pos + action_scale * action  (per BeyondMimic mapping).
+# * Joint ordering uses BeyondMimic's MUJOCO_TO_ISAAC / ISAAC_TO_MUJOCO arrays.
+
+model_path: "g1amp_recovery.onnx"
+
+# ── Observation ───────────────────────────────────────────────────────────────
+history_len: 5
+num_obs: 570
+action_scale: 0.25
+clip_actions: 100.0     # training did not clip; large value = effectively no clip
+control_dt: 0.02        # sim dt 0.005 * decimation 4
+
+# 6 key bodies in Isaac Lab KEY_BODY_NAMES order (preserve_order=True).
+# These are read from MuJoCo d.xpos by deploy_mujoco and transformed to the
+# pelvis (root) frame inside the policy.
+key_body_names:
+  - left_ankle_roll_link
+  - right_ankle_roll_link
+  - left_wrist_yaw_link
+  - right_wrist_yaw_link
+  - left_shoulder_roll_link
+  - right_shoulder_roll_link
+
+# ── Default joint positions (MuJoCo / SDK motor order, 29) ────────────────────
+# From UNITREE_G1_29DOF_CFG.init_state.joint_pos (Isaac Lab), reordered to motor order.
+default_joint_pos: [
+  -0.10,  0.00,  0.00,  0.30, -0.20,  0.00,   # left leg:  hip_p, hip_r, hip_y, knee, ank_p, ank_r
+  -0.10,  0.00,  0.00,  0.30, -0.20,  0.00,   # right leg
+   0.00,  0.00,  0.00,                         # waist: yaw, roll, pitch
+   0.30,  0.25,  0.00,  0.97,  0.15,  0.00,  0.00,   # left arm:  sho_p, sho_r, sho_y, elbow, wr_r, wr_p, wr_y
+   0.30, -0.25,  0.00,  0.97, -0.15,  0.00,  0.00,   # right arm
+]
+
+# ── PD gains (MuJoCo / SDK motor order, 29) ──────────────────────────────────
+# From UNITREE_G1_29DOF_CFG actuator stiffness/damping (Isaac Lab implicit actuators).
+kps: [
+  100.0, 100.0, 100.0, 150.0,  40.0,  40.0,   # left leg
+  100.0, 100.0, 100.0, 150.0,  40.0,  40.0,   # right leg
+  200.0,  40.0,  40.0,                         # waist: yaw, roll, pitch
+   40.0,  40.0,  40.0,  40.0,  40.0,  40.0,  40.0,   # left arm
+   40.0,  40.0,  40.0,  40.0,  40.0,  40.0,  40.0,   # right arm
+]
+kds: [
+  2.0,  2.0,  2.0,  4.0,  2.0,  2.0,   # left leg
+  2.0,  2.0,  2.0,  4.0,  2.0,  2.0,   # right leg
+  5.0,  5.0,  5.0,                     # waist: yaw, roll, pitch
+  1.0,  1.0,  1.0,  1.0,  1.0,  1.0,  1.0,   # left arm
+  1.0,  1.0,  1.0,  1.0,  1.0,  1.0,  1.0,   # right arm
+]

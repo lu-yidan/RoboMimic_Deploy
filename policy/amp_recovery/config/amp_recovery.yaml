@@ -22,7 +22,10 @@ model_path: "g1amp_recovery.onnx"
 history_len: 5
 num_obs: 480
 action_scale: 0.25
-clip_actions: 100.0     # training did not clip; large value = effectively no clip
+clip_actions: 3.5       # bound target offset (0.25*3.5=0.875 rad) so PD torque stays
+                        # ~within motor effort limits (knee kp=150 -> 131 Nm < 139).
+                        # Matches the other deploy policies (3-10); prevents the
+                        # blocked-joint / far-target overcurrent on the real robot.
 control_dt: 0.02        # sim dt 0.005 * decimation 4
 
 # Switch-in warm-up: on enter(), ramp the PD target from the robot's measured

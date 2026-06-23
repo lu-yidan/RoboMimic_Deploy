@@ -22,11 +22,28 @@ model_path: "g1amp_recovery.onnx"
 history_len: 5
 num_obs: 480
 action_scale: 0.25
-clip_actions: 3.5       # bound target offset (0.25*3.5=0.875 rad) so PD torque stays
-                        # ~within motor effort limits (knee kp=150 -> 131 Nm < 139).
-                        # Matches the other deploy policies (3-10); prevents the
-                        # blocked-joint / far-target overcurrent on the real robot.
+clip_actions: 10.0      # loose hygiene clip only (catches OOD spikes). Overcurrent
+                        # is handled by the torque-aware target clamp below, NOT by
+                        # clipping the action: a tight action clip (3.5) starves the
+                        # get-up push (relative to default pose), whereas the torque
+                        # clamp bounds PD torque relative to the CURRENT pose, so the
+                        # joints can still track the get-up trajectory.
 control_dt: 0.02        # sim dt 0.005 * decimation 4
+
+# Torque-aware target clamp: per step, clamp the PD target so that the commanded
+# PD torque  tau = kp*(target-q) - kd*dq  stays within +/- tau_limit (the Isaac
+# training effort_limit, in MuJoCo/SDK motor order). Replicates the sim implicit
+# actuator saturation on the real robot -> prevents overcurrent without starving
+# get-up. Set to [] / null to disable.
+# effort_limit_sim from UNITREE_G1_29DOF_CFG: hip_p/hip_y/waist_y=88,
+# hip_r/knee=139, shoulder/elbow/wrist_r/ankle/waist_r/waist_p=25, wrist_p/wrist_y=5.
+tau_limit: [
+   88, 139,  88, 139,  25,  25,   # left leg:  hip_p, hip_r, hip_y, knee, ank_p, ank_r
+   88, 139,  88, 139,  25,  25,   # right leg
+   88,  25,  25,                   # waist: yaw, roll, pitch
+   25,  25,  25,  25,  25,   5,  5,   # left arm:  sho_p, sho_r, sho_y, elbow, wr_r, wr_p, wr_y
+   25,  25,  25,  25,  25,   5,  5,   # right arm
+]
 
 # Switch-in warm-up: on enter(), ramp the PD target from the robot's measured
 # entry pose to the policy target over this many control steps (0.5 s @ 50 Hz).

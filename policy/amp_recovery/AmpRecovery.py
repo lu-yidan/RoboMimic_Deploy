@@ -72,6 +72,9 @@ class AmpRecovery(FSMState):
         self.default_q_mj = np.array(cfg["default_joint_pos"], dtype=np.float32)  # MuJoCo order
         self.action_scale = float(cfg["action_scale"])
         self.clip_actions = float(cfg["clip_actions"])
+        # Torque-aware target clamp limit (MuJoCo/SDK order), None/[] to disable.
+        _tau = cfg.get("tau_limit", None)
+        self.tau_limit = np.array(_tau, dtype=np.float32) if _tau else None
         self.control_dt = float(cfg["control_dt"])
         self.hist_len = int(cfg["history_len"])
         self.num_obs = int(cfg["num_obs"])
@@ -175,6 +178,19 @@ class AmpRecovery(FSMState):
             alpha = (self._warmup_i + 1) / self.warmup_steps
             target_q = (1.0 - alpha) * self._entry_q + alpha * target_q
             self._warmup_i += 1
+
+        # Torque-aware target clamp: bound the PD target so the commanded torque
+        #   tau = kp*(target - q) - kd*dq
+        # stays within +/- tau_limit. Clamping relative to the CURRENT q (not the
+        # default pose) lets joints track the get-up trajectory while keeping
+        # torque <= the motor effort limit -> no overcurrent, no starved get-up.
+        if self.tau_limit is not None:
+            q = self.state_cmd.q
+            dq = self.state_cmd.dq
+            margin = self.kds * dq  # kd*dq; tau = kp*(target-q) - kd*dq
+            lo = q + (margin - self.tau_limit) / self.kps
+            hi = q + (margin + self.tau_limit) / self.kps
+            target_q = np.clip(target_q, lo, hi)
 
         self.policy_output.actions = target_q
         self.policy_output.kps = self.kps

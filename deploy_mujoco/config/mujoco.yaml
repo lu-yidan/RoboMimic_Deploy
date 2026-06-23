@@ -13,7 +13,7 @@ tau_limit: [88, 139, 88, 139, 50, 50,
            ]
 
 logging:
-  enabled: false      # set true to record a freekick log
+  enabled: false      # set true to record a policy log
   log_dir: "logs"
   tag:     "freekick"
-  states:  ["SKILL_FREEKICK", "LOCOMODE", "SKILL_BEYONDMIMIC", "SKILL_BEYONDMIMIC_MJ", "SKILL_STANDUP_MJ", "SKILL_PINOCCHIO_1_6_MJ", "SKILL_AMP"]  # FSM states to record
+  states:  ["SKILL_FREEKICK", "LOCOMODE", "SKILL_BEYONDMIMIC", "SKILL_BEYONDMIMIC_MJ", "SKILL_STANDUP_MJ", "SKILL_PINOCCHIO_1_6_MJ", "SKILL_AMP", "SKILL_AMP_RECOVERY"]  # FSM states to record

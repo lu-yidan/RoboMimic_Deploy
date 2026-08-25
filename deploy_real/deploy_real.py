@@ -141,19 +141,19 @@ class Controller:
                     print(f"\n[BIAS] target_y_bias = {self.state_cmd.target_y_bias:+.2f} m", flush=True)
             self._prev_right_pressed = right_now
             self._prev_left_pressed  = left_now
+            y_just_pressed = self.remote_controller.is_button_just_pressed(KeyMap.Y)
 
             # PASSIVE: safety command — always overrides any pending command
-            if self.remote_controller.is_button_pressed(KeyMap.F1):             # F1阻尼保护模式
+            if self.remote_controller.is_button_pressed(KeyMap.F1):             # F1 阻尼保护模式
                 self.state_cmd.skill_cmd = FSMCommand.PASSIVE
-
-            # All other skill commands: latched — only accepted when FSM has cleared the previous one.
-            # elif self.state_cmd.skill_cmd == FSMCommand.INVALID:
-            if self.remote_controller.is_button_pressed(KeyMap.start):
+            elif self.remote_controller.is_button_pressed(KeyMap.start):
                 self.state_cmd.skill_cmd = FSMCommand.POS_RESET
             elif self.remote_controller.is_button_pressed(KeyMap.B):            # Loco, B
                 self.state_cmd.skill_cmd = FSMCommand.LOCO
             elif self.remote_controller.is_button_pressed(KeyMap.A):            # AMP, A
                 self.state_cmd.skill_cmd = FSMCommand.CMD_AMP
+            elif y_just_pressed:                                                 # SMP Recovery, Y
+                self.state_cmd.skill_cmd = FSMCommand.CMD_SMP_RECOVERY
             elif self.remote_controller.is_button_pressed(KeyMap.R1):           # FreeKick, R1
                 self.state_cmd.skill_cmd = FSMCommand.CMD_FREEKICK
             elif self.remote_controller.is_button_pressed(KeyMap.down):         # BeyondMimicMJ, Down
@@ -191,6 +191,9 @@ class Controller:
             self.state_cmd.torso_quat_w  = torso_quat
             self.state_cmd.pelvis_quat_w = np.array(quat, dtype=np.float32)  # raw IMU [w,x,y,z]
             self.state_cmd.root_ang_vel_b = ang_vel.flatten().astype(np.float32)
+
+            # LowState does not expose a reliable floating-base velocity estimate.
+            self.state_cmd.root_lin_vel_b = np.zeros(3, dtype=np.float32)
 
             # Ball state from DDS (pelvis body frame, ~10 Hz)
             ball = self.ball_sub.latest()

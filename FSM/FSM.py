@@ -7,6 +7,7 @@ from policy.beyondmimic.BeyondMimic import BeyondMimic
 from policy.beyondmimic_mj.BeyondMimicMJ import BeyondMimicMJ
 from policy.robonaldo.FreeKick import FreeKick
 from policy.amp.Amp import Amp
+from policy.smp_recovery.SmpRecovery import SmpRecovery
 from FSM.FSMState import *
 import time
 from common.ctrlcomp import *
@@ -42,6 +43,7 @@ class FSM:
         )
         self.freekick_policy = FreeKick(state_cmd, policy_output)
         self.amp_policy = Amp(state_cmd, policy_output)
+        self.smp_recovery_policy = SmpRecovery(state_cmd, policy_output)
 
         print("initalized all policies!!!")
         
@@ -52,6 +54,15 @@ class FSM:
         
     def run(self):
         start_time = time.time()
+        # Recovery is globally preemptive so Y works from every FSM state.
+        # The input layer gives the damping command higher priority.
+        if (self.state_cmd.skill_cmd == FSMCommand.CMD_SMP_RECOVERY and
+                self.cur_policy.name != FSMStateName.SKILL_SMP_RECOVERY):
+            self.state_cmd.skill_cmd = FSMCommand.INVALID
+            self.cur_policy.exit()
+            self.get_next_policy(FSMStateName.SKILL_SMP_RECOVERY)
+            self.FSMmode = FSMMode.CHANGE
+
         if(self.FSMmode == FSMMode.NORMAL): 
             self.cur_policy.run()
             nextPolicyName = self.cur_policy.checkChange()
@@ -99,6 +110,8 @@ class FSM:
             self.cur_policy = self.standup_mj_policy
         elif((policy_name == FSMStateName.SKILL_AMP)):
             self.cur_policy = self.amp_policy
+        elif((policy_name == FSMStateName.SKILL_SMP_RECOVERY)):
+            self.cur_policy = self.smp_recovery_policy
         elif((policy_name == FSMStateName.SKILL_PINOCCHIO_1_6_MJ)):
             self.cur_policy = self.pinocchio_1_6_mj_policy
         else:

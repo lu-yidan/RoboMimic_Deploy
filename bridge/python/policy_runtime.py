@@ -135,16 +135,18 @@ class PolicyRuntime:
                 print(f"\n[BALL BIAS] ball_y_bias = {self.state_cmd.ball_y_bias:+.2f} m", flush=True)
         self._prev_l2_right_pressed = l2_right
         self._prev_l2_left_pressed  = l2_left
+        y_just_pressed = self.remote_controller.is_button_just_pressed(KeyMap.Y)
 
         if self.remote_controller.is_button_pressed(KeyMap.F1):
             self.state_cmd.skill_cmd = FSMCommand.PASSIVE
-
-        if self.remote_controller.is_button_pressed(KeyMap.start):
+        elif self.remote_controller.is_button_pressed(KeyMap.start):
             self.state_cmd.skill_cmd = FSMCommand.POS_RESET
         elif self.remote_controller.is_button_pressed(KeyMap.B):
             self.state_cmd.skill_cmd = FSMCommand.LOCO
         elif self.remote_controller.is_button_pressed(KeyMap.A):
             self.state_cmd.skill_cmd = FSMCommand.CMD_AMP
+        elif y_just_pressed:
+            self.state_cmd.skill_cmd = FSMCommand.CMD_SMP_RECOVERY
         elif self.remote_controller.is_button_pressed(KeyMap.R1):
             self.state_cmd.skill_cmd = FSMCommand.CMD_FREEKICK
         elif self.remote_controller.is_button_pressed(KeyMap.down):
@@ -176,6 +178,7 @@ class PolicyRuntime:
         self.state_cmd.torso_quat_w = torso_quat.astype(np.float32)
         self.state_cmd.pelvis_quat_w = quat.astype(np.float32)
         self.state_cmd.root_ang_vel_b = ang_vel.astype(np.float32)
+        self.state_cmd.root_lin_vel_b = np.zeros(3, dtype=np.float32)
 
     def _apply_perception_state(self):
         ball = self.ball_sub.latest()

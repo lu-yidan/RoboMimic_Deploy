@@ -204,7 +204,7 @@ def main(cfg: DictConfig):
                 if joystick.is_button_released(JoystickButton.L3):                                                    # Ghost toggle, L3
                     ghost_flags[0] = not ghost_flags[0]
                     print(f"[Ghost] {'ON' if ghost_flags[0] else 'OFF'}")
-                if joystick.is_button_released(JoystickButton.Y):                                                    # Print joint pos, Y
+                if joystick.is_button_released(JoystickButton.Y) and joystick.is_button_pressed(JoystickButton.L1):  # Print joint pos, L1+Y
                     _print_joint_pos(d.qpos[7:7+num_joints],
                                      FSM_controller.cur_policy.name_str)
                 if joystick.is_button_released(JoystickButton.X):                                                        # Ball reset, X
@@ -243,6 +243,8 @@ def main(cfg: DictConfig):
                     state_cmd.skill_cmd = FSMCommand.LOCO
                 elif joystick.is_button_released(JoystickButton.A):                                                # AMP, A
                     state_cmd.skill_cmd = FSMCommand.CMD_AMP
+                elif joystick.is_button_just_pressed(JoystickButton.Y) and not joystick.is_button_pressed(JoystickButton.L1):  # SMP Recovery, Y
+                    state_cmd.skill_cmd = FSMCommand.CMD_SMP_RECOVERY
                 elif joystick.is_button_released(JoystickButton.R1):                                               # FreeKick, R1
                     state_cmd.skill_cmd = FSMCommand.CMD_FREEKICK
                 elif hat_just_pressed(0, -1):                                                                     # BeyondMimicMJ, D-pad DOWN

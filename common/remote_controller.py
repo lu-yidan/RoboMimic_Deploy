@@ -46,14 +46,24 @@ class RemoteController:
         
         for i in range(16):
             current_state = self.button[i] == 1
+            if not self.button_states[i] and current_state:
+                self.button_pressed[i] = True
             if self.button_states[i] and not current_state:
                 self.button_released[i] = True
             self.button_states[i] = current_state
-            
+
     def is_button_pressed(self, button_id):
-        """detect button pressed"""
+        """Return whether a button is currently held."""
         if 0 <= button_id < 16:
             return self.button_states[button_id]
+        return False
+
+    def is_button_just_pressed(self, button_id):
+        """Consume a latched rising edge so fast callbacks cannot hide it."""
+        if 0 <= button_id < 16:
+            pressed = self.button_pressed[button_id]
+            self.button_pressed[button_id] = False
+            return pressed
         return False
 
     def is_button_released(self, button_id):

@@ -68,10 +68,13 @@ class JoyStick:
         """update joystick state"""
         pygame.event.pump()  
         
+        self.button_pressed = [False] * self.button_count
         self.button_released = [False] * self.button_count
         
         for i in range(self.button_count):
             current_state = self.joystick.get_button(i) == 1
+            if not self.button_states[i] and current_state:
+                self.button_pressed[i] = True
             if self.button_states[i] and not current_state:
                 self.button_released[i] = True
             self.button_states[i] = current_state
@@ -87,6 +90,13 @@ class JoyStick:
         phys = self._physical_id(button_id)
         if 0 <= phys < self.button_count:
             return self.button_states[phys]
+        return False
+
+    def is_button_just_pressed(self, button_id):
+        """Return true once on the rising edge of a button press."""
+        phys = self._physical_id(button_id)
+        if 0 <= phys < self.button_count:
+            return self.button_pressed[phys]
         return False
 
     def is_button_released(self, button_id):

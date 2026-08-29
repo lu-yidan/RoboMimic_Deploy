@@ -10,6 +10,7 @@ from typing import Union
 import numpy as np
 import time
 import os
+import subprocess
 import yaml
 
 from unitree_sdk2py.core.channel import ChannelPublisher, ChannelFactoryInitialize
@@ -29,6 +30,27 @@ from common.remote_controller import RemoteController, KeyMap
 from common.ball_state_dds import BallStateSubscriber
 from common.target_state_dds import TargetStateSubscriber, TargetStatePublisher
 from config import Config
+
+
+def _repository_provenance() -> dict:
+    """Capture enough source provenance to reject unreproducible trial logs."""
+    try:
+        commit = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=PROJECT_ROOT, text=True
+        ).strip()
+        dirty = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=PROJECT_ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        return {"deploy_git_commit": None, "deploy_repository_dirty": None}
+    return {
+        "deploy_git_commit": commit,
+        "deploy_repository_dirty": bool(dirty),
+    }
 
 
 class Controller:
@@ -87,7 +109,12 @@ class Controller:
         self._log_states = {FSMStateName[s] for s in config.log_states} if config.log_enabled else set()
         self._logger = (
             Logger(config.log_dir, config.log_tag,
-                   extra_meta={"robot_type": "real", "control_dt": config.control_dt})
+                   extra_meta={
+                       "robot_type": "real",
+                       "control_dt": config.control_dt,
+                       "logged_fsm_states": sorted(config.log_states),
+                       **_repository_provenance(),
+                   })
             if config.log_enabled else None
         )
         
@@ -171,6 +198,7 @@ class Controller:
             for i in range(self.num_joints):
                 self.qj[i] = self.low_state.motor_state[i].q            # 关节位置
                 self.dqj[i] = self.low_state.motor_state[i].dq          # 关节速度
+                self.state_cmd.tau_est[i] = self.low_state.motor_state[i].tau_est
 
             # imu_state quaternion: w, x, y, z
             quat = self.low_state.imu_state.quaternion
@@ -278,4 +306,3 @@ if __name__ == "__main__":
     create_damping_cmd(controller.low_cmd)
     controller.send_cmd(controller.low_cmd)
     print("Exit")
-    

@@ -7,12 +7,12 @@ from pathlib import Path
 
 
 class Logger:
-    """Crash-safe binary logger for FSM policy execution.
+    """Crash-safe, versioned binary logger for FSM policy execution.
 
     Each call to log() writes one fixed-size float32 record and immediately
     flushes, so no data is lost if the process crashes.
 
-    Record layout (114 × float32 = 456 bytes per frame):
+    Schema 1 record layout (114 float32 values, retained for loading):
         step(1), time_s(1), q(29), dq(29),
         pelvis_pos_w(3), pelvis_quat_wxyz(4),
         ball_pos_b(3), ball_pos_w(3), ball_valid(1),
@@ -21,12 +21,20 @@ class Logger:
         debug_target_pos_b(3), debug_target_source(1),
         actions(29)
 
+    Schema 2 appends the signals needed for quantitative recovery evidence:
+        tau_est(29), tau_cmd_est(29), kps(29), kds(29),
+        gravity_ori(3), ang_vel(3), skill_cmd(1)
+
+    ``load`` reads the field layout stored in each log's metadata, so schema 1
+    logs remain compatible after schema 2 is introduced.
+
     Files written:
         <log_dir>/<YYYYMMDD_HHMMSS>_<tag>.bin   binary frames
         <log_dir>/<YYYYMMDD_HHMMSS>_<tag>.json  metadata
     """
 
-    FIELDS = [
+    SCHEMA_VERSION = 2
+    LEGACY_FIELDS = [
         ("step",         1),
         ("time_s",       1),
         ("q",           29),
@@ -43,6 +51,15 @@ class Logger:
         ("debug_target_source", 1),
         ("actions",     29),
     ]
+    FIELDS = LEGACY_FIELDS + [
+        ("tau_est", 29),
+        ("tau_cmd_est", 29),
+        ("kps", 29),
+        ("kds", 29),
+        ("gravity_ori", 3),
+        ("ang_vel", 3),
+        ("skill_cmd", 1),
+    ]
     RECORD_DIM: int = sum(n for _, n in FIELDS)  # 114
 
     def __init__(self, log_dir: str, tag: str = "freekick",
@@ -58,6 +75,7 @@ class Logger:
         self._record    = np.empty(self.RECORD_DIM, dtype=np.float32)
 
         meta: dict = {
+            "logger_schema_version": self.SCHEMA_VERSION,
             "tag":         tag,
             "created":     ts,
             "record_dim":  self.RECORD_DIM,
@@ -102,6 +120,18 @@ class Logger:
         put(policy_output.debug_target_pos_b, 3)
         put(policy_output.debug_target_source, 1)
         put(policy_output.actions,        29)
+        put(state_cmd.tau_est,             29)
+        tau_cmd_est = (
+            policy_output.kps * (policy_output.actions - state_cmd.q)
+            - policy_output.kds * state_cmd.dq
+        )
+        put(tau_cmd_est,                   29)
+        put(policy_output.kps,             29)
+        put(policy_output.kds,             29)
+        put(state_cmd.gravity_ori,          3)
+        put(state_cmd.ang_vel,              3)
+        skill_cmd = getattr(state_cmd.skill_cmd, "value", state_cmd.skill_cmd)
+        put([float(skill_cmd)],             1)
 
         self._file.write(r.tobytes())
         self._file.flush()
@@ -132,7 +162,17 @@ class Logger:
             meta = json.load(f)
 
         raw = np.fromfile(bin_path, dtype=np.float32)
-        dim = meta["record_dim"]
+        dim = int(meta["record_dim"])
+        field_mapping = meta.get("fields")
+        if not isinstance(field_mapping, dict) or not field_mapping:
+            layout = Logger.LEGACY_FIELDS
+        else:
+            layout = [(str(name), int(size)) for name, size in field_mapping.items()]
+        if sum(size for _, size in layout) != dim:
+            raise ValueError(
+                f"Metadata field layout sums to "
+                f"{sum(size for _, size in layout)}, expected record_dim={dim}"
+            )
         T   = len(raw) // dim
         if T == 0:
             raise ValueError(f"Log is empty: {bin_path}")
@@ -141,7 +181,7 @@ class Logger:
 
         result: dict = {"_meta": meta}
         offset = 0
-        for name, size in Logger.FIELDS:
+        for name, size in layout:
             chunk = frames[:, offset : offset + size]
             result[name] = chunk.squeeze(axis=1) if size == 1 else chunk
             offset += size

@@ -66,6 +66,23 @@ PyTorch is a neural network computation framework used for model training and in
 conda install pytorch==2.3.1 torchvision==0.18.1 torchaudio==2.3.1 pytorch-cuda=12.1 -c pytorch -c nvidia
 ```
 
+> **GPU note:** This CUDA 12.1 build works with any recent NVIDIA driver (verified on
+> an RTX 4090 with driver 580). Verify the install with:
+> ```bash
+> python -c "import torch; print(torch.cuda.is_available())"   # expect True
+> ```
+> **CPU-only alternative** (machines without an NVIDIA GPU — enough for MuJoCo
+> simulation):
+> ```bash
+> pip install torch==2.3.1 torchvision==0.18.1 torchaudio==2.3.1 --index-url https://download.pytorch.org/whl/cpu
+> ```
+
+> **Slow downloads in mainland China?** Point pip at a domestic mirror once, then
+> install as usual:
+> ```bash
+> pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+> ```
+
 ### 2.2 Install RoboNaldo_Deploy
 
 #### 2.2.1 Download
@@ -82,6 +99,14 @@ Navigate to the directory and install:
 cd RoboNaldo_Deploy
 pip install -r requirements.txt
 ```
+
+> **Pinned dependency notes** (already handled by `requirements.txt`):
+> - `numpy==1.24.4` — do **not** downgrade to 1.20.x, which lacks
+>   `numpy.typing.NDArray` and breaks `import torchvision`.
+> - `onnxruntime>=1.16` — the shipped policies are exported with ONNX opset 18.
+>   Older versions (e.g. 1.10.0) only support up to opset 15 and fail to load the
+>   models with `Opset 18 ... is till opset 15`. On Python 3.8 the last usable
+>   release is `onnxruntime==1.19.2`.
 
 #### 2.2.3 Install unitree_sdk2_python
 

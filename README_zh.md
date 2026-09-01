@@ -69,6 +69,20 @@ PyTorch 是一个神经网络计算框架，用于模型训练和推理。使用
 conda install pytorch==2.3.1 torchvision==0.18.1 torchaudio==2.3.1 pytorch-cuda=12.1 -c pytorch -c nvidia
 ```
 
+> **GPU 说明：** 该 CUDA 12.1 版本可配合较新的 NVIDIA 驱动使用（已在 RTX 4090 + 驱动 580 上验证）。安装后可验证：
+> ```bash
+> python -c "import torch; print(torch.cuda.is_available())"   # 期望输出 True
+> ```
+> **无 GPU 的 CPU 备选方案**（仅跑 MuJoCo 仿真已足够）：
+> ```bash
+> pip install torch==2.3.1 torchvision==0.18.1 torchaudio==2.3.1 --index-url https://download.pytorch.org/whl/cpu
+> ```
+
+> **国内下载慢？** 先把 pip 指向国内镜像，再照常安装：
+> ```bash
+> pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+> ```
+
 ### 2.2 安装 RoboNaldo_Deploy
 
 #### 2.2.1 下载
@@ -87,6 +101,10 @@ git clone https://github.com/OpenDriveLab/RoboNaldo_Deploy.git
 cd RoboNaldo_Deploy
 pip install -r requirements.txt
 ```
+
+> **依赖版本说明**（`requirements.txt` 已处理，无需手动改）：
+> - `numpy==1.24.4` —— 不要降到 1.20.x，旧版缺少 `numpy.typing.NDArray`，会导致 `import torchvision` 失败。
+> - `onnxruntime>=1.16` —— 仓库内策略模型以 ONNX opset 18 导出。旧版本（如 1.10.0）只支持到 opset 15，加载模型时会报 `Opset 18 ... is till opset 15`。Python 3.8 下最后可用版本为 `onnxruntime==1.19.2`。
 #### 2.2.3 安装unitree_sdk2_python
 
 ```bash

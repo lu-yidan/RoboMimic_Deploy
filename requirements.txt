@@ -1,7 +1,11 @@
 # Core dependencies
-numpy==1.20.0
+# numpy 1.24.x is required: 1.20.0 lacks numpy.typing.NDArray and breaks
+# torchvision 0.18.1 import.
+numpy==1.24.4
 onnx
-onnxruntime
+# onnxruntime must support ONNX opset 18 (models here are exported with it).
+# 1.10.0 only supports up to opset 15; 1.19.2 is the last release for Python 3.8.
+onnxruntime>=1.16
 mujoco
 hydra-core
 omegaconf

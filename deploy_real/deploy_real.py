@@ -276,9 +276,11 @@ class Controller:
                 print("control loop over time.")
                 self.counter_over_time += 1
             pass
-        except ValueError as e:
-            print(str(e))
-            pass
+        except (ValueError, FloatingPointError) as e:
+            print(f"[SAFETY] Controller rejected invalid policy state: {e}", flush=True)
+            self.state_cmd.skill_cmd = FSMCommand.PASSIVE
+            create_damping_cmd(self.low_cmd)
+            self.send_cmd(self.low_cmd)
         
         pass
         

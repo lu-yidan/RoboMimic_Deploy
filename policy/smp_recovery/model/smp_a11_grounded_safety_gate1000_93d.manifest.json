@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "status": "ENGINEERING_CANARY_NOT_FORMAL_HARDWARE_EVIDENCE",
+  "policy_id": "smp-a11-grounded-safety-gate1000-93d",
+  "source_repository": "lu-yidan/smp",
+  "source_branch": "codex/smp-scratch-causal-ablation",
+  "source_commit": "b999375607d05120a8f73680b9d438723d6186e0",
+  "source_task": "Smp-Getup-Scratch-A11-F2S2-Grounded-Safety-G1",
+  "source_wandb_run": "tabletennis/smp/slbh9cnq",
+  "source_checkpoint": "model_1000.pt",
+  "source_checkpoint_sha256": "5fecaee243ac8fea0798a4adf9de4b4801414203ce66a33a72b59876f3314bfb",
+  "onnx_file": "smp_a11_grounded_safety_gate1000_93d.onnx",
+  "onnx_sha256": "d7dbf7824c0582866b12ab5987747e91271ef16f6de60587656a4a545c1a795e",
+  "onnx_opset": 18,
+  "input": {
+    "name": "obs",
+    "shape": [
+      1,
+      93
+    ],
+    "dtype": "float32",
+    "terms": [
+      [
+        "base_ang_vel_b",
+        3
+      ],
+      [
+        "projected_gravity",
+        3
+      ],
+      [
+        "joint_pos_rel",
+        29
+      ],
+      [
+        "joint_vel",
+        29
+      ],
+      [
+        "last_action",
+        29
+      ]
+    ],
+    "normalizer_embedded": true
+  },
+  "output": {
+    "name": "actions",
+    "shape": [
+      1,
+      29
+    ],
+    "dtype": "float32"
+  },
+  "export_parity": {
+    "sample_seed": 20261302,
+    "sample_count": 256,
+    "max_abs_error": 5.7220458984375e-06,
+    "mean_abs_error": 6.37268158243387e-07,
+    "all_outputs_finite": true
+  },
+  "scope": [
+    "flat_ground",
+    "no_plate",
+    "tethered_engineering_canary_only"
+  ],
+  "prohibited_claims": [
+    "formal_hardware_evidence",
+    "terrain_recovery",
+    "plate_escape",
+    "ral_readiness"
+  ]
+}

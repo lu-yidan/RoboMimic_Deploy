@@ -1,5 +1,6 @@
-"""SMP V3.3 plate-escape recovery policy for Unitree G1."""
+"""Deployable 93D A11 grounded-safety recovery policy for Unitree G1."""
 
+import hashlib
 import os
 
 import numpy as np
@@ -11,7 +12,7 @@ from common.ctrlcomp import FSMCommand, PolicyOutput, StateAndCmd
 
 
 class SmpRecovery(FSMState):
-    """Run the normalized 96-dim SMP actor at 50 Hz."""
+    """Run the normalized 93D single-frame SMP actor at 50 Hz."""
 
     def __init__(self, state_cmd: StateAndCmd, policy_output: PolicyOutput):
         super().__init__()
@@ -32,6 +33,11 @@ class SmpRecovery(FSMState):
         self.clip_actions = float(cfg["clip_actions"])
         self.warmup_steps = int(cfg["warmup_steps"])
         self.control_dt = float(cfg["control_dt"])
+        self.observation_dim = int(cfg["observation_dim"])
+        if self.observation_dim != 93:
+            raise ValueError(
+                f"SMP recovery observation_dim must be 93, got {self.observation_dim}"
+            )
 
         for name, value in (
             ("default_joint_pos", self.default_q),
@@ -48,29 +54,40 @@ class SmpRecovery(FSMState):
         self._warmup_i = 0
 
         model_path = os.path.join(current_dir, "model", cfg["model_path"])
+        expected_sha256 = str(cfg["model_sha256"])
+        with open(model_path, "rb") as model_file:
+            actual_sha256 = hashlib.sha256(model_file.read()).hexdigest()
+        if actual_sha256 != expected_sha256:
+            raise ValueError(
+                "SMP recovery model SHA-256 mismatch: "
+                f"expected {expected_sha256}, got {actual_sha256}"
+            )
+
         options = ort.SessionOptions()
         options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
         self._session = ort.InferenceSession(model_path, options)
         model_input = self._session.get_inputs()[0]
         model_output = self._session.get_outputs()[0]
-        if model_input.shape[-1] != 96 or model_output.shape[-1] != 29:
+        if model_input.shape != [1, self.observation_dim] or model_output.shape != [1, 29]:
             raise ValueError(
                 f"Unexpected SMP model interface: {model_input.shape} -> {model_output.shape}"
             )
         self._input_name = model_input.name
         self._output_name = model_output.name
 
-        dummy = np.zeros((1, 96), dtype=np.float32)
+        dummy = np.zeros((1, self.observation_dim), dtype=np.float32)
         for _ in range(5):
             self._session.run([self._output_name], {self._input_name: dummy})
 
-        print(f"[SMP_RECOVERY] Initialized: {model_path} (96 -> 29)")
+        print(
+            f"[SMP_RECOVERY] Initialized: {model_path} "
+            f"({self.observation_dim} -> 29, sha256={actual_sha256})"
+        )
 
     def _build_obs(self) -> np.ndarray:
         """Match smp.rl.env_cfg actor-term order exactly."""
         obs = np.concatenate(
             (
-                np.zeros(3, dtype=np.float32),  # base_lin_vel_b unavailable: fixed zero
                 self.state_cmd.root_ang_vel_b,
                 self.state_cmd.gravity_ori,
                 self.state_cmd.q - self.default_q,
@@ -78,8 +95,13 @@ class SmpRecovery(FSMState):
                 self._last_action,
             )
         ).astype(np.float32)
-        if obs.shape != (96,):
-            raise ValueError(f"SMP recovery observation must be (96,), got {obs.shape}")
+        if obs.shape != (self.observation_dim,):
+            raise ValueError(
+                f"SMP recovery observation must be ({self.observation_dim},), "
+                f"got {obs.shape}"
+            )
+        if not np.isfinite(obs).all():
+            raise FloatingPointError("SMP recovery observation contains NaN or Inf")
         return obs
 
     def enter(self):
@@ -92,6 +114,10 @@ class SmpRecovery(FSMState):
         raw_action = self._session.run(
             [self._output_name], {self._input_name: obs}
         )[0].squeeze(0).astype(np.float32)
+        if raw_action.shape != (29,) or not np.isfinite(raw_action).all():
+            raise FloatingPointError(
+                f"SMP recovery action must be finite with shape (29,), got {raw_action.shape}"
+            )
         raw_action = np.clip(raw_action, -self.clip_actions, self.clip_actions)
         self._last_action[:] = raw_action
 

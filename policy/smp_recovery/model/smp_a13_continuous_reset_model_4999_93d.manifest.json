@@ -1,0 +1,90 @@
+{
+  "schema_version": 1,
+  "status": "SIMULATION_COMPARISON_CANARY_NOT_HARDWARE_APPROVED",
+  "policy_id": "smp-a13-continuous-reset-model4999-93d",
+  "source_repository": "lu-yidan/smp",
+  "source_branch": "codex/smp-scratch-causal-ablation",
+  "source_training_commit": "45f7d650bc39d4549d721a201a181dc54a26c63f",
+  "source_evaluation_commit": "e30a71bd98e3ad789587f449e2deefa51f9a4372",
+  "source_protocol_sha256": "d584340770777df238eaa59cf3e649469b9c8afff97cae9a039c41ee75f38bf3",
+  "source_launch_manifest_sha256": "e957fb108e5fafc2c032cbf31e00075fe0a266bfa0da716ebabdac21fba59ba0",
+  "source_task": "Smp-Getup-Scratch-A13-F2S2-Continuous-Reset-G1",
+  "source_run_name": "a13_continuous_reset_5k_seed20261501_offline_retry_after_auth",
+  "source_wandb_run": null,
+  "source_logging_note": "Training completed in offline mode after W&B authentication failure.",
+  "source_policy_seed": 20261501,
+  "source_environment_seed": 20261501,
+  "source_checkpoint": "model_4999.pt",
+  "source_checkpoint_iteration": 4999,
+  "source_checkpoint_sha256": "c4d05589645aa6b993e220c0cf3a9533fa83d50f5b9ed6764bb724b643cf1f94",
+  "source_agent_config_sha256": "3f2391c32b7a217476a3c3cec2b8d6063c710e29879bc0c5b2da63fa3cf84b43",
+  "source_environment_config_sha256": "242ae645ac6e401ad5407563bfbb40bee597b8a73e096a1349e7222a6a918579",
+  "warm_start": {
+    "source_policy": "A12 prone-coverage gate-3500",
+    "source_checkpoint_sha256": "c477624f4c79a6a628ad1fdfa53443a1edb65c47cc75be06610b16f497e37c15"
+  },
+  "onnx_file": "smp_a13_continuous_reset_model_4999_93d.onnx",
+  "onnx_sha256": "4e1ddcce7fcf6596846d293fe6381490d78fb643f60903873e6ebd03e9db2255",
+  "onnx_opset": 18,
+  "input": {
+    "name": "obs",
+    "shape": [1, 93],
+    "dtype": "float32",
+    "terms": [
+      ["base_ang_vel_b", 3],
+      ["projected_gravity", 3],
+      ["joint_pos_rel", 29],
+      ["joint_vel", 29],
+      ["last_action", 29]
+    ],
+    "normalizer_embedded": true
+  },
+  "output": {
+    "name": "actions",
+    "shape": [1, 29],
+    "dtype": "float32"
+  },
+  "export_parity": {
+    "backend": "onnx.reference.ReferenceEvaluator",
+    "sample_seed": 20261502,
+    "sample_count": 256,
+    "max_abs_error": 7.62939453125e-06,
+    "mean_abs_error": 7.466308602488425e-07,
+    "all_outputs_finite": true
+  },
+  "frozen_evaluation": {
+    "schema_version": 2,
+    "eval_seed": 20261510,
+    "num_envs_per_cell": 512,
+    "steps_per_cell": 500,
+    "cells": 35,
+    "rollouts": 17920,
+    "evaluation_manifest_sha256": "a50a15366b56ff35bfa4cec59e33aabe10c227f4599f5b9e4d43c666061adecb",
+    "complete_sha256": "917d8802eda8176e6b788c08a21f63426cfbfa0a79bf69eb4783da58bd8502d0",
+    "summary_sha256": "5148614749ba91cdc8d1ea064957dd47256a8ff328e8abff9ba1c48e98433040",
+    "fixed_pose_strict_success_rate": {
+      "native_gsi": 1.0,
+      "prone": 1.0,
+      "supine": 1.0,
+      "left_side": 1.0,
+      "right_side": 1.0
+    },
+    "fixed_pose_macro": 1.0,
+    "fixed_pose_worst": 1.0,
+    "fixed_pose_three_second_settled_macro": 0.08154,
+    "fixed_pose_three_second_settled_worst": 0.07422
+  },
+  "scope": [
+    "deployment_stack_mujoco_comparison",
+    "flat_ground",
+    "no_plate"
+  ],
+  "prohibited_claims": [
+    "real_hardware_approved",
+    "formal_hardware_evidence",
+    "independent_three_seed_confirmation",
+    "terrain_recovery",
+    "plate_escape",
+    "ral_readiness"
+  ]
+}

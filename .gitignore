@@ -47,6 +47,7 @@ Thumbs.db
 # ...except the released FreeKick policy weights, which ship with the repo.
 !policy/robonaldo/model/policy-obs-aic.onnx
 !policy/smp_recovery/model/smp_v33_escape_model_95000.onnx
+!policy/smp_recovery/model/smp_a13_continuous_reset_model_4999_93d.onnx
 
 # Local-only docs with sensitive infrastructure details (never publish)
 docs/vps_reverse_tunnel_zh.md

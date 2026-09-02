@@ -8,15 +8,51 @@ set -euo pipefail
 # publisher.
 
 SESSION_NAME="${1:-robomimic}"
-REPO_DIR="/home/unitree/yichao/RoboMimic_Deploy"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="${REPO_DIR:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
 TMUX_SHELL="bash --noprofile --norc"
-ROBOT_IFACE="${ROBOT_IFACE:-enP8p1s0}"
-UNITREE_SDK2_DIR="${UNITREE_SDK2_DIR:-/home/unitree/unitree_sdk2-main}"
-CYCLONEDDS_IDLC="${CYCLONEDDS_IDLC:-/opt/ros/humble/bin/idlc}"
+if [[ -z "${ROBOT_IFACE:-}" ]]; then
+  # Use the canonical sysfs name. Some G1 boards expose enP8p1s0 only as
+  # an altname of eth0; CycloneDDS must bind the real interface name.
+  if [[ -d /sys/class/net/eth0 ]]; then
+    ROBOT_IFACE=eth0
+  elif [[ -d /sys/class/net/enP8p1s0 ]]; then
+    ROBOT_IFACE=enP8p1s0
+  else
+    ROBOT_IFACE=eth0
+  fi
+fi
+if [[ -z "${UNITREE_SDK2_DIR:-}" ]]; then
+  for _sdk in \
+    /home/unitree/unitree_sdk2-main \
+    /home/unitree/Documents/zhoujiacheng/BFM-Zero-deploy/unitree_sdk2 \
+    /home/unitree/unitree_sdk2; do
+    if [[ -f "$_sdk/include/unitree/idl/hg/LowCmd_.hpp" ]]; then
+      UNITREE_SDK2_DIR="$_sdk"
+      break
+    fi
+  done
+  UNITREE_SDK2_DIR="${UNITREE_SDK2_DIR:-/home/unitree/unitree_sdk2-main}"
+fi
+if [[ -z "${CYCLONEDDS_IDLC:-}" ]]; then
+  for _idlc in /opt/ros/humble/bin/idlc /home/unitree/cyclonedds/install/bin/idlc /home/unitree/cyclonedds_ws/install/cyclonedds/bin/idlc; do
+    if [[ -x "$_idlc" ]]; then
+      CYCLONEDDS_IDLC="$_idlc"
+      break
+    fi
+  done
+  CYCLONEDDS_IDLC="${CYCLONEDDS_IDLC:-/opt/ros/humble/bin/idlc}"
+fi
 PYTHON_BIN="${PYTHON_BIN:-/home/unitree/miniconda3/envs/robomimic/bin/python}"
 CONDA_ENV_LIB="${CONDA_ENV_LIB:-/home/unitree/miniconda3/envs/robomimic/lib}"
 UNITREE_DDS_LIB="${UNITREE_SDK2_DIR}/thirdparty/lib/$(uname -m)"
-PY_CYCLONEDDS_LIB="${PY_CYCLONEDDS_LIB:-/home/unitree/share/opt/cyclonedds-0.10.5/lib}"
+if [[ -z "${PY_CYCLONEDDS_LIB:-}" ]]; then
+  if [[ -d /home/unitree/share/opt/cyclonedds-0.10.5/lib ]]; then
+    PY_CYCLONEDDS_LIB=/home/unitree/share/opt/cyclonedds-0.10.5/lib
+  else
+    PY_CYCLONEDDS_LIB=/home/unitree/cyclonedds/install/lib
+  fi
+fi
 BRIDGE_CYCLONEDDS_URI="<CycloneDDS><Domain><General><Interfaces><NetworkInterface name=\"${ROBOT_IFACE}\" priority=\"default\" multicast=\"default\" /></Interfaces></General><SharedMemory><Enable>false</Enable></SharedMemory></Domain></CycloneDDS>"
 PY_BRIDGE_CYCLONEDDS_URI="<CycloneDDS><Domain><General><Interfaces><NetworkInterface name=\"${ROBOT_IFACE}\" priority=\"default\" multicast=\"default\" /></Interfaces></General></Domain></CycloneDDS>"
 

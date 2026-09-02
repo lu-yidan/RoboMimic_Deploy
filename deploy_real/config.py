@@ -10,7 +10,7 @@ class Config:
         mujoco_yaml_path = os.path.join(current_dir, "config", "real.yaml")
         with open(mujoco_yaml_path, "r") as f:
             config = yaml.load(f, Loader=yaml.FullLoader)
-            self.net = config["net"]
+            self.net = os.environ.get("BRIDGE_NETWORK_INTERFACE") or os.environ.get("ROBOT_IFACE") or config["net"]
             self.num_joints = config["num_joints"]
             self.lowcmd_topic = config["lowcmd_topic"]
             self.lowstate_topic = config["lowstate_topic"]

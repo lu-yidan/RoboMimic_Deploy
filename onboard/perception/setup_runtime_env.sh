@@ -6,7 +6,15 @@
 # system copy.
 
 ROBOMIMIC_CONDA_ENV="${ROBOMIMIC_CONDA_ENV:-/home/unitree/miniconda3/envs/robomimic}"
-CYCLONEDDS_HOME="${CYCLONEDDS_HOME:-/home/unitree/share/opt/cyclonedds-0.10.5}"
+if [[ -z "${CYCLONEDDS_HOME:-}" ]]; then
+    if [[ -d /home/unitree/share/opt/cyclonedds-0.10.5 ]]; then
+        CYCLONEDDS_HOME=/home/unitree/share/opt/cyclonedds-0.10.5
+    elif [[ -d /home/unitree/cyclonedds/install ]]; then
+        CYCLONEDDS_HOME=/home/unitree/cyclonedds/install
+    else
+        CYCLONEDDS_HOME=/home/unitree/share/opt/cyclonedds-0.10.5
+    fi
+fi
 export CYCLONEDDS_HOME
 
 _runtime_ld_paths=(

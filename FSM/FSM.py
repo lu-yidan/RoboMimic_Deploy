@@ -62,6 +62,7 @@ class FSM:
             self.cur_policy.exit()
             self.get_next_policy(FSMStateName.SKILL_SMP_RECOVERY)
             self.FSMmode = FSMMode.CHANGE
+            print("Switched to ", self.cur_policy.name_str)
 
         if(self.FSMmode == FSMMode.NORMAL): 
             self.cur_policy.run()

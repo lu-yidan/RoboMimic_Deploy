@@ -1,4 +1,4 @@
-"""Deployable 93D A11 grounded-safety recovery policy for Unitree G1."""
+"""Selectable 93D SMP recovery engineering canaries for Unitree G1."""
 
 import hashlib
 import os
@@ -24,6 +24,15 @@ class SmpRecovery(FSMState):
         current_dir = os.path.dirname(os.path.abspath(__file__))
         with open(os.path.join(current_dir, "config", "smp_recovery.yaml")) as f:
             cfg = yaml.safe_load(f)
+
+        self.profile = os.environ.get("SMP_RECOVERY_PROFILE", "a11").strip().lower()
+        profiles = cfg.get("model_profiles", {})
+        if self.profile not in profiles:
+            allowed = ", ".join(sorted(profiles))
+            raise ValueError(
+                f"Unknown SMP_RECOVERY_PROFILE={self.profile!r}; expected one of: {allowed}"
+            )
+        model_cfg = profiles[self.profile]
 
         self.default_q = np.asarray(cfg["default_joint_pos"], dtype=np.float32)
         self.action_scale = np.asarray(cfg["action_scale"], dtype=np.float32)
@@ -53,8 +62,8 @@ class SmpRecovery(FSMState):
         self._entry_q = self.default_q.copy()
         self._warmup_i = 0
 
-        model_path = os.path.join(current_dir, "model", cfg["model_path"])
-        expected_sha256 = str(cfg["model_sha256"])
+        model_path = os.path.join(current_dir, "model", model_cfg["model_path"])
+        expected_sha256 = str(model_cfg["model_sha256"])
         with open(model_path, "rb") as model_file:
             actual_sha256 = hashlib.sha256(model_file.read()).hexdigest()
         if actual_sha256 != expected_sha256:
@@ -80,7 +89,7 @@ class SmpRecovery(FSMState):
             self._session.run([self._output_name], {self._input_name: dummy})
 
         print(
-            f"[SMP_RECOVERY] Initialized: {model_path} "
+            f"[SMP_RECOVERY] Initialized profile={self.profile}: {model_path} "
             f"({self.observation_dim} -> 29, sha256={actual_sha256})"
         )
 

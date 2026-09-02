@@ -25,12 +25,13 @@ class SmpRecovery(FSMState):
         with open(os.path.join(current_dir, "config", "smp_recovery.yaml")) as f:
             cfg = yaml.safe_load(f)
 
-        self.profile = os.environ.get("SMP_RECOVERY_PROFILE", "a11").strip().lower()
         profiles = cfg.get("model_profiles", {})
+        yaml_profile = str(cfg.get("profile", "a11")).strip().lower()
+        self.profile = os.environ.get("SMP_RECOVERY_PROFILE", yaml_profile).strip().lower()
         if self.profile not in profiles:
             allowed = ", ".join(sorted(profiles))
             raise ValueError(
-                f"Unknown SMP_RECOVERY_PROFILE={self.profile!r}; expected one of: {allowed}"
+                f"Unknown SMP recovery profile {self.profile!r}; expected one of: {allowed}"
             )
         model_cfg = profiles[self.profile]
 

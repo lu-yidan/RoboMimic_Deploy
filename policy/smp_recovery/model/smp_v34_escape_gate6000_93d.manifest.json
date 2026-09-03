@@ -1,0 +1,119 @@
+{
+  "schema_version": 1,
+  "status": "SIMULATION_COMPARISON_CANARY_NOT_HARDWARE_APPROVED",
+  "policy_id": "smp-v34-escape-gate6000-93d",
+  "source_repository": "lu-yidan/smp",
+  "source_branch": "codex/smp-scratch-causal-ablation",
+  "source_training_commit": "af8782a49939134731a644aa01445b4149410aaa",
+  "source_evaluation_commit": "f02c0718295267c05831f86911ed93bbf8d6400f",
+  "source_training_protocol_sha256": "11a0828e38ce83c27693b7b50a59778a5a67c690b4329bdf0fc2357a036d18ca",
+  "source_evaluation_protocol_sha256": "1f212abf7e627ac031fcca6637e69b5f43c2c94e6f703bfbc8de6e676734f52e",
+  "source_training_launch_manifest_sha256": "45318da3a3566a742ca51f826f334aa894fcd51c8517a0ff6d672da9d0fa546c",
+  "source_evaluation_plan_id": "6ea8233a7f1dab9d0439979696caa6f55dc84edbec62ccfaad3f936d55473c16",
+  "source_evaluation_plan_sha256": "cd978b4144f5d79ffbe643c35d6c7f6be02d5f98d58fa5c8cfcac7da0846ee0f",
+  "source_evaluation_aggregate_sha256": "6163e5237180c7e5558579f4c93064882bc89bfaf5a43680ec414b5c919459e3",
+  "source_task": "Smp-Getup-Escape-Plate-V34-93D-G1",
+  "source_run_name": "v34_93d_ablation_12k_seed20261701_offline",
+  "source_wandb_run": "tabletennis/smp/6qzo23hw",
+  "source_policy_seed": 20261701,
+  "source_environment_seed": 20261701,
+  "source_checkpoint": "model_6000.pt",
+  "source_checkpoint_iteration": 6000,
+  "source_checkpoint_sha256": "471fb41444a5d8f2bce1f93b0e2d65a613e86c1d417ef4cba36ba48b9779474b",
+  "source_agent_config_sha256": "c49d37d6837b090b3d051ccc3533a4f22e01b23f7cbc2e657617316406d19c5e",
+  "source_environment_config_sha256": "051a8a7f8f184960c3beadc671dbfe4e5e3d79b1b2f92121b2264e61eaa1f1a3",
+  "warm_start": {
+    "source_policy": "V34 96D model_98000 with zero-velocity-equivalent projection",
+    "source_checkpoint_sha256": "fa54ac58f09a1a0ed0b46f96fb920f18de20422190c9ee92207f3080a3cbe393",
+    "projected_checkpoint_sha256": "b24d3aa9003fe2a685b8be42a5144ee95b330e43440831bdf29364ebd5953f7a",
+    "projection_manifest_sha256": "ac94496c1ce54b2cd6dfc2150bb50c09a66557913e859bcd642258cc866227bb"
+  },
+  "onnx_file": "smp_v34_escape_gate6000_93d.onnx",
+  "onnx_sha256": "f6dcd529f5036de4b6060426238db4aa26e635f63c822a0968c77463d0758c55",
+  "onnx_opset": 18,
+  "input": {
+    "name": "obs",
+    "shape": [1, 93],
+    "dtype": "float32",
+    "terms": [
+      ["base_ang_vel_b", 3],
+      ["projected_gravity", 3],
+      ["joint_pos_rel", 29],
+      ["joint_vel", 29],
+      ["last_action", 29]
+    ],
+    "normalizer_embedded": true,
+    "excluded_terms": [
+      "base_linear_velocity",
+      "terrain_label",
+      "plate_label",
+      "reset_family",
+      "contact_label",
+      "future_reference"
+    ]
+  },
+  "output": {
+    "name": "actions",
+    "shape": [1, 29],
+    "dtype": "float32"
+  },
+  "export_parity": {
+    "backend": "onnx.reference.ReferenceEvaluator",
+    "sample_seed": 20261711,
+    "sample_count": 256,
+    "max_abs_error": 0.000030517578125,
+    "mean_abs_error": 6.651114682458212e-07,
+    "all_outputs_finite": true
+  },
+  "matched_simulation_evaluation": {
+    "status": "ANALYSIS_COMPLETE_SIMULATION_REVIEW_ONLY",
+    "eval_seed": 20261710,
+    "num_envs_per_cell": 512,
+    "steps_per_cell": 1000,
+    "total_cells": 14,
+    "total_rollouts": 7168,
+    "plate_mass_kg": 8.0,
+    "gate6000": {
+      "prone_escape_and_stand_rate": 0.947265625,
+      "supine_escape_and_stand_rate": 0.939453125,
+      "macro_success": 0.943359375,
+      "worst_pose_success": 0.939453125,
+      "invalid_macro": 0.056640625,
+      "joint_speed_p95_worst_rad_s": 16.482059478759766,
+      "mean_torque_macro_nm": 90.70445251464844,
+      "mean_power_macro_w": 365.2751159667969
+    },
+    "v34_96d_control": {
+      "prone_escape_and_stand_rate": 0.865234375,
+      "supine_escape_and_stand_rate": 0.916015625,
+      "macro_success": 0.890625,
+      "worst_pose_success": 0.865234375,
+      "invalid_macro": 0.1005859375,
+      "joint_speed_p95_worst_rad_s": 16.35856056213379,
+      "mean_torque_macro_nm": 82.14651107788086,
+      "mean_power_macro_w": 338.19952392578125
+    }
+  },
+  "runtime_safety": {
+    "default_profile": false,
+    "requires_explicit_profile": "v34_93d_gate6000",
+    "model_sha256_verified_before_session_creation": true,
+    "finite_observation_and_action_checks": true,
+    "training_effort_saturation": true,
+    "entry_target_interpolation_steps": 10,
+    "action_rate_envelope": false
+  },
+  "scope": [
+    "deployment_stack_mujoco_comparison",
+    "flat_ground",
+    "plate_escape",
+    "one_projected_finetuning_seed"
+  ],
+  "prohibited_claims": [
+    "real_hardware_approved",
+    "formal_hardware_evidence",
+    "independent_three_seed_confirmation",
+    "terrain_recovery",
+    "ral_readiness"
+  ]
+}

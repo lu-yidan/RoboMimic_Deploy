@@ -20,6 +20,11 @@ model_profiles:
   a13:
     model_path: "smp_a13_continuous_reset_model_4999_93d.onnx"
     model_sha256: "4e1ddcce7fcf6596846d293fe6381490d78fb643f60903873e6ebd03e9db2255"
+  # V34 plate-escape 96D-to-93D fine-tuning candidate. It is simulation-reviewed
+  # but not hardware-approved; select explicitly for staged canary testing.
+  v34_93d_gate6000:
+    model_path: "smp_v34_escape_gate6000_93d.onnx"
+    model_sha256: "f6dcd529f5036de4b6060426238db4aa26e635f63c822a0968c77463d0758c55"
 observation_dim: 93
 control_dt: 0.02
 clip_actions: 10.0

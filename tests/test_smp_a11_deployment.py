@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -41,17 +42,18 @@ class SmpA11DeploymentTest(unittest.TestCase):
     def _policy(self):
         state = StateAndCmd(29)
         output = PolicyOutput(29)
-        with patch("policy.smp_recovery.SmpRecovery.ort.InferenceSession", _FakeSession):
-            policy = SmpRecovery(state, output)
+        with patch.dict(os.environ, {"SMP_RECOVERY_PROFILE": "a11"}):
+            with patch("policy.smp_recovery.SmpRecovery.ort.InferenceSession", _FakeSession):
+                policy = SmpRecovery(state, output)
         return policy, state, output
 
     def test_model_and_manifest_are_sha_bound(self):
         cfg = yaml.safe_load(CONFIG.read_text())
         manifest = json.loads(MANIFEST.read_text())
-        model = MODEL_DIR / cfg["model_path"]
+        model = MODEL_DIR / cfg["model_profiles"]["a11"]["model_path"]
         digest = hashlib.sha256(model.read_bytes()).hexdigest()
         self.assertEqual(cfg["observation_dim"], 93)
-        self.assertEqual(digest, cfg["model_sha256"])
+        self.assertEqual(digest, cfg["model_profiles"]["a11"]["model_sha256"])
         self.assertEqual(digest, manifest["onnx_sha256"])
         self.assertEqual(manifest["input"]["shape"], [1, 93])
         self.assertTrue(manifest["input"]["normalizer_embedded"])

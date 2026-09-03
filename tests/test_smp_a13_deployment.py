@@ -39,14 +39,14 @@ class _FakeSession:
 
 
 class SmpA13DeploymentTest(unittest.TestCase):
-    def test_a11_remains_default_and_a13_requires_explicit_profile(self):
+    def test_yaml_profile_is_default_and_env_can_select_a13(self):
         state = StateAndCmd(29)
         output = PolicyOutput(29)
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("SMP_RECOVERY_PROFILE", None)
             with patch("policy.smp_recovery.SmpRecovery.ort.InferenceSession", _FakeSession):
                 policy = SmpRecovery(state, output)
-        self.assertEqual(policy.profile, "a11")
+        self.assertEqual(policy.profile, "v34_93d_gate6000")
 
         with patch.dict(os.environ, {"SMP_RECOVERY_PROFILE": "a13"}):
             with patch("policy.smp_recovery.SmpRecovery.ort.InferenceSession", _FakeSession):
@@ -55,7 +55,7 @@ class SmpA13DeploymentTest(unittest.TestCase):
 
     def test_unknown_profile_fails_closed(self):
         with patch.dict(os.environ, {"SMP_RECOVERY_PROFILE": "unknown"}):
-            with self.assertRaisesRegex(ValueError, "Unknown SMP_RECOVERY_PROFILE"):
+            with self.assertRaisesRegex(ValueError, "Unknown SMP recovery profile"):
                 SmpRecovery(StateAndCmd(29), PolicyOutput(29))
 
     def test_a13_model_manifest_and_runtime_interface(self):

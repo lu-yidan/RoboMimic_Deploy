@@ -25,13 +25,13 @@ PROFILE = "v34_93d_gate6000"
 
 
 class SmpV34DeploymentTest(unittest.TestCase):
-    def test_v34_requires_explicit_profile(self):
-        with patch.dict(os.environ, {"SMP_RECOVERY_PROFILE": PROFILE}):
+    def test_v34_is_the_yaml_default_profile(self):
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("SMP_RECOVERY_PROFILE", None)
             policy = SmpRecovery(StateAndCmd(29), PolicyOutput(29))
         self.assertEqual(policy.profile, PROFILE)
 
-        with patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("SMP_RECOVERY_PROFILE", None)
+        with patch.dict(os.environ, {"SMP_RECOVERY_PROFILE": "a11"}):
             policy = SmpRecovery(StateAndCmd(29), PolicyOutput(29))
         self.assertEqual(policy.profile, "a11")
 

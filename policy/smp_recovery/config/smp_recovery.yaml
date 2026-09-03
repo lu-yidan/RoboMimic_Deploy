@@ -8,20 +8,20 @@
 # joint_pos_rel(29), joint_vel(29), last_action(29). True base linear
 # velocity and deployment-time placeholder zeros are both absent.
 # The exported ONNX embeds the checkpoint observation normalizer.
+#
+# Switch policy here. Allowed: a11 | a13 | v34_93d_gate6000
+profile: v34_93d_gate6000
 
-model_path: "smp_a11_grounded_safety_gate1000_93d.onnx"
-model_sha256: "d7dbf7824c0582866b12ab5987747e91271ef16f6de60587656a4a545c1a795e"
+model_path: "smp_v34_escape_gate6000_93d.onnx"
+model_sha256: "f6dcd529f5036de4b6060426238db4aa26e635f63c822a0968c77463d0758c55"
 model_profiles:
-  # Default remains A11 so pulling this branch cannot silently activate A13.
   a11:
     model_path: "smp_a11_grounded_safety_gate1000_93d.onnx"
     model_sha256: "d7dbf7824c0582866b12ab5987747e91271ef16f6de60587656a4a545c1a795e"
-  # Simulation comparison canary. Select explicitly with SMP_RECOVERY_PROFILE=a13.
   a13:
     model_path: "smp_a13_continuous_reset_model_4999_93d.onnx"
     model_sha256: "4e1ddcce7fcf6596846d293fe6381490d78fb643f60903873e6ebd03e9db2255"
-  # V34 plate-escape 96D-to-93D fine-tuning candidate. It is simulation-reviewed
-  # but not hardware-approved; select explicitly for staged canary testing.
+  # Default V34 plate-escape 93D canary. Simulation-reviewed, not hardware-approved.
   v34_93d_gate6000:
     model_path: "smp_v34_escape_gate6000_93d.onnx"
     model_sha256: "f6dcd529f5036de4b6060426238db4aa26e635f63c822a0968c77463d0758c55"

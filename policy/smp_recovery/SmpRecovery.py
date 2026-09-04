@@ -27,7 +27,7 @@ class SmpRecovery(FSMState):
 
         env_profile = os.environ.get("SMP_RECOVERY_PROFILE", "").strip()
         self.profile = (
-            env_profile or str(cfg.get("profile", "v34_93d_gate6000"))
+            env_profile or str(cfg.get("profile", "v35_rd_gate5999"))
         ).strip().lower()
         profiles = cfg.get("model_profiles", {})
         if self.profile not in profiles:

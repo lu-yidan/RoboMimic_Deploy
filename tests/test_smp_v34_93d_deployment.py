@@ -25,15 +25,15 @@ PROFILE = "v34_93d_gate6000"
 
 
 class SmpV34DeploymentTest(unittest.TestCase):
-    def test_v34_is_the_yaml_default_profile(self):
+    def test_v34_remains_selectable_when_rd_is_default(self):
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("SMP_RECOVERY_PROFILE", None)
             policy = SmpRecovery(StateAndCmd(29), PolicyOutput(29))
-        self.assertEqual(policy.profile, PROFILE)
+        self.assertEqual(policy.profile, "v35_rd_gate5999")
 
-        with patch.dict(os.environ, {"SMP_RECOVERY_PROFILE": "a11"}):
+        with patch.dict(os.environ, {"SMP_RECOVERY_PROFILE": PROFILE}):
             policy = SmpRecovery(StateAndCmd(29), PolicyOutput(29))
-        self.assertEqual(policy.profile, "a11")
+        self.assertEqual(policy.profile, PROFILE)
 
     def test_model_manifest_and_runtime_interface(self):
         cfg = yaml.safe_load(CONFIG.read_text())

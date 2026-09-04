@@ -1,0 +1,122 @@
+{
+  "schema_version": 1,
+  "status": "ENGINEERING_DEPLOYMENT_CANARY_NOT_HARDWARE_APPROVED",
+  "policy_id": "smp-v35-rd-seed20261801-gate5999-93d",
+  "source_repository": "lu-yidan/smp",
+  "source_branch": "codex/smp-scratch-causal-ablation",
+  "source_training_commit": "81b031c7907dd009e4ed686eaec9963a54ced447",
+  "source_protocol": "docs/ral_v34_93d_reset_stability_finetune_v1.json",
+  "source_protocol_sha256": "b8536e03df6d87b61a9332c45fbe690b84e3f02fdd03ce7d2be9b1cef5bc1ca0",
+  "source_training_launch_plan_id": "561f4e4f7cc808214e86f25d89122e5a7b51426d2cfe5cea7d8654222ff2474e",
+  "source_training_launch_manifest_sha256": "302ea55316d0af06ce07c3ef5ec900fd237efeafc909d82282957867e69272f9",
+  "source_task": "Smp-Getup-Escape-Plate-V35-93D-Reset-Stability-Wrench-G1",
+  "source_arm": "RD",
+  "source_run_name": "v35_rd_6k_seed20261801_online",
+  "source_wandb_run": "tabletennis/smp/b7n8ih2u",
+  "source_policy_seed": 20261801,
+  "source_environment_seed": 20261801,
+  "source_checkpoint": "model_5999.pt",
+  "source_checkpoint_iteration": 5999,
+  "source_checkpoint_sha256": "9f31070bd5f22cfa5f6bf0c9ab13755f8dc4d20b4c88ba2a4bb4c8a6fa92c044",
+  "source_agent_config_sha256": "c16c10a5a3f9b480f31ce18f928dc4649256781f1e12d191b9dee45754eecd3a",
+  "source_environment_config_sha256": "52e54d343e3855efc79ad8ae196e10c7a6498b8955336cb6a613b508f49d3489",
+  "source_git_provenance_sha256": "95e8b10ebaa59a4cdc3be18a2ec5f822567377b92e7e453db0e766400eb8e215",
+  "checkpoint_integrity": {
+    "embedded_iteration": 5999,
+    "actor_state_dict_present": true,
+    "actor_tensor_count": 13,
+    "actor_tensor_elements": 216402,
+    "critic_state_dict_present": true,
+    "critic_tensor_count": 12,
+    "critic_tensor_elements": 659266,
+    "all_actor_critic_tensors_finite": true
+  },
+  "warm_start": {
+    "source_policy": "V34 gate-6000 93D",
+    "source_checkpoint_sha256": "471fb41444a5d8f2bce1f93b0e2d65a613e86c1d417ef4cba36ba48b9779474b",
+    "loaded_components": ["actor", "critic", "observation_normalizers"],
+    "optimizer_iteration_and_environment_steps_reset": true
+  },
+  "onnx_file": "smp_v35_rd_seed20261801_gate5999_93d.onnx",
+  "onnx_sha256": "9a446a1e299eaf1af5bf1f260e8c544cf8ed31b6a41742cb190a43512f1a6a9c",
+  "onnx_opset": 18,
+  "input": {
+    "name": "obs",
+    "shape": [1, 93],
+    "dtype": "float32",
+    "terms": [
+      ["base_ang_vel_b", 3],
+      ["projected_gravity", 3],
+      ["joint_pos_rel", 29],
+      ["joint_vel", 29],
+      ["last_action", 29]
+    ],
+    "normalizer_embedded": true,
+    "excluded_terms": [
+      "base_linear_velocity",
+      "terrain_label",
+      "plate_label",
+      "reset_family",
+      "contact_label",
+      "future_reference"
+    ]
+  },
+  "output": {
+    "name": "actions",
+    "shape": [1, 29],
+    "dtype": "float32"
+  },
+  "export_parity": {
+    "backend": "onnx.reference.ReferenceEvaluator",
+    "sample_seed": 20261811,
+    "sample_count": 256,
+    "max_abs_error": 0.000030517578125,
+    "mean_abs_error": 8.716881438886048e-7,
+    "all_outputs_finite": true
+  },
+  "training_contract": {
+    "num_envs": 4096,
+    "rollout_steps_per_update": 24,
+    "fine_tune_iterations": 6000,
+    "save_interval": 500,
+    "learning_rate": 0.00001,
+    "physics_timestep_s": 0.005,
+    "decimation": 4,
+    "policy_period_s": 0.02,
+    "standing_hold_steps": 100,
+    "standing_hold_seconds": 2.0,
+    "flat_ground": true,
+    "expanded_grounded_reset": true,
+    "finite_post_stand_physical_wrench": true,
+    "terrain_training": false,
+    "action_target_rate_envelope": false
+  },
+  "evidence_status": {
+    "formal_frozen_evaluation_complete": false,
+    "independent_from_scratch_three_seed_confirmation": false,
+    "performance_claim_authorized": false,
+    "qualitative_review_only": true
+  },
+  "runtime_safety": {
+    "default_profile": true,
+    "model_sha256_verified_before_session_creation": true,
+    "finite_observation_and_action_checks": true,
+    "training_effort_saturation": true,
+    "entry_target_interpolation_steps": 10,
+    "action_rate_envelope": false
+  },
+  "scope": [
+    "deployment_stack_mujoco_comparison",
+    "flat_ground",
+    "plate_escape",
+    "post_stand_wrench_recovery",
+    "single_finetuning_seed_canary"
+  ],
+  "prohibited_claims": [
+    "real_hardware_approved",
+    "formal_hardware_evidence",
+    "independent_three_seed_confirmation",
+    "terrain_recovery",
+    "ral_readiness"
+  ]
+}

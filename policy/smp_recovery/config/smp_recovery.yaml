@@ -9,7 +9,8 @@
 # velocity and deployment-time placeholder zeros are both absent.
 # The exported ONNX embeds the checkpoint observation normalizer.
 #
-# Switch policy here. Allowed: a11 | a13 | v34_93d_gate6000 | v35_rd_gate5999
+# Switch policy here. Allowed: a11 | a13 | v34_93d_gate6000 |
+# v35_rd_gate5999 | v36_sd_seed20261902_gate5999
 profile: v35_rd_gate5999
 
 model_path: "smp_v35_rd_seed20261801_gate5999_93d.onnx"
@@ -29,6 +30,10 @@ model_profiles:
   v35_rd_gate5999:
     model_path: "smp_v35_rd_seed20261801_gate5999_93d.onnx"
     model_sha256: "9a446a1e299eaf1af5bf1f260e8c544cf8ed31b6a41742cb190a43512f1a6a9c"
+  # Explicit V36 SD stairs+wrench engineering canary. Not hardware-approved.
+  v36_sd_seed20261902_gate5999:
+    model_path: "smp_v36_sd_seed20261902_gate5999_93d.onnx"
+    model_sha256: "392dfda5ad441532d3e7ddc1142cee867643823bfc8acd271e454b3f9004fd4d"
 observation_dim: 93
 control_dt: 0.02
 clip_actions: 10.0

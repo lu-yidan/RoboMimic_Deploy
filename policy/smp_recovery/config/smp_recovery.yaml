@@ -1,8 +1,8 @@
-# SMP A11 grounded-safety engineering canary, gate 1000.
-# Source branch: codex/smp-scratch-causal-ablation
-# Source W&B run: tabletennis/smp/slbh9cnq, checkpoint: model_1000.pt
+# SMP V33 reward-transfer FT 12k, 93D.
+# Source branch: codex/v33-reward-recovery
+# Source checkpoint: model_12000.pt
 # Source checkpoint SHA-256:
-# 5fecaee243ac8fea0798a4adf9de4b4801414203ce66a33a72b59876f3314bfb
+# 8f05543b644b0a1d11246e85778f99220460ef2a744417ea940296eed768c768
 #
 # Actor observation (93): base_ang_vel_b(3), projected_gravity(3),
 # joint_pos_rel(29), joint_vel(29), last_action(29). True base linear
@@ -10,12 +10,12 @@
 # The exported ONNX embeds the checkpoint observation normalizer.
 #
 # Switch policy here. Allowed: a11 | a13 | v34_93d_gate6000 | v35_rd_gate5999 | ft12k_sim
-profile: v35_rd_gate5999
+profile: ft12k_sim
 
-model_path: "smp_v35_rd_seed20261801_gate5999_93d.onnx"
-model_sha256: "9a446a1e299eaf1af5bf1f260e8c544cf8ed31b6a41742cb190a43512f1a6a9c"
+model_path: "smp_v33_reward_ft12000_93d.onnx"
+model_sha256: "51aed4a4c591b3bd3fbb0a692221ec9d674fe5942141d195e65bbfe1bfd560e7"
 model_profiles:
-  # Explicit opt-in simulation candidate; default profile remains unchanged.
+  # Default V33 FT 12k candidate. Simulation-validated; not hardware-tested.
   ft12k_sim:
     model_path: "smp_v33_reward_ft12000_93d.onnx"
     model_sha256: "51aed4a4c591b3bd3fbb0a692221ec9d674fe5942141d195e65bbfe1bfd560e7"
@@ -25,11 +25,11 @@ model_profiles:
   a13:
     model_path: "smp_a13_continuous_reset_model_4999_93d.onnx"
     model_sha256: "4e1ddcce7fcf6596846d293fe6381490d78fb643f60903873e6ebd03e9db2255"
-  # Default V34 plate-escape 93D canary. Simulation-reviewed, not hardware-approved.
+  # V34 plate-escape 93D canary. Simulation-reviewed, not hardware-approved.
   v34_93d_gate6000:
     model_path: "smp_v34_escape_gate6000_93d.onnx"
     model_sha256: "f6dcd529f5036de4b6060426238db4aa26e635f63c822a0968c77463d0758c55"
-  # Default V35 RD flat reset+wrench canary. Not hardware-approved.
+  # V35 RD flat reset+wrench canary. Not hardware-approved.
   v35_rd_gate5999:
     model_path: "smp_v35_rd_seed20261801_gate5999_93d.onnx"
     model_sha256: "9a446a1e299eaf1af5bf1f260e8c544cf8ed31b6a41742cb190a43512f1a6a9c"

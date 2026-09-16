@@ -59,3 +59,6 @@ docs/vps_reverse_tunnel_zh.md
 recordings/*.mp4
 
 .tmp_pkg/
+
+# Reproducible FT12k simulation validation candidate.
+!policy/smp_recovery/model/smp_v33_reward_ft12000_93d.onnx

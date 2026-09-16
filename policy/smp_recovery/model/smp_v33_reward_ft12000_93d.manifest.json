@@ -1,0 +1,34 @@
+{
+  "profile": "ft12k_sim",
+  "status": "SIMULATION_VALIDATION_ONLY",
+  "checkpoint_sha256": "8f05543b644b0a1d11246e85778f99220460ef2a744417ea940296eed768c768",
+  "onnx_sha256": "51aed4a4c591b3bd3fbb0a692221ec9d674fe5942141d195e65bbfe1bfd560e7",
+  "normalizer_embedded": true,
+  "input": [
+    1,
+    93
+  ],
+  "output": [
+    1,
+    29
+  ],
+  "random_inputs": 512,
+  "max_abs_error": 1.1444091796875e-05,
+  "default_profile_unchanged": true,
+  "evaluation": {
+    "nominal_20s_stable10s": {
+      "success": 63,
+      "n": 64
+    },
+    "contact_checked_intermediate_zero_velocity": {
+      "success": 7,
+      "n": 7,
+      "scope": "seven poses from one trajectory"
+    },
+    "observed_supine_foot_pelvis_penetration_m": 0.007801166154757585,
+    "hardware_tested": false,
+    "deployment_mujoco": "3.2.3",
+    "training_mujoco": "3.8.1",
+    "actual_rollout_onnx_max_abs_error": 1.9073486328125e-06
+  }
+}

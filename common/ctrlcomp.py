@@ -11,7 +11,9 @@ class StateAndCmd:
         self.q = np.zeros(num_joints, dtype=np.float32)
         self.dq = np.zeros(num_joints, dtype=np.float32)
         self.ddq = np.zeros(num_joints, dtype=np.float32)
-        self.tau_est = np.zeros(num_joints, dtype=np.float32)
+        self.tau_est = np.full(num_joints, np.nan, dtype=np.float32)
+        self.tau_est_valid = False
+        self.telemetry = {}
         self.gravity_ori = np.array([0., 0., 1.])
         self.ang_vel = np.zeros(3)
         # body-frame velocities for BeyondMimic (filled in deploy_mujoco)

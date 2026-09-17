@@ -56,6 +56,10 @@ struct BridgeStateFrame {
   std::vector<float> q = std::vector<float>(kNumJoints, 0.0f);
   std::vector<float> dq = std::vector<float>(kNumJoints, 0.0f);
   std::vector<float> imu_quat_wxyz = {1.0f, 0.0f, 0.0f, 0.0f};
+  std::vector<float> tau_est = std::vector<float>(kNumJoints, 0.0f);
+  std::vector<float> ddq = std::vector<float>(kNumJoints, 0.0f);
+  std::vector<float> imu_accel = std::vector<float>(3, 0.0f);
+  std::vector<float> motor_temperature = std::vector<float>(2*kNumJoints, 0.0f);
   std::vector<float> imu_gyro = {0.0f, 0.0f, 0.0f};
   std::vector<uint8_t> remote_raw = std::vector<uint8_t>(kRemoteRawBytes, 0);
 };
@@ -129,6 +133,10 @@ class UnitreeIoAdapter {
     for (int i = 0; i < kNumJoints; ++i) {
       out_state.q[i] = low_state->motor_state()[i].q();
       out_state.dq[i] = low_state->motor_state()[i].dq();
+      out_state.tau_est[i] = low_state->motor_state()[i].tau_est();
+      out_state.ddq[i] = low_state->motor_state()[i].ddq();
+      for (int j = 0; j < 2; ++j)
+        out_state.motor_temperature[2*i+j] = low_state->motor_state()[i].temperature()[j];
     }
     const auto& quat = low_state->imu_state().quaternion();
     for (size_t i = 0; i < out_state.imu_quat_wxyz.size(); ++i) {
@@ -137,6 +145,7 @@ class UnitreeIoAdapter {
     const auto& gyro = low_state->imu_state().gyroscope();
     for (size_t i = 0; i < out_state.imu_gyro.size(); ++i) {
       out_state.imu_gyro[i] = gyro[i];
+      out_state.imu_accel[i] = low_state->imu_state().accelerometer()[i];
     }
     std::memcpy(out_state.remote_raw.data(), low_state->wireless_remote().data(), kRemoteRawBytes);
     return true;
@@ -240,6 +249,9 @@ class DdsBridgeTransport {
         participant_, &mjlab_msg_dds__BridgeState__desc, config.bridge_state_topic.c_str(), qos, nullptr);
     cmd_topic_ = dds_create_topic(
         participant_, &mjlab_msg_dds__BridgeCmd__desc, config.bridge_cmd_topic.c_str(), qos, nullptr);
+    diagnostics_topic_ = dds_create_topic(participant_, &mjlab_msg_dds__BridgeDiagnostics__desc,
+        (config.bridge_state_topic + "_diagnostics").c_str(), qos, nullptr);
+    diagnostics_writer_ = dds_create_writer(participant_, diagnostics_topic_, qos, nullptr);
     state_writer_ = dds_create_writer(participant_, state_topic_, qos, nullptr);
     cmd_reader_ = dds_create_reader(participant_, cmd_topic_, qos, nullptr);
     dds_delete_qos(qos);
@@ -260,6 +272,14 @@ class DdsBridgeTransport {
     AssignFloatSeq(msg.imu_quat_wxyz, state.imu_quat_wxyz);
     AssignFloatSeq(msg.imu_gyro, state.imu_gyro);
     AssignOctetSeq(msg.remote_raw, state.remote_raw);
+    // Publish diagnostics first; receiver pairs by exact firmware tick.
+    mjlab_msg_dds__BridgeDiagnostics_ diag{};
+    diag.tick = state.tick;
+    AssignFloatSeq(diag.tau_est, state.tau_est);
+    AssignFloatSeq(diag.ddq, state.ddq);
+    AssignFloatSeq(diag.imu_accel, state.imu_accel);
+    AssignFloatSeq(diag.motor_temperature, state.motor_temperature);
+    if (diagnostics_writer_ > 0) dds_write(diagnostics_writer_, &diag);
     dds_write(state_writer_, &msg);
   }
 
@@ -321,6 +341,8 @@ class DdsBridgeTransport {
 
   BridgeConfig config_;
   dds_entity_t participant_{-1};
+  dds_entity_t diagnostics_topic_{-1};
+  dds_entity_t diagnostics_writer_{-1};
   dds_entity_t state_topic_{-1};
   dds_entity_t cmd_topic_{-1};
   dds_entity_t state_writer_{-1};

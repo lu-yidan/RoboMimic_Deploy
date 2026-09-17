@@ -200,6 +200,10 @@ class Controller:
                 self.dqj[i] = self.low_state.motor_state[i].dq          # 关节速度
                 self.state_cmd.tau_est[i] = self.low_state.motor_state[i].tau_est
 
+            self.state_cmd.tau_est_valid = bool(np.isfinite(self.state_cmd.tau_est).all())
+            self.state_cmd.telemetry = {"imu_accel": list(self.low_state.imu_state.accelerometer),
+                "motor_ddq": [m.ddq for m in self.low_state.motor_state[:self.num_joints]]}
+
             # imu_state quaternion: w, x, y, z
             quat = self.low_state.imu_state.quaternion
             ang_vel = np.array(self.low_state.imu_state.gyroscope, dtype=np.float32)

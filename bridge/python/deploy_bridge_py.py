@@ -13,6 +13,7 @@ from unitree_sdk2py.idl.unitree_hg.msg.dds_ import LowState_ as LowStateHG
 from unitree_sdk2py.utils.crc import CRC
 
 from bridge.python.bridge_state_dds import BridgeStatePublisher
+from bridge.python.bridge_diagnostics_dds import DiagnosticsPublisher
 from bridge.python.bridge_cmd_dds import BridgeCmdSubscriber
 from common.command_helper import create_damping_cmd, init_cmd_hg, MotorMode
 from deploy_real.config import Config
@@ -38,6 +39,7 @@ class PythonSdk2Bridge:
             domain_id=config.bridge_domain_id,
             topic_name=config.bridge_state_topic,
         )
+        self.diagnostics_pub = DiagnosticsPublisher(self.bridge_state_pub._dp, config.bridge_state_topic)
         self.bridge_cmd_sub = BridgeCmdSubscriber(
             domain_id=config.bridge_domain_id,
             topic_name=config.bridge_cmd_topic,
@@ -66,13 +68,15 @@ class PythonSdk2Bridge:
         self.lowcmd_publisher.Write(self.low_cmd)
 
     def publish_bridge_state(self):
-        q = [float(m.q) for m in self.low_state.motor_state]
-        dq = [float(m.dq) for m in self.low_state.motor_state]
-        quat = [float(v) for v in self.low_state.imu_state.quaternion]
-        gyro = [float(v) for v in self.low_state.imu_state.gyroscope]
-        remote_raw = list(self.low_state.wireless_remote[:24])
+        low_state = self.low_state  # one immutable DDS message for both topics
+        self.diagnostics_pub.publish(low_state)
+        q = [float(m.q) for m in low_state.motor_state]
+        dq = [float(m.dq) for m in low_state.motor_state]
+        quat = [float(v) for v in low_state.imu_state.quaternion]
+        gyro = [float(v) for v in low_state.imu_state.gyroscope]
+        remote_raw = list(low_state.wireless_remote[:24])
         self.bridge_state_pub.publish(
-            tick=int(self.low_state.tick),
+            tick=int(low_state.tick),
             q=q,
             dq=dq,
             imu_quat_wxyz=quat,

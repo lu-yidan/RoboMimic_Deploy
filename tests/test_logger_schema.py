@@ -12,7 +12,7 @@ from common.logger import Logger
 
 
 class LoggerSchemaTest(unittest.TestCase):
-    def test_schema_two_records_hardware_evidence_signals(self) -> None:
+    def test_schema_three_records_hardware_evidence_signals(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             state = SimpleNamespace(
                 q=np.full(29, 0.1, dtype=np.float32),
@@ -42,7 +42,7 @@ class LoggerSchemaTest(unittest.TestCase):
             logger.close()
             binary = next(Path(temporary).glob("*_schema2.bin"))
             loaded = Logger.load(str(binary))
-            self.assertEqual(loaded["_meta"]["logger_schema_version"], 2)
+            self.assertEqual(loaded["_meta"]["logger_schema_version"], 3)
             np.testing.assert_allclose(loaded["tau_est"][0], state.tau_est)
             np.testing.assert_allclose(loaded["tau_cmd_est"][0], 2.6)
             np.testing.assert_allclose(loaded["gravity_ori"][0], [0, 0, -1])

@@ -58,6 +58,7 @@ find_package(Threads REQUIRED)
 add_library(unitree_sdk2_bridge_deps INTERFACE)
 target_include_directories(unitree_sdk2_bridge_deps INTERFACE
   ${UNITREE_SDK2_INCLUDE_DIR}
+  ${UNITREE_SDK2_INCLUDE_DIR}/ddscxx
   ${UNITREE_SDK2_DIR}/thirdparty/include
   ${UNITREE_SDK2_DIR}/thirdparty/include/ddscxx
 )
@@ -89,6 +90,7 @@ if(CYCLONEDDS_IDLC)
   add_library(policy_bridge_idl STATIC ${BRIDGE_GENERATED_DIR}/policy_bridge.c)
   target_include_directories(policy_bridge_idl PUBLIC
     ${BRIDGE_GENERATED_DIR}
+    ${UNITREE_SDK2_INCLUDE_DIR}
     ${UNITREE_SDK2_DIR}/thirdparty/include
   )
   target_link_libraries(policy_bridge_idl PUBLIC ${DDSC_LIB})

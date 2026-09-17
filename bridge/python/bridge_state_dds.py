@@ -90,6 +90,7 @@ class BridgeStateSubscriber:
         self._lock = threading.Lock()
         self._last = BridgeState()
         self._received_at = 0
+        self._received_monotonic = 0.0
         self._thread: threading.Thread | None = None
         self._running = False
 
@@ -111,6 +112,8 @@ class BridgeStateSubscriber:
                     with self._lock:
                         self._last = newest
                         self._received_at = int(time.time() * 1e6)
+                        self._received_monotonic = time.monotonic()
+                        newest._local_received_monotonic = self._received_monotonic
                     if self._callback:
                         self._callback(newest)
             except Exception:

@@ -37,7 +37,13 @@ def main():
             if loop_dt < config.control_dt:
                 time.sleep(config.control_dt - loop_dt)
     except KeyboardInterrupt:
-        pass
+        if runtime._logger is not None:
+            runtime._logger.event("keyboard_interrupt", time_s=time.monotonic()-runtime._log_start)
+    except Exception as error:
+        if runtime._logger is not None:
+            runtime._logger.event("runtime_exception", time_s=time.monotonic()-runtime._log_start,
+                                  error_type=type(error).__name__, message=str(error))
+        raise
     finally:
         runtime.close()
         cmd_pub.publish(

@@ -1,5 +1,7 @@
 import json
 import os
+import subprocess
+import hashlib
 from typing import Optional
 import numpy as np
 from datetime import datetime
@@ -7,10 +9,10 @@ from pathlib import Path
 
 
 class Logger:
-    """Crash-safe, versioned binary logger for FSM policy execution.
+    """Versioned binary logger for FSM policy execution.
 
     Each call to log() writes one fixed-size float32 record and immediately
-    flushes, so no data is lost if the process crashes.
+    flushes to the OS. This is not an fsync guarantee against power loss.
 
     Schema 1 record layout (114 float32 values, retained for loading):
         step(1), time_s(1), q(29), dq(29),
@@ -26,14 +28,14 @@ class Logger:
         gravity_ori(3), ang_vel(3), skill_cmd(1)
 
     ``load`` reads the field layout stored in each log's metadata, so schema 1
-    logs remain compatible after schema 2 is introduced.
+    and schema 2 logs remain compatible with schema 3.
 
     Files written:
         <log_dir>/<YYYYMMDD_HHMMSS>_<tag>.bin   binary frames
         <log_dir>/<YYYYMMDD_HHMMSS>_<tag>.json  metadata
     """
 
-    SCHEMA_VERSION = 2
+    SCHEMA_VERSION = 3
     LEGACY_FIELDS = [
         ("step",         1),
         ("time_s",       1),
@@ -60,7 +62,17 @@ class Logger:
         ("ang_vel", 3),
         ("skill_cmd", 1),
     ]
-    RECORD_DIM: int = sum(n for _, n in FIELDS)  # 114
+    EXTRA_FIELDS = [
+        ("tau_est_valid", 1), ("executed_fsm_state", 1), ("smp_activation_id", 1),
+        ("smp_obs", 93), ("smp_raw_action", 29), ("smp_clipped_action", 29),
+        ("smp_policy_target", 29), ("smp_prelimit_target", 29),
+        ("smp_target_limited", 29), ("smp_warmup_alpha", 1), ("policy_compute_ms", 1),
+        ("imu_accel", 3), ("motor_ddq", 29), ("motor_temperature", 58),
+        ("state_tick_words", 2), ("command_seq_words", 2), ("state_age_ms", 1),
+        ("loop_period_ms", 1), ("runtime_compute_ms", 1), ("remote_raw", 24),
+    ]
+    FIELDS = FIELDS + EXTRA_FIELDS
+    RECORD_DIM: int = sum(n for _, n in FIELDS)
 
     def __init__(self, log_dir: str, tag: str = "freekick",
                  extra_meta: Optional[dict] = None) -> None:
@@ -72,6 +84,9 @@ class Logger:
         self._meta_path = base + ".json"
         self._file      = open(self._bin_path, "wb")
         self._total_steps = 0
+        self._events = open(base + ".events.jsonl", "a")
+        self._last_fsm = None
+        self._policy_meta_written = False
         self._record    = np.empty(self.RECORD_DIM, dtype=np.float32)
 
         meta: dict = {
@@ -84,6 +99,31 @@ class Logger:
             "control_dt":  0.02,
             "total_steps": 0,
         }
+        meta["field_semantics"] = {"actions": "final joint position target, rad",
+            "tau_est": "motor firmware estimate, Nm; NaN if unavailable",
+            "tau_cmd_est": "host PD estimate Kp*(q_target-q)-Kd*dq; NOT measured torque",
+            "state_tick_words": "uint32 tick split into low/high uint16 words",
+            "command_seq_words": "uint32 command sequence split into low/high uint16 words",
+            "state_age_ms": "local monotonic time since BridgeState reception, not sensor acquisition age",
+            "motor_temperature": "29 pairs in SDK order, degrees C",
+            "smp_obs": "exact ONNX input, before embedded normalization",
+            "missing": "NaN; tau_est_valid=0 when unavailable"}
+        root = Path(__file__).resolve().parents[1]
+        try:
+            meta["git_commit"] = subprocess.check_output(
+                ["git", "rev-parse", "HEAD"], cwd=root, timeout=2, text=True).strip()
+            meta["git_dirty"] = bool(subprocess.check_output(
+                ["git", "status", "--porcelain", "--untracked-files=no"], cwd=root, timeout=2, text=True).strip())
+        except (OSError, subprocess.SubprocessError):
+            meta["git_commit"] = None
+        meta["logger_source_sha256"] = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+        from common.utils import FSMStateName
+        meta["fsm_state_codes"] = {s.name:s.value for s in FSMStateName}
+        meta["joint_order"] = [side + name for side in ("left_", "right_")
+            for name in ("hip_pitch", "hip_roll", "hip_yaw", "knee", "ankle_pitch", "ankle_roll")]
+        meta["joint_order"] += ["waist_yaw", "waist_roll", "waist_pitch"]
+        meta["joint_order"] += [side + name for side in ("left_", "right_")
+            for name in ("shoulder_pitch", "shoulder_roll", "shoulder_yaw", "elbow", "wrist_roll", "wrist_pitch", "wrist_yaw")]
         if extra_meta:
             meta.update(extra_meta)
 
@@ -133,11 +173,35 @@ class Logger:
         skill_cmd = getattr(state_cmd.skill_cmd, "value", state_cmd.skill_cmd)
         put([float(skill_cmd)],             1)
 
+        telemetry = getattr(state_cmd, "telemetry", {})
+        debug = getattr(policy_output, "recovery_debug", {})
+        values = dict(telemetry, **debug)
+        values["tau_est_valid"] = float(getattr(state_cmd, "tau_est_valid", False))
+        values["executed_fsm_state"] = getattr(policy_output, "executed_fsm_state", -1)
+        for name, n in self.EXTRA_FIELDS:
+            put(values.get(name, np.full(n, np.nan)), n)
+        assert offset == self.RECORD_DIM
+        if not self._policy_meta_written and getattr(policy_output, "recovery_metadata", None):
+            with open(self._meta_path) as f:
+                meta = json.load(f)
+            meta["smp_recovery"] = policy_output.recovery_metadata
+            with open(self._meta_path, "w") as f:
+                json.dump(meta, f, indent=2)
+            self._policy_meta_written = True
+        if values["executed_fsm_state"] != self._last_fsm:
+            self.event("fsm_execution", time_s=time_s, step=step,
+                       state=values["executed_fsm_state"])
+            self._last_fsm = values["executed_fsm_state"]
         self._file.write(r.tobytes())
         self._file.flush()
         self._total_steps += 1
 
+    def event(self, kind, **data):
+        self._events.write(json.dumps({"event": kind, **data}) + "\n")
+        self._events.flush()
+
     def close(self) -> None:
+        self._events.close()
         self._file.close()
         with open(self._meta_path) as f:
             meta = json.load(f)

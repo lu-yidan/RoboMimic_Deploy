@@ -15,6 +15,7 @@ from common.ball_state_dds import BallStateSubscriber, BallStatePublisher
 from common.target_state_dds import TargetStateSubscriber, TargetStatePublisher
 from bridge.python.bridge_state_dds import BridgeStateSubscriber
 from common.logger import Logger
+from bridge.python.bridge_diagnostics_dds import DiagnosticsSubscriber, apply_diagnostics
 
 
 @dataclass
@@ -46,6 +47,9 @@ class PolicyRuntime:
             stale_ms=config.bridge_state_stale_ms,
         )
         self.bridge_state_sub.start()
+        self.diagnostics_sub = DiagnosticsSubscriber(self.bridge_state_sub._dp, config.bridge_state_topic)
+        self._previous_step_time = None
+        self._was_stale = False
 
         self.ball_sub = BallStateSubscriber(domain_id=0)
         self.ball_sub.start()
@@ -65,13 +69,16 @@ class PolicyRuntime:
         self._prev_l2_left_pressed  = False
 
         self._log_step = 0
-        self._log_start = time.time()
+        self._log_start = time.monotonic()
         self._log_states = {FSMStateName[s] for s in config.log_states} if config.log_enabled else set()
         self._logger = (
             Logger(
                 config.log_dir,
                 config.log_tag,
-                extra_meta={"robot_type": "real_policy_bridge", "control_dt": config.control_dt},
+                extra_meta={"robot_type": "real_policy_bridge", "control_dt": config.control_dt,
+                    "logged_fsm_states": sorted(config.log_states),
+                    "time_clock": "monotonic elapsed", "torque_source": "optional tick-matched motor firmware estimate",
+                    "unavailable_on_real": ["base_position", "base_linear_velocity", "foot_contact_force", "external_force"]},
             )
             if config.log_enabled
             else None
@@ -217,8 +224,14 @@ class PolicyRuntime:
         )
 
     def step(self) -> PolicyCommandFrame:
+        started = time.monotonic()
+        period_ms = float("nan") if self._previous_step_time is None else (started-self._previous_step_time)*1000
+        self._previous_step_time = started
         bridge_state = self.bridge_state_sub.latest()
         if bridge_state.tick == 0:
+            if self._logger is not None and not self._was_stale:
+                self._logger.event("state_stale_damping", time_s=started-self._log_start, seq=self._cmd_seq)
+            self._was_stale = True
             return PolicyCommandFrame(
                 seq=self._cmd_seq,
                 q_des=np.zeros(self.num_joints, dtype=np.float32),
@@ -228,15 +241,27 @@ class PolicyRuntime:
                 exit_requested=self.exit_requested,
             )
 
+        if self._was_stale and self._logger is not None:
+            self._logger.event("state_resumed", time_s=started-self._log_start)
+        self._was_stale = False
         self._set_remote_from_bridge(bridge_state)
         self._apply_remote_commands()
         self._apply_robot_state(bridge_state)
+        self.state_cmd.telemetry = {
+            "state_tick_words": [int(bridge_state.tick) & 65535, (int(bridge_state.tick) >> 16) & 65535],
+            "command_seq_words": [self._cmd_seq & 65535, (self._cmd_seq >> 16) & 65535],
+            "state_age_ms": (time.monotonic()-getattr(bridge_state, "_local_received_monotonic", float("nan")))*1000,
+            "loop_period_ms": period_ms, "remote_raw": list(bridge_state.remote_raw[:24]),
+        }
+        apply_diagnostics(self.state_cmd, self.diagnostics_sub.matching(bridge_state.tick))
         self._apply_perception_state()
 
         self.FSM_controller.run()
 
-        if self._logger is not None and self.FSM_controller.cur_policy.name in self._log_states:
-            t = time.time() - self._log_start
+        self.state_cmd.telemetry["runtime_compute_ms"] = (time.monotonic()-started)*1000
+        if self._logger is not None and (self.FSM_controller.cur_policy.name in self._log_states or
+                getattr(self.policy_output, "executed_fsm_state", -1) in {s.value for s in self._log_states}):
+            t = time.monotonic() - self._log_start
             self._logger.log(self._log_step, t, self.state_cmd, self.policy_output)
             self._log_step += 1
 

@@ -54,6 +54,8 @@ class FSM:
         
     def run(self):
         start_time = time.time()
+        self.policy_output.recovery_debug = {}
+        self.policy_output.executed_fsm_state = -1
         # Recovery is globally preemptive so Y works from every FSM state.
         # The input layer gives the damping command higher priority.
         if (self.state_cmd.skill_cmd == FSMCommand.CMD_SMP_RECOVERY and
@@ -65,6 +67,7 @@ class FSM:
             print("Switched to ", self.cur_policy.name_str)
 
         if(self.FSMmode == FSMMode.NORMAL): 
+            self.policy_output.executed_fsm_state = self.cur_policy.name.value
             self.cur_policy.run()
             nextPolicyName = self.cur_policy.checkChange()
             
@@ -79,6 +82,7 @@ class FSM:
             self.cur_policy.enter()
             self.sim_counter = 0
             self.FSMmode = FSMMode.NORMAL
+            self.policy_output.executed_fsm_state = self.cur_policy.name.value
             self.cur_policy.run()
             
         # self.absoluteWait(self.cur_policy.control_horzion,self.start_time)

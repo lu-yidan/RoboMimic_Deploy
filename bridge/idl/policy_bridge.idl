@@ -11,6 +11,15 @@ module mjlab {
         sequence<octet, 24> remote_raw;
       };
 
+      // Optional diagnostics topic: <bridge_state_topic>_diagnostics.
+      struct BridgeDiagnostics_ {
+        unsigned long long tick;
+        sequence<float> tau_est;
+        sequence<float> ddq;
+        sequence<float> imu_accel;
+        sequence<float> motor_temperature;
+      };
+
       struct BridgeCmd_ {
         unsigned long long timestamp_us;
         unsigned long long seq;

@@ -2,6 +2,7 @@
 
 import hashlib
 import os
+import time
 
 import numpy as np
 import onnxruntime as ort
@@ -76,6 +77,11 @@ class SmpRecovery(FSMState):
                 f"expected {expected_sha256}, got {actual_sha256}"
             )
 
+        self.log_metadata = {"profile": self.profile, "onnx_sha256": actual_sha256,
+            "config": cfg, "model_path": model_path, "observation_order":
+            ["root_ang_vel_b", "gravity_ori", "q_minus_default", "dq", "last_clipped_action"]}
+        self._activation_id = 0
+
         options = ort.SessionOptions()
         options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
         self._session = ort.InferenceSession(model_path, options)
@@ -118,11 +124,13 @@ class SmpRecovery(FSMState):
         return obs
 
     def enter(self):
+        self._activation_id += 1
         self._last_action.fill(0.0)
         self._entry_q = self.state_cmd.q.astype(np.float32).copy()
         self._warmup_i = 0
 
     def run(self):
+        started = time.perf_counter()
         obs = self._build_obs()[None, :]
         raw_action = self._session.run(
             [self._output_name], {self._input_name: obs}
@@ -131,10 +139,14 @@ class SmpRecovery(FSMState):
             raise FloatingPointError(
                 f"SMP recovery action must be finite with shape (29,), got {raw_action.shape}"
             )
+        network_action = raw_action.copy()
         raw_action = np.clip(raw_action, -self.clip_actions, self.clip_actions)
         self._last_action[:] = raw_action
 
         target_q = self.default_q + self.action_scale * raw_action
+
+        policy_target = target_q.copy()
+        alpha = 1.0
 
         # Ease in from the measured pose to avoid a target discontinuity.
         if self._warmup_i < self.warmup_steps:
@@ -146,11 +158,21 @@ class SmpRecovery(FSMState):
         damping = self.kds * self.state_cmd.dq
         target_lo = self.state_cmd.q + (damping - self.tau_limit) / self.kps
         target_hi = self.state_cmd.q + (damping + self.tau_limit) / self.kps
+        prelimit_target = target_q.copy()
         target_q = np.clip(target_q, target_lo, target_hi)
 
         self.policy_output.actions = target_q
         self.policy_output.kps = self.kps
         self.policy_output.kds = self.kds
+        self.policy_output.recovery_metadata = self.log_metadata
+        self.policy_output.recovery_debug = {
+            "smp_obs": obs[0].copy(), "smp_raw_action": network_action,
+            "smp_clipped_action": raw_action.copy(), "smp_policy_target": policy_target,
+            "smp_prelimit_target": prelimit_target,
+            "smp_target_limited": (target_q != prelimit_target).astype(np.float32),
+            "smp_warmup_alpha": alpha, "smp_activation_id": self._activation_id,
+            "policy_compute_ms": (time.perf_counter()-started)*1000,
+        }
 
     def exit(self):
         self._last_action.fill(0.0)

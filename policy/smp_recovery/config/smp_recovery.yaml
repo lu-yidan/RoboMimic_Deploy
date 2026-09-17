@@ -1,20 +1,21 @@
-# SMP E1 prepared-prone finetune of FT12k, 93D.
-# Source branch: codex/ft12k-plate-recovery
-# Source checkpoint: E1_prone/model_9999.pt (FT12k + 10k PPO updates)
-# Source checkpoint SHA-256:
-# a356adb7f7b7495cf71cf5700155703d0b8fdb469e7d28bfa807221e6f703709
+# SMP P5 all-low finetune of FT12k, 93D.
+# Source: codex/ft12k-prior-replay-ablation, P5_all_low/model_2500.pt
+# Source SHA256: 55e0171bbaf082eec99af92d56efb19de90b508c139f5e49d8260a279a8a7808
 #
 # Actor observation (93): base_ang_vel_b(3), projected_gravity(3),
 # joint_pos_rel(29), joint_vel(29), last_action(29). True base linear
 # velocity and deployment-time placeholder zeros are both absent.
 # The exported ONNX embeds the checkpoint observation normalizer.
 #
-# Switch policy here. Allowed: a11 | a13 | v34_93d_gate6000 | v35_rd_gate5999 | ft12k_sim | e1_prone_9999
-profile: e1_prone_9999
+# Switch policy here. Allowed: a11 | a13 | v34_93d_gate6000 | v35_rd_gate5999 | ft12k_sim | e1_prone_9999 | p5_all_low_2500
+profile: p5_all_low_2500
 
-model_path: "smp_e1_prone_model9999_93d.onnx"
-model_sha256: "d6e29c32d257e2abc982f8be28f187e0e08d8fc8575c1696f55b46e069010fe7"
+model_path: "smp_p5_all_low_model2500_93d.onnx"
+model_sha256: "2162ac8bc80c072ce92e52ec49c3283820840218893890d2d903d26ae117a2df"
 model_profiles:
+  p5_all_low_2500:
+    model_path: "smp_p5_all_low_model2500_93d.onnx"
+    model_sha256: "2162ac8bc80c072ce92e52ec49c3283820840218893890d2d903d26ae117a2df"
   e1_prone_9999:
     model_path: "smp_e1_prone_model9999_93d.onnx"
     model_sha256: "d6e29c32d257e2abc982f8be28f187e0e08d8fc8575c1696f55b46e069010fe7"

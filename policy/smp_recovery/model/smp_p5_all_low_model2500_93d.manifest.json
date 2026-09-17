@@ -1,0 +1,63 @@
+{
+  "source_sha256": "55e0171bbaf082eec99af92d56efb19de90b508c139f5e49d8260a279a8a7808",
+  "onnx_sha256": "2162ac8bc80c072ce92e52ec49c3283820840218893890d2d903d26ae117a2df",
+  "source_parent_sha256": "8f05543b644b0a1d11246e85778f99220460ef2a744417ea940296eed768c768",
+  "normalizer_embedded": true,
+  "checkpoint": "P5_all_low/model_2500.pt",
+  "profile": "p5_all_low_2500",
+  "export_max_abs_error": 5.7220458984375e-06,
+  "deployment_validation": {
+    "nominal": {
+      "mujoco": "3.2.3",
+      "profile": "p5_all_low_2500",
+      "xml_sha256": "66f252f310befd4f1dc3265d223d5f74849e5b9967fdeb49dac19b5c98afc111",
+      "physics_dt": 0.002,
+      "control_dt": 0.02,
+      "episode_seconds": 20,
+      "n": 16,
+      "success": 16,
+      "per_direction": {
+        "left_side_down": {
+          "n": 4,
+          "success": 4
+        },
+        "prone": {
+          "n": 4,
+          "success": 4
+        },
+        "right_side_down": {
+          "n": 4,
+          "success": 4
+        },
+        "supine": {
+          "n": 4,
+          "success": 4
+        }
+      },
+      "peak_speed_p95": 11.831598367865954,
+      "peak_power_p95": 490.31752513199683,
+      "head_vz_peak_p95": 1.9582409694066438
+    },
+    "prepared": {
+      "mujoco": "3.2.3",
+      "profile": "p5_all_low_2500",
+      "xml_sha256": "66f252f310befd4f1dc3265d223d5f74849e5b9967fdeb49dac19b5c98afc111",
+      "physics_dt": 0.002,
+      "control_dt": 0.02,
+      "episode_seconds": 20,
+      "n": 16,
+      "success": 16,
+      "per_direction": {
+        "prepared_prone": {
+          "n": 16,
+          "success": 16
+        }
+      },
+      "peak_speed_p95": 10.606045050953508,
+      "peak_power_p95": 469.5361987518564,
+      "head_vz_peak_p95": 0.9203178557679688
+    }
+  },
+  "hardware_tested": false,
+  "control_contract": "unchanged from FT12k/E1: 93D observation, 29D action, control_dt 0.02, existing gains/scales/torque limits"
+}

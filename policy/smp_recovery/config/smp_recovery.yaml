@@ -1,21 +1,24 @@
-# SMP V33 reward-transfer FT 12k, 93D.
-# Source branch: codex/v33-reward-recovery
-# Source checkpoint: model_12000.pt
+# SMP E1 prepared-prone finetune of FT12k, 93D.
+# Source branch: codex/ft12k-plate-recovery
+# Source checkpoint: E1_prone/model_9999.pt (FT12k + 10k PPO updates)
 # Source checkpoint SHA-256:
-# 8f05543b644b0a1d11246e85778f99220460ef2a744417ea940296eed768c768
+# a356adb7f7b7495cf71cf5700155703d0b8fdb469e7d28bfa807221e6f703709
 #
 # Actor observation (93): base_ang_vel_b(3), projected_gravity(3),
 # joint_pos_rel(29), joint_vel(29), last_action(29). True base linear
 # velocity and deployment-time placeholder zeros are both absent.
 # The exported ONNX embeds the checkpoint observation normalizer.
 #
-# Switch policy here. Allowed: a11 | a13 | v34_93d_gate6000 | v35_rd_gate5999 | ft12k_sim
-profile: ft12k_sim
+# Switch policy here. Allowed: a11 | a13 | v34_93d_gate6000 | v35_rd_gate5999 | ft12k_sim | e1_prone_9999
+profile: e1_prone_9999
 
-model_path: "smp_v33_reward_ft12000_93d.onnx"
-model_sha256: "51aed4a4c591b3bd3fbb0a692221ec9d674fe5942141d195e65bbfe1bfd560e7"
+model_path: "smp_e1_prone_model9999_93d.onnx"
+model_sha256: "d6e29c32d257e2abc982f8be28f187e0e08d8fc8575c1696f55b46e069010fe7"
 model_profiles:
-  # Default V33 FT 12k candidate. Simulation-validated; not hardware-tested.
+  e1_prone_9999:
+    model_path: "smp_e1_prone_model9999_93d.onnx"
+    model_sha256: "d6e29c32d257e2abc982f8be28f187e0e08d8fc8575c1696f55b46e069010fe7"
+  # Previous FT12k profile retained for comparison and rollback.
   ft12k_sim:
     model_path: "smp_v33_reward_ft12000_93d.onnx"
     model_sha256: "51aed4a4c591b3bd3fbb0a692221ec9d674fe5942141d195e65bbfe1bfd560e7"

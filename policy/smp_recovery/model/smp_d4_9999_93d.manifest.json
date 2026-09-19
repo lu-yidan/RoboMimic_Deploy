@@ -1,0 +1,41 @@
+{
+  "source_checkpoint": "/home/luyd/workspace/RoboMimic_Deploy/outputs/recovery_candidates/checkpoints/D4_9999/model_9999.pt",
+  "checkpoint_sha256": "0ae2237f7acfb6e7aedf00ce30f3b9bedc45ec9659f4848743c337847c1853ff",
+  "onnx_sha256": "e8637e81eef119452df5b34a4a1205571d8c5c083fb51625f6758fc75203dcf3",
+  "input": {
+    "shape": [
+      1,
+      93
+    ],
+    "normalizer_embedded": true
+  },
+  "output": {
+    "shape": [
+      1,
+      29
+    ],
+    "deterministic": true
+  },
+  "architecture": "MLP 93-512-256-128-29, ELU",
+  "opset": 17,
+  "parity_fixture": "outputs/recovery_candidates/d4_9999_parity.npz",
+  "hardware_validated": false,
+  "parity": {
+    "random_inputs": 512,
+    "max_abs_error": 3.337860107421875e-06,
+    "interface": [
+      1,
+      93,
+      29
+    ],
+    "enter_run_passed": true
+  },
+  "profile": "d4_9999",
+  "source_server_checkpoint": "/root/workplace/smp-d-series/logs/rsl_rl/d_series/formal_20260918_d_v1/D4/model_9999.pt",
+  "initialization_checkpoint": "/root/workplace/smp-master-repro/logs/rsl_rl/v33_reward_transfer/formal_20260916_083821/FT/model_12000.pt",
+  "initialization_sha256": "8f05543b644b0a1d11246e85778f99220460ef2a744417ea940296eed768c768",
+  "deployment_validation": "docs/recovery_r012_d4_validation.json",
+  "deployment_scope": "flat procedural 64 poses, 20s, nominal only; no hardware",
+  "training_scene": "four terrains, 25% each",
+  "selected_iteration": 9999
+}

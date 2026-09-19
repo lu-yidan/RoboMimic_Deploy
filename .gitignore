@@ -62,3 +62,9 @@ recordings/*.mp4
 
 # Reproducible FT12k simulation validation candidate.
 !policy/smp_recovery/model/smp_v33_reward_ft12000_93d.onnx
+
+# Paired L4 recovery and constrained-terrain deployment candidates.
+!policy/smp_recovery/model/smp_ft_r0_9500_93d.onnx
+!policy/smp_recovery/model/smp_ft_r1_9999_93d.onnx
+!policy/smp_recovery/model/smp_ft_r2_9000_93d.onnx
+!policy/smp_recovery/model/smp_d4_9999_93d.onnx

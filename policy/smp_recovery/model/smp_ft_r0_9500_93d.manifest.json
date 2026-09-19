@@ -1,0 +1,41 @@
+{
+  "source_checkpoint": "/home/luyd/workspace/RoboMimic_Deploy/outputs/recovery_candidates/checkpoints/FT_R0_9500/model_9500.pt",
+  "checkpoint_sha256": "fc8b5e8fc686bb23ed8f3d994ad3a04b116b92050d030a8629a3e3c858ca7853",
+  "onnx_sha256": "abd7d9e79eba5ff138217d059682311970e429e0cc3c7d202b5867c5e7f9a907",
+  "input": {
+    "shape": [
+      1,
+      93
+    ],
+    "normalizer_embedded": true
+  },
+  "output": {
+    "shape": [
+      1,
+      29
+    ],
+    "deterministic": true
+  },
+  "architecture": "MLP 93-512-256-128-29, ELU",
+  "opset": 17,
+  "parity_fixture": "outputs/recovery_candidates/ft_r0_9500_parity.npz",
+  "hardware_validated": false,
+  "parity": {
+    "random_inputs": 512,
+    "max_abs_error": 5.7220458984375e-06,
+    "interface": [
+      1,
+      93,
+      29
+    ],
+    "enter_run_passed": true
+  },
+  "profile": "ft_r0_9500",
+  "source_server_checkpoint": "/root/workplace/smp-ft-speed/logs/rsl_rl/ft_prone_speed/formal_20260918_ft_speed_v1/FT_R0/model_9500.pt",
+  "initialization_checkpoint": "/root/workplace/smp-master-repro/logs/rsl_rl/fixed_low/formal_20260913_112049/L4/model_9999.pt",
+  "initialization_sha256": "7e98c06aa72f4ced7ab1f5bcfc67c011096fb5b3b4cdc453e43f7aac97409813",
+  "deployment_validation": "docs/recovery_r012_d4_validation.json",
+  "deployment_scope": "flat procedural 64 poses, 20s, nominal only; no hardware",
+  "training_scene": "flat",
+  "selected_iteration": 9500
+}

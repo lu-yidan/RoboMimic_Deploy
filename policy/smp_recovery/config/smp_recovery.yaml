@@ -1,18 +1,32 @@
-# SMP P5 all-low finetune of FT12k, 93D.
-# Source: codex/ft12k-prior-replay-ablation, P5_all_low/model_2500.pt
-# Source SHA256: 55e0171bbaf082eec99af92d56efb19de90b508c139f5e49d8260a279a8a7808
+# SMP 93D recovery profiles. Default: ft_r0_9500.
+# New comparisons: ft_r0_9500 | ft_r1_9999 | ft_r2_9000 | d4_9999
+# Guide: docs/recovery_r012_d4_comparison_zh.md
+# Change only profile below, then restart the deployment process.
+# SMP_RECOVERY_PROFILE, if set, overrides this selection.
 #
 # Actor observation (93): base_ang_vel_b(3), projected_gravity(3),
 # joint_pos_rel(29), joint_vel(29), last_action(29). True base linear
 # velocity and deployment-time placeholder zeros are both absent.
 # The exported ONNX embeds the checkpoint observation normalizer.
 #
-# Switch policy here. Allowed: a11 | a13 | v34_93d_gate6000 | v35_rd_gate5999 | ft12k_sim | e1_prone_9999 | p5_all_low_2500
-profile: p5_all_low_2500
+# Legacy profiles: a11 | a13 | v34_93d_gate6000 | v35_rd_gate5999 | ft12k_sim | e1_prone_9999 | p5_all_low_2500
+profile: ft_r0_9500
 
-model_path: "smp_p5_all_low_model2500_93d.onnx"
-model_sha256: "2162ac8bc80c072ce92e52ec49c3283820840218893890d2d903d26ae117a2df"
+model_path: "smp_ft_r0_9500_93d.onnx"
+model_sha256: "abd7d9e79eba5ff138217d059682311970e429e0cc3c7d202b5867c5e7f9a907"
 model_profiles:
+  ft_r0_9500:
+    model_path: "smp_ft_r0_9500_93d.onnx"
+    model_sha256: "abd7d9e79eba5ff138217d059682311970e429e0cc3c7d202b5867c5e7f9a907"
+  ft_r1_9999:
+    model_path: "smp_ft_r1_9999_93d.onnx"
+    model_sha256: "10157bc9ef581d09ddbc4e31549d5655b88f5f7880841234a9fba6dc7ddf2270"
+  ft_r2_9000:
+    model_path: "smp_ft_r2_9000_93d.onnx"
+    model_sha256: "d27f1c5e6e78ad173630c91112ddad74c9cc6115523826af5951193ffc65f81c"
+  d4_9999:
+    model_path: "smp_d4_9999_93d.onnx"
+    model_sha256: "e8637e81eef119452df5b34a4a1205571d8c5c083fb51625f6758fc75203dcf3"
   p5_all_low_2500:
     model_path: "smp_p5_all_low_model2500_93d.onnx"
     model_sha256: "2162ac8bc80c072ce92e52ec49c3283820840218893890d2d903d26ae117a2df"

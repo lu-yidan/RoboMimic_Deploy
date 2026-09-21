@@ -1,0 +1,69 @@
+{
+  "source_checkpoint": "/root/workplace/smp-r2-v33-path/logs/rsl_rl/v33_path_ablation/formal_20260920_r2_v33path_v1/A3/model_9999.pt",
+  "checkpoint_sha256": "99664139b40ce0b53818984ec468cba27c958f4865a5baf75647d918ce10c506",
+  "onnx_sha256": "5468587bb3362e783927cfffa9edb2ab60e9db120954c5d23c765e7ea31f4c27",
+  "input": {
+    "shape": [
+      1,
+      93
+    ],
+    "normalizer_embedded": true
+  },
+  "output": {
+    "shape": [
+      1,
+      29
+    ],
+    "deterministic": true
+  },
+  "architecture": "MLP 93-512-256-128-29, ELU",
+  "opset": 17,
+  "parity_fixture": "outputs/deploy_exports_20260921/path_a3_9999_parity.npz",
+  "hardware_validated": false,
+  "parity": {
+    "random_inputs": 512,
+    "max_abs_error": 1.9073486328125e-06,
+    "interface": [
+      1,
+      93,
+      29
+    ],
+    "enter_run_passed": true
+  },
+  "deployment_flat16": {
+    "mujoco": "3.2.3",
+    "profile": "path_a3_9999",
+    "xml_sha256": "66f252f310befd4f1dc3265d223d5f74849e5b9967fdeb49dac19b5c98afc111",
+    "physics_dt": 0.002,
+    "control_dt": 0.02,
+    "episode_seconds": 20,
+    "n": 16,
+    "success": 16,
+    "per_direction": {
+      "left_side_down": {
+        "n": 4,
+        "success": 4
+      },
+      "prone": {
+        "n": 4,
+        "success": 4
+      },
+      "right_side_down": {
+        "n": 4,
+        "success": 4
+      },
+      "supine": {
+        "n": 4,
+        "success": 4
+      }
+    },
+    "peak_speed_p95": 11.816742186757562,
+    "peak_power_p95": 902.7964060967533,
+    "head_vz_peak_p95": 2.2648437302754756,
+    "refall_after_first_upright": 0,
+    "refall_after_stable_1s": 0,
+    "last10s_base_xy_path_mean_m": 0.06495744302466185,
+    "peak_tau_p95": 139.0,
+    "first_upright_median_s_reached_only": 2.9
+  }
+}

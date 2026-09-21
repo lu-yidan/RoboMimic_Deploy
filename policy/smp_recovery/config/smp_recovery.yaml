@@ -1,5 +1,7 @@
 # SMP 93D recovery profiles. Default: ft_r0_9500.
-# New comparisons: ft_r0_9500 | ft_r1_9999 | ft_r2_9000 | d4_9999
+# A-series: path_a6_5000 | path_a6_9999 | path_a3_9999
+# A-series guide: docs/recovery_a3_a6_deployment_zh.md
+# Previous comparisons: ft_r0_9500 | ft_r1_9999 | ft_r2_9000 | d4_9999
 # Guide: docs/recovery_r012_d4_comparison_zh.md
 # Change only profile below, then restart the deployment process.
 # SMP_RECOVERY_PROFILE, if set, overrides this selection.
@@ -15,6 +17,15 @@ profile: ft_r0_9500
 model_path: "smp_ft_r0_9500_93d.onnx"
 model_sha256: "abd7d9e79eba5ff138217d059682311970e429e0cc3c7d202b5867c5e7f9a907"
 model_profiles:
+  path_a6_5000:
+    model_path: "smp_path_a6_5000_93d.onnx"
+    model_sha256: "39b5f3278940af2bdf6ef01e76fa5efbaab87ef5487c1d44819df69e32ebcb65"
+  path_a6_9999:
+    model_path: "smp_path_a6_9999_93d.onnx"
+    model_sha256: "350bfc15f7c18e80cfa2ca8b8ef4aa5f6af39b74a665d6c65f3ba35d54f7998e"
+  path_a3_9999:
+    model_path: "smp_path_a3_9999_93d.onnx"
+    model_sha256: "5468587bb3362e783927cfffa9edb2ab60e9db120954c5d23c765e7ea31f4c27"
   ft_r0_9500:
     model_path: "smp_ft_r0_9500_93d.onnx"
     model_sha256: "abd7d9e79eba5ff138217d059682311970e429e0cc3c7d202b5867c5e7f9a907"

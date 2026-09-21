@@ -8,9 +8,9 @@ ROOT=Path(__file__).resolve().parents[1]
 PROFILES=['ft_r0_9500','ft_r1_9999','ft_r2_9000','d4_9999']
 
 
-def summarize(out):
+def summarize(out,profiles=PROFILES):
     comparisons={}
-    for profile in PROFILES:
+    for profile in profiles:
         folder=out/profile
         summary=json.loads((folder/'summary.json').read_text())
         cases=json.loads((folder/'cases.json').read_text())
@@ -39,8 +39,8 @@ def summarize(out):
 
 def main():
     p=argparse.ArgumentParser();p.add_argument('--bank',type=Path,required=True)
-    p.add_argument('--out',type=Path,required=True);p.add_argument('--per-direction',type=int,default=16)
-    p.add_argument('--workers',type=int,default=4);p.add_argument('--summarize-only',action='store_true');a=p.parse_args()
+    p.add_argument('--profiles',nargs='+',default=PROFILES);p.add_argument('--out',type=Path,required=True);p.add_argument('--per-direction',type=int,default=16)
+    p.add_argument('--workers',type=int,default=4);p.add_argument('--summarize-only',action='store_true');a=p.parse_args();profiles=a.profiles
     a.out=a.out.resolve();a.out.mkdir(parents=True,exist_ok=True)
     if not a.summarize_only:
         bank=np.load(a.bank);cases=[]
@@ -49,9 +49,9 @@ def main():
             assert len(ids)==a.per_direction
             for j,k in enumerate(ids):cases.append({'name':f'{label}_{j:02d}','direction':label,'qpos':bank['qpos'][k].tolist(),'record':True})
         cases_path=a.out/'paired_cases.json';cases_path.write_text(json.dumps(cases))
-        for profile in PROFILES:
+        for profile in profiles:
             with (a.out/(profile+'.log')).open('w') as log:
                 subprocess.run([sys.executable,str(ROOT/'tools/validate_ft12k_sim.py'),'--profile',profile,'--out',str(a.out/profile),'--cases',str(cases_path),'--workers',str(a.workers)],stdout=log,stderr=subprocess.STDOUT,check=True,env=dict(os.environ,OMP_NUM_THREADS='1',OPENBLAS_NUM_THREADS='1'))
-    summarize(a.out)
+    summarize(a.out,profiles)
 
 if __name__=='__main__':main()

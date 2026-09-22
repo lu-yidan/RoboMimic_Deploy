@@ -1,0 +1,114 @@
+{
+  "source_checkpoint": "/home/luyd/workspace/RoboMimic_Deploy/outputs/recovery_candidates/ec7_source/model_9000.pt",
+  "checkpoint_sha256": "dbfe4cd66517bbdadc51b661a921c97c269202b73abb3318ed4f47b831244d48",
+  "onnx_sha256": "3a2df6397b04c338edfccf2b2346f6a00d1f32fa2aa107e40fa2bd32506d48bb",
+  "input": {
+    "shape": [
+      1,
+      93
+    ],
+    "normalizer_embedded": true
+  },
+  "output": {
+    "shape": [
+      1,
+      29
+    ],
+    "deterministic": true
+  },
+  "architecture": "MLP 93-512-256-128-29, ELU",
+  "opset": 17,
+  "parity_fixture": "outputs/recovery_candidates/ec7_9000_parity.npz",
+  "hardware_validated": false,
+  "server_checkpoint": "/root/workplace/smp-a6-egress/logs/rsl_rl/egress_convergence/formal_20260921_a6_egress_v1/EC7/model_9000.pt",
+  "training_branch": "codex/a6-egress-convergence",
+  "profile": "ec7_9000",
+  "export_date": "2026-09-22",
+  "parity": {
+    "random_inputs": 512,
+    "max_abs_error": 5.7220458984375e-06,
+    "interface": [
+      1,
+      93,
+      29
+    ],
+    "enter_run_passed": true
+  },
+  "deployment_contract": {
+    "joint_names": [
+      "left_hip_pitch_joint",
+      "left_hip_roll_joint",
+      "left_hip_yaw_joint",
+      "left_knee_joint",
+      "left_ankle_pitch_joint",
+      "left_ankle_roll_joint",
+      "right_hip_pitch_joint",
+      "right_hip_roll_joint",
+      "right_hip_yaw_joint",
+      "right_knee_joint",
+      "right_ankle_pitch_joint",
+      "right_ankle_roll_joint",
+      "waist_yaw_joint",
+      "waist_roll_joint",
+      "waist_pitch_joint",
+      "left_shoulder_pitch_joint",
+      "left_shoulder_roll_joint",
+      "left_shoulder_yaw_joint",
+      "left_elbow_joint",
+      "left_wrist_roll_joint",
+      "left_wrist_pitch_joint",
+      "left_wrist_yaw_joint",
+      "right_shoulder_pitch_joint",
+      "right_shoulder_roll_joint",
+      "right_shoulder_yaw_joint",
+      "right_elbow_joint",
+      "right_wrist_roll_joint",
+      "right_wrist_pitch_joint",
+      "right_wrist_yaw_joint"
+    ],
+    "action_scale_match": true,
+    "default_pose_match": true,
+    "kp_kd_effort_limit_match": true,
+    "control_dt_match": true,
+    "actor_observation_order_match": true,
+    "source_env_sha256": "21e5a82e8ebdb612849dab5846688057d319f88049dccaac6af0715612f3b789"
+  },
+  "deployment_flat_smoke": {
+    "mujoco": "3.2.3",
+    "profile": "ec7_9000",
+    "xml_sha256": "66f252f310befd4f1dc3265d223d5f74849e5b9967fdeb49dac19b5c98afc111",
+    "physics_dt": 0.002,
+    "control_dt": 0.02,
+    "episode_seconds": 20,
+    "n": 16,
+    "success": 16,
+    "per_direction": {
+      "left_side_down": {
+        "n": 4,
+        "success": 4
+      },
+      "prone": {
+        "n": 4,
+        "success": 4
+      },
+      "right_side_down": {
+        "n": 4,
+        "success": 4
+      },
+      "supine": {
+        "n": 4,
+        "success": 4
+      }
+    },
+    "peak_speed_p95": 11.283049262732952,
+    "peak_power_p95": 883.2087450712751,
+    "head_vz_peak_p95": 2.2586743865337073,
+    "refall_after_first_upright": 0,
+    "refall_after_stable_1s": 0,
+    "last10s_base_xy_path_mean_m": 0.27720620890391245,
+    "peak_tau_p95": 139.0,
+    "first_upright_median_s_reached_only": 2.52,
+    "bank_sha256": "a9269ff4343eaa4a33b91816a0da552d551d1cdfc831170339d8d00abef25b98",
+    "scope": "First four test-bank poses per direction; 20s each, no push, flat ground only. Not an aggregate plate or hardware evaluation."
+  }
+}

@@ -1,4 +1,5 @@
-# SMP 93D recovery profiles. Default: ft_r0_9500.
+# SMP 93D recovery profiles. Default: ec7_9000.
+# EC7 deployment guide: docs/recovery_ec7_deployment_zh.md
 # A-series: path_a6_5000 | path_a6_9999 | path_a3_9999
 # A-series guide: docs/recovery_a3_a6_deployment_zh.md
 # Previous comparisons: ft_r0_9500 | ft_r1_9999 | ft_r2_9000 | d4_9999
@@ -12,11 +13,14 @@
 # The exported ONNX embeds the checkpoint observation normalizer.
 #
 # Legacy profiles: a11 | a13 | v34_93d_gate6000 | v35_rd_gate5999 | ft12k_sim | e1_prone_9999 | p5_all_low_2500
-profile: ft_r0_9500
+profile: ec7_9000
 
 model_path: "smp_ft_r0_9500_93d.onnx"
 model_sha256: "abd7d9e79eba5ff138217d059682311970e429e0cc3c7d202b5867c5e7f9a907"
 model_profiles:
+  ec7_9000:
+    model_path: "smp_ec7_9000_93d.onnx"
+    model_sha256: "3a2df6397b04c338edfccf2b2346f6a00d1f32fa2aa107e40fa2bd32506d48bb"
   path_a6_5000:
     model_path: "smp_path_a6_5000_93d.onnx"
     model_sha256: "39b5f3278940af2bdf6ef01e76fa5efbaab87ef5487c1d44819df69e32ebcb65"

@@ -68,3 +68,6 @@ recordings/*.mp4
 !policy/smp_recovery/model/smp_ft_r1_9999_93d.onnx
 !policy/smp_recovery/model/smp_ft_r2_9000_93d.onnx
 !policy/smp_recovery/model/smp_d4_9999_93d.onnx
+
+# EC7 deployment candidate with embedded observation normalization.
+!policy/smp_recovery/model/smp_ec7_9000_93d.onnx

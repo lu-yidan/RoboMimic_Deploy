@@ -1,0 +1,73 @@
+{
+  "mujoco": "3.2.3",
+  "seconds": 20,
+  "physics_dt": 0.002,
+  "control_dt": 0.02,
+  "cases_sha256": "e5f45042231264df4f00d0ecc23b9174e765c7a8106e6f9f7dc820d062b1fcca",
+  "model_sha256": {
+    "ft_r2_9000": "d27f1c5e6e78ad173630c91112ddad74c9cc6115523826af5951193ffc65f81c",
+    "path_a6_9999": "350bfc15f7c18e80cfa2ca8b8ef4aa5f6af39b74a665d6c65f3ba35d54f7998e",
+    "m2_9999": "36e020d90e6b842482701d7038d4ea49fd1f5eaac237dccbdbc41fdbb31c7cca",
+    "amp": "e3b8fb3d6d8345981173863b5e6955f3177566a0c021e7ed62d03e048d47cc4c"
+  },
+  "robot_xml_sha256": "66f252f310befd4f1dc3265d223d5f74849e5b9967fdeb49dac19b5c98afc111",
+  "config_sha256": "e0b644c4c2f76eba6e7160c829382f72962f1d8c6185fdd3b3cf9382022219ed",
+  "amp_config_sha256": "063800cc4db03ae97421a04598c70324b3247cfb3a84af58cf25cb8b429b1fb0",
+  "runner_sha256": "c7ba0c74c256e99fd718b3602fd45452e4a658dc5b4b16f8dbd4ec77766ba357",
+  "controller_eval_sha256": "eb3269cebb3d1654ac8f5e08acf2beb7f972a1e368de137eeca55d7af3c010d1",
+  "scenarios": {
+    "nominal": [
+      1.0,
+      1.0,
+      0.0
+    ],
+    "upper130": [
+      1.3,
+      1.0,
+      0.0
+    ],
+    "motor080": [
+      1.0,
+      0.8,
+      0.0
+    ],
+    "motor120": [
+      1.0,
+      1.2,
+      0.0
+    ],
+    "delay10ms": [
+      1.0,
+      1.0,
+      10.0
+    ],
+    "combined": [
+      1.3,
+      0.8,
+      10.0
+    ]
+  },
+  "stress_cases": [
+    "supine_00",
+    "supine_01",
+    "supine_02",
+    "supine_03",
+    "prone_00",
+    "prone_01",
+    "prone_02",
+    "prone_03",
+    "left_side_down_00",
+    "left_side_down_01",
+    "left_side_down_02",
+    "left_side_down_03",
+    "right_side_down_00",
+    "right_side_down_01",
+    "right_side_down_02",
+    "right_side_down_03"
+  ],
+  "upper_definition": "torso_link and descendants, mass and inertia scaled together",
+  "gain_definition": "physical Kp and Kd scaled together, host target limiter unchanged",
+  "delay_definition": "constant physical position-command delay at 2ms resolution; nominal host observations",
+  "load_definition": "500Hz actual actuator torque and joint velocity; mechanical abs(tau*dq)",
+  "scope": "offline deployment controller, procedural flat cases; no obstacles, push, DDS, hardware or random noise"
+}

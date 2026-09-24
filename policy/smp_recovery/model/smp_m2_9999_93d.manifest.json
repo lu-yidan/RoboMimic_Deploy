@@ -1,0 +1,41 @@
+{
+  "source_checkpoint": "/home/luyd/workspace/smp-a6-egress/outputs/clutter_eval_final_20260924/checkpoints/M2_9999.pt",
+  "checkpoint_sha256": "291d194dc13bf085e974b84a0b868517b07710d34dc0ceae83dcc03c7d3afb61",
+  "onnx_sha256": "36e020d90e6b842482701d7038d4ea49fd1f5eaac237dccbdbc41fdbb31c7cca",
+  "input": {
+    "shape": [
+      1,
+      93
+    ],
+    "normalizer_embedded": true
+  },
+  "output": {
+    "shape": [
+      1,
+      29
+    ],
+    "deterministic": true
+  },
+  "architecture": "MLP 93-512-256-128-29, ELU",
+  "opset": 17,
+  "parity_fixture": "outputs/recovery_candidates/m2_9999_parity.npz",
+  "hardware_validated": false,
+  "parity": {
+    "random_inputs": 512,
+    "max_abs_error": 4.76837158203125e-06,
+    "interface": [
+      1,
+      93,
+      29
+    ],
+    "enter_run_passed": true
+  },
+  "deployment_validation": {
+    "report": "docs/recovery_m2_deployment_zh.md",
+    "nominal_stable10": "64/64",
+    "upper130_stable10": "16/16",
+    "combined_stable10": "15/16",
+    "amp_joint_load_screen": "not passed; see report",
+    "hardware_validated": false
+  }
+}

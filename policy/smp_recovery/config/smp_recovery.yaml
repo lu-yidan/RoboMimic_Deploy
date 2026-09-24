@@ -1,4 +1,5 @@
 # SMP 93D recovery profiles. Default: ec7_9000.
+# M2 mixed-scene candidate: m2_9999; docs/recovery_m2_deployment_zh.md
 # EC7 deployment guide: docs/recovery_ec7_deployment_zh.md
 # A-series: path_a6_5000 | path_a6_9999 | path_a3_9999
 # A-series guide: docs/recovery_a3_a6_deployment_zh.md
@@ -18,6 +19,9 @@ profile: ec7_9000
 model_path: "smp_ft_r0_9500_93d.onnx"
 model_sha256: "abd7d9e79eba5ff138217d059682311970e429e0cc3c7d202b5867c5e7f9a907"
 model_profiles:
+  m2_9999:
+    model_path: "smp_m2_9999_93d.onnx"
+    model_sha256: "36e020d90e6b842482701d7038d4ea49fd1f5eaac237dccbdbc41fdbb31c7cca"
   ec7_9000:
     model_path: "smp_ec7_9000_93d.onnx"
     model_sha256: "3a2df6397b04c338edfccf2b2346f6a00d1f32fa2aa107e40fa2bd32506d48bb"

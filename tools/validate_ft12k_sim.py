@@ -30,7 +30,7 @@ def build_policy(profile):
  with patch.object(ort,'SessionOptions',single_thread):policy=SmpRecovery(state,output)
  return policy,state,output
 
-def run_case(case,m,policy,state,output,seconds=20,record=False):
+def run_case(case,m,policy,state,output,seconds=20,record=False,motor_gain=1.,delay_ms=0.,load_trace=None):
  import mujoco
  from common.utils import get_gravity_orientation
  d=mujoco.MjData(m);d.qpos[:36]=case['qpos'];d.qvel[:35]=case.get('qvel',np.zeros(35));mujoco.mj_forward(m,d)
@@ -44,14 +44,24 @@ def run_case(case,m,policy,state,output,seconds=20,record=False):
   state.q=d.qpos[7:36].astype(np.float32).copy();state.dq=d.qvel[6:35].astype(np.float32).copy()
   state.root_ang_vel_b=d.qvel[3:6].astype(np.float32).copy();state.gravity_ori=get_gravity_orientation(d.qpos[3:7]).astype(np.float32)
  sync();policy.enter();target=state.q.copy()
+ delay_steps=round(delay_ms/2);assert delay_steps>=0 and abs(delay_steps*2-delay_ms)<1e-8
+ assert motor_gain>0
+ pending=[];high_load=np.zeros(29);current_high=np.zeros(29);longest_high=np.zeros(29)
  jp=np.zeros((3,m.nv));jr=np.zeros_like(jp);contact=np.zeros(6)
  peak_tau=np.zeros(29);peak_dq=np.zeros(29);peak_power=np.zeros(29);peak_head_v=0.;peak_head_force=0.;hold=0;best=0;first=-1.;maxheight=0.;states=[];obs=[];checks=np.zeros(10);ncheck=0
  initial_min=min([c.dist for c in d.contact],default=0.);unsafe=None
  for step in range(round(seconds/.002)):
-  tau=np.clip((target-d.qpos[7:36])*policy.kps-d.qvel[6:35]*policy.kds,-policy.tau_limit,policy.tau_limit)
+  while pending and pending[0][0]<=step:target=pending.pop(0)[1]
+  # Unknown motor gain affects physical PD; the host target limiter stays nominal.
+  tau=np.clip(motor_gain*((target-d.qpos[7:36])*policy.kps-d.qvel[6:35]*policy.kds),-policy.tau_limit,policy.tau_limit)
   d.ctrl[:]=tau;mujoco.mj_step(m,d)
   if not np.isfinite(d.qpos).all() or not np.isfinite(d.qvel).all():unsafe='nonfinite';break
+  if any(d.warning[w].number for w in (mujoco.mjtWarning.mjWARN_BADQPOS,mujoco.mjtWarning.mjWARN_BADQVEL,mujoco.mjtWarning.mjWARN_BADQACC)):
+   unsafe='MuJoCo state warning';break
   qtau=d.qfrc_actuator[6:35];dq=d.qvel[6:35]
+  high=np.abs(qtau)>.9*policy.tau_limit;high_load+=high*.002
+  current_high=np.where(high,current_high+.002,0.);longest_high=np.maximum(longest_high,current_high)
+  if load_trace is not None:load_trace.append(np.r_[qtau,dq].astype(np.float32))
   peak_tau=np.maximum(peak_tau,np.abs(qtau));peak_dq=np.maximum(peak_dq,np.abs(dq));peak_power=np.maximum(peak_power,np.abs(qtau*dq))
   mujoco.mj_jacSite(m,d,jp,jr,head);peak_head_v=max(peak_head_v,abs(float((jp@d.qvel)[2])))
   # Ground contacts only, vertical force per foot / non-foot as in validation.
@@ -76,10 +86,13 @@ def run_case(case,m,policy,state,output,seconds=20,record=False):
   conditions=np.array([z>=1.15,upr>=.93,np.abs(state.q[knees]).max()<.8,np.linalg.norm(d.qvel[:3])<.15,np.linalg.norm(d.qvel[3:6])<.3,np.sqrt(np.mean(state.dq**2))<.5,max(speeds)<.1,min(loads)>20,other<20,.12<width<.45])
   hold=hold+.02 if conditions.all() else 0.;best=max(best,hold)
   if step>=5000:checks+=~conditions;ncheck+=1
-  obs_input=policy._build_obs().copy();policy.run();target=output.actions.copy()
+  obs_input=policy._build_obs().copy();policy.run()
+  if delay_steps:pending.append((step+1+delay_steps,output.actions.copy()))
+  else:target=output.actions.copy()
   if record:
    states.append(np.r_[d.qpos.copy(),d.qvel.copy(),z,upr,hold,loads,other,width]);obs.append(obs_input)
  result={'name':case['name'],'direction':case['direction'],'source':case.get('source','procedural'),'success_10s':best>=10-1e-6,'best_hold_s':best,'first_upright_s':first,'max_head_height':maxheight,'peak_tau':peak_tau.tolist(),'peak_dq':peak_dq.tolist(),'peak_power':peak_power.tolist(),'head_vz_peak':peak_head_v,'head_force_peak':peak_head_force,'initial_min_contact':initial_min,'failure_last10s':(checks/max(ncheck,1)).tolist(),'unstable':unsafe,'joint_names':names}
+ result.update(above90_cumulative_s=high_load.tolist(),above90_longest_s=longest_high.tolist(),motor_gain=motor_gain,delay_ms=delay_ms,completed_sim_s=(step+1)*.002)
  return result,np.array(states),np.array(obs)
 
 def worker(args):

@@ -1,0 +1,12 @@
+{
+  "case": "nominal/m2_9999/prone_13",
+  "time_s": 4,
+  "contacts": [
+    {
+      "a": "left_thigh",
+      "b": "left_hand_collision",
+      "depth": -0.0023574020999631434,
+      "force": 74.94252860329479
+    }
+  ]
+}

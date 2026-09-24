@@ -1,0 +1,12 @@
+{
+  "m2_9999": {
+    "random_inputs": 512,
+    "max_abs_error": 4.76837158203125e-06,
+    "interface": [
+      1,
+      93,
+      29
+    ],
+    "enter_run_passed": true
+  }
+}

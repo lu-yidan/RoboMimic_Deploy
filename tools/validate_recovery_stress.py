@@ -120,6 +120,8 @@ def main():
     p.add_argument('--cases', type=Path, required=True)
     p.add_argument('--out', type=Path, required=True)
     p.add_argument('--workers', type=int, default=8)
+    p.add_argument('--profiles', nargs='+', default=['ft_r2_9000', 'path_a6_9999', 'm2_9999'])
+    p.add_argument('--skip-amp', action='store_true', help='Omit the nominal AMP reference.')
     a = p.parse_args()
     a.out.mkdir(parents=True, exist_ok=False)
     cases = json.loads(a.cases.read_text())
@@ -128,9 +130,11 @@ def main():
               for c in [c for c in cases if c['direction'] == d][:4]]
     cfg = yaml.safe_load((ROOT / 'policy/smp_recovery/config/smp_recovery.yaml').read_text())
     amp_cfg = yaml.safe_load((ROOT / 'policy/amp/config/amp.yaml').read_text())
-    profiles = ('ft_r2_9000', 'path_a6_9999', 'm2_9999')
+    profiles = tuple(a.profiles)
+    nominal_profiles = profiles if a.skip_amp else (*profiles, 'amp')
     models = {p: digest(ROOT / 'policy/smp_recovery/model' / cfg['model_profiles'][p]['model_path']) for p in profiles}
-    models['amp'] = digest(ROOT / 'policy/amp/model' / amp_cfg['model_path'])
+    if not a.skip_amp:
+        models['amp'] = digest(ROOT / 'policy/amp/model' / amp_cfg['model_path'])
     protocol = dict(mujoco=mujoco.__version__, seconds=20, physics_dt=.002, control_dt=.02,
                     cases_sha256=digest(a.cases), model_sha256=models,
                     robot_xml_sha256=digest(ROOT / 'g1_description/g1_liao.xml'),
@@ -147,7 +151,7 @@ def main():
     jobs = []
     for scenario in SCENARIOS:
         selected = cases if scenario == 'nominal' else stress
-        for profile in (*profiles, 'amp') if scenario == 'nominal' else profiles:
+        for profile in nominal_profiles if scenario == 'nominal' else profiles:
             folder = a.out / scenario / profile
             folder.mkdir(parents=True)
             (folder / 'cases.json').write_text(json.dumps(selected) + '\n')
@@ -159,7 +163,7 @@ def main():
             rows.extend(f.result())
             print('COMPLETE', len(rows), '/', sum(len(j[2]) for j in jobs), flush=True)
     summary = {s: {p: aggregate([r for r in rows if r['scenario'] == s and r['profile'] == p])
-                   for p in (*profiles, 'amp') if any(r['scenario'] == s and r['profile'] == p for r in rows)}
+                   for p in nominal_profiles if any(r['scenario'] == s and r['profile'] == p for r in rows)}
                for s in SCENARIOS}
     (a.out / 'summary.json').write_text(json.dumps(summary, indent=2) + '\n')
     print('VALIDATION_COMPLETE', a.out, flush=True)

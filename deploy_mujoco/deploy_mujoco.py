@@ -18,6 +18,10 @@ from common.logger import Logger
 from common.joystick import JoyStick, JoystickButton
 from omegaconf import DictConfig
 import hydra    
+try:
+    from deploy_mujoco.scene_builder import apply_initial_state, load_model
+except ModuleNotFoundError:
+    from scene_builder import apply_initial_state, load_model
 
 
 def _draw_viz_spheres(scn, viz_spheres):
@@ -132,9 +136,10 @@ def main(cfg: DictConfig):
     control_decimation = cfg.control_decimation
     tau_limit = np.array(cfg.tau_limit)
         
-    m = mujoco.MjModel.from_xml_path(xml_path)
+    m = load_model(xml_path, cfg.get("scene", {}))
     d = mujoco.MjData(m)
     m.opt.timestep = simulation_dt
+    apply_initial_state(m, d, cfg.get("initial_state", {}))
     torso_body_id = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_BODY, "torso_link")
     ball_body_id  = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_BODY, "ball")  # -1 if no ball in scene
     ball_reset_pos_w = np.array(cfg.get("ball_reset_pos_w", [1.0, 0.0, 0.115]), dtype=np.float64)
@@ -168,6 +173,25 @@ def main(cfg: DictConfig):
     state_cmd = StateAndCmd(num_joints)
     policy_output = PolicyOutput(num_joints)
     FSM_controller = FSM(state_cmd, policy_output)
+    startup_policy = str(cfg.get("startup_policy", "passive"))
+    startup_commands = {
+        "fixed_pose": FSMCommand.POS_RESET,
+        "loco": FSMCommand.LOCO,
+        "amp": FSMCommand.CMD_AMP,
+        "smp_recovery": FSMCommand.CMD_SMP_RECOVERY,
+        "beyondmimic_mj": FSMCommand.CMD_BEYONDMIMIC_MJ,
+        "standup_mj": FSMCommand.CMD_STANDUP_MJ,
+        "pinocchio_1_6_mj": FSMCommand.CMD_PINOCCHIO_1_6_MJ,
+        "freekick": FSMCommand.CMD_FREEKICK,
+    }
+    if startup_policy != "passive":
+        if startup_policy not in startup_commands:
+            raise ValueError(
+                "startup_policy must be passive, fixed_pose, loco, amp, "
+                "smp_recovery, beyondmimic_mj, standup_mj, pinocchio_1_6_mj, or freekick"
+            )
+        state_cmd.skill_cmd = startup_commands[startup_policy]
+        print(f"[Startup] policy={startup_policy}")
 
     log_cfg = cfg.get("logging", {})
     logger = None
@@ -238,7 +262,19 @@ def main(cfg: DictConfig):
                 # processes it, which would leave the current controller without a clean exit().
                 # elif state_cmd.skill_cmd == FSMCommand.INVALID:
                 if joystick.is_button_released(JoystickButton.START):                                              # 回 FixedPose, START
-                    state_cmd.skill_cmd = FSMCommand.POS_RESET
+                    apply_initial_state(m, d, cfg.get("initial_state", {}))
+                    policy_output_action[:] = d.qpos[7:7 + num_joints]
+                    kps.fill(0.0)
+                    kds.fill(0.0)
+                    state_cmd.skill_cmd = startup_commands.get(
+                        startup_policy, FSMCommand.CMD_SMP_RECOVERY
+                    )
+                    FSM_controller.FSMmode = FSMMode.CHANGE
+                    FSM_controller.sim_counter = 0
+                    print(
+                        f"[Reset] pose={cfg.get('initial_state', {}).get('preset', 'none')} "
+                        f"policy={startup_policy}"
+                    )
                 elif joystick.is_button_released(JoystickButton.B):                                                # Loco, B
                     state_cmd.skill_cmd = FSMCommand.LOCO
                 elif joystick.is_button_released(JoystickButton.A):                                                # AMP, A

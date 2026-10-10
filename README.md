@@ -138,6 +138,44 @@ Standard scene:
 python deploy_mujoco/deploy_mujoco.py
 ```
 
+MuJoCo obstacle and initial-state options are available through Hydra overrides.
+The table geometry follows the training repository's fixed wooden table, while
+`plate` is the training repository's vertically sliding escape plate:
+
+```bash
+conda run -n robomimic python deploy_mujoco/deploy_mujoco.py \
+  startup_policy=smp_recovery scene.name=table_and_plate \
+  scene.table.pos='[0.0,0.0,0.0]' scene.table.height=0.375 \
+  scene.table.top_size='[0.7,0.6,0.025]' scene.table.leg_size='[0.025,0.025,0.175]' \
+  scene.plate.pos='[0.0,0.0,0.80]' scene.plate.mass=12.0 \
+  initial_state.plate_slide_qpos=-0.40
+```
+
+For a custom robot initial state, put the complete `qpos` and `qvel` arrays in
+`deploy_mujoco/config/mujoco.yaml` under `initial_state`, or pass them as Hydra
+list overrides. For the included XML, use the model dimensions reported at
+startup (`qpos=43`, `qvel=41`); enabling the one-DoF sliding plate adds one value
+to each. Replace the robot with `xml_path=...` when the replacement model
+preserves the same actuator and policy joint ordering.
+
+Training-compatible supine, crossed-arm initialization under the sliding plate:
+
+```bash
+conda run -n robomimic python deploy_mujoco/deploy_mujoco.py \
+  startup_policy=smp_recovery scene.name=table_and_plate \
+  scene.plate.pos='[0.0,0.0,0.80]' scene.plate.mass=12.0 \
+  initial_state.preset=plate_supine_crossed_arms \
+  initial_state.preset_root_pos='[0.0,0.0,0.12]' \
+  initial_state.plate_surface_top_z=0.55
+```
+
+The preset copies the training `support_ready_supine` arm angles. Adjust only
+`preset_root_pos[0:2]` for placement and `preset_root_pos[2]` for clearance;
+`preset_yaw_deg` rotates the lying robot around the vertical axis in degrees
+(`90` means a quarter turn; negative values rotate clockwise). The legacy
+`preset_yaw` parameter remains available in radians. The surface-height
+override targets the top of the 7 cm thick plate, not its center.
+
 FreeKick scene (includes ball, required for FreeKick policy):
 ```bash
 python deploy_mujoco/deploy_mujoco.py --config-name mujoco_freekick

@@ -12,6 +12,35 @@ tau_limit: [88, 139, 88, 139, 50, 50,
             25, 25, 25, 25, 25, 5, 5
            ]
 
+startup_policy: "passive"
+
+scene:
+  name: "none"  # none, table, plate, or table_and_plate
+  table:
+    pos: [0.0, 0.0, 0.0]
+    height: 0.375
+    top_size: [0.7, 0.6, 0.025]
+    leg_size: [0.025, 0.025, 0.175]
+    leg_inset: 0.08
+    rgba: [0.53, 0.32, 0.15, 1.0]
+    friction: [1.2, 0.01, 0.001]
+  plate:
+    pos: [0.0, 0.0, 0.8]
+    size: [0.45, 0.32, 0.035]
+    slide_range: [-1.2, 0.0]
+    mass: 12.0
+    rgba: [0.12, 0.72, 0.24, 0.8]
+
+initial_state:
+  preset: "none"  # plate_supine_crossed_arms uses the training supine arm pose
+  preset_root_pos: [0.0, 0.0, 0.12]
+  preset_yaw: 0.0
+  preset_yaw_deg: null  # horizontal heading in degrees; overrides preset_yaw
+  qpos: null  # full MuJoCo qpos vector for the selected XML
+  qvel: null  # full MuJoCo qvel vector for the selected XML
+  plate_slide_qpos: null
+  plate_surface_top_z: null  # target top surface height; overrides plate_slide_qpos
+
 logging:
   enabled: false      # set true to record a freekick log
   log_dir: "logs"

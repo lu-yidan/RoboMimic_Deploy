@@ -1,0 +1,100 @@
+{
+  "source_checkpoint": "/root/workplace/smp-v34-plate-transfer/logs/V34MO_TableRoof2233_6000_20261010/model_2000.pt",
+  "checkpoint_sha256": "cfca63e96cf1445cce19e09ba4932aa799f36b5c3467ab59df0ffdf59ebbfb35",
+  "onnx_sha256": "935f47c27111b790cb3ab352f2ee7a249b6cb2833873e27f75ccccaaa8897845",
+  "input": {
+    "shape": [
+      1,
+      93
+    ],
+    "normalizer_embedded": true
+  },
+  "output": {
+    "shape": [
+      1,
+      29
+    ],
+    "deterministic": true
+  },
+  "architecture": "MLP 93-512-256-128-29, ELU",
+  "opset": 17,
+  "parity_fixture": "/tmp/v34_table2233_ft2000_parity.npz",
+  "hardware_validated": false,
+  "policy_id": "v34_table2233_ft2000",
+  "source_run": "V34MO_TableRoof2233_6000_20261010",
+  "source_checkpoint_iteration": 2000,
+  "source_host": "4090-bj",
+  "parent_policy": "v34_model_only_ft5999",
+  "training_scene_ratios": {
+    "flat": 0.2,
+    "guided": 0.2,
+    "table": 0.3,
+    "roof": 0.3
+  },
+  "deployment_control": {
+    "tau_limit_scale": 0.9,
+    "control_dt": 0.02,
+    "warmup_steps": 10,
+    "clip_actions": 10.0,
+    "differences_from_training": [
+      "deployment warmup and position-target torque projection",
+      "deployment action clipping at 10; training clip_actions null",
+      "deployment CPU MuJoCo smoke physics 2ms; training 5ms"
+    ]
+  },
+  "control_audit": {
+    "matches_parent_source_robot_and_actions": true
+  },
+  "parity": {
+    "random_inputs": 512,
+    "max_abs_error": 1.1444091796875e-05,
+    "interface": [
+      1,
+      93,
+      29
+    ],
+    "enter_run_passed": true
+  },
+  "deployment_smoke": {
+    "scene": "flat ground",
+    "observation_s": 23,
+    "protocol": "head>=1.10m, upright>=.90, each summed foot Fz>20N, continuous3s starts<=20s",
+    "n": 4,
+    "sr3_success": 0,
+    "trials": [
+      {
+        "name": "supine_00",
+        "sr3": false,
+        "sr3_best_hold_s": 0.0,
+        "max_head_height": 0.2597180968773328,
+        "head_final_m": 0.15527265919011765,
+        "unstable": null
+      },
+      {
+        "name": "supine_01",
+        "sr3": false,
+        "sr3_best_hold_s": 0.0,
+        "max_head_height": 0.39248420868038425,
+        "head_final_m": 0.1665482528251087,
+        "unstable": null
+      },
+      {
+        "name": "prone_00",
+        "sr3": false,
+        "sr3_best_hold_s": 0.0,
+        "max_head_height": 1.0353533693796337,
+        "head_final_m": 1.0299620405067877,
+        "unstable": null
+      },
+      {
+        "name": "prone_01",
+        "sr3": false,
+        "sr3_best_hold_s": 0.0,
+        "max_head_height": 1.0339573373519995,
+        "head_final_m": 1.0301899528848004,
+        "unstable": null
+      }
+    ],
+    "note": "Small deployment integration check, not a population benchmark; foot force is summed rather than training max-contact."
+  }
+}

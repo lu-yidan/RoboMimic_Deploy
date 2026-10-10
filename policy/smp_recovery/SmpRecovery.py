@@ -43,7 +43,11 @@ class SmpRecovery(FSMState):
         self.action_scale = np.asarray(cfg["action_scale"], dtype=np.float32)
         self.kps = np.asarray(cfg["kps"], dtype=np.float32)
         self.kds = np.asarray(cfg["kds"], dtype=np.float32)
-        self.tau_limit = np.asarray(cfg["tau_limit"], dtype=np.float32)
+        self.tau_limit = np.asarray(model_cfg.get("tau_limit", cfg["tau_limit"]), dtype=np.float32)
+        if self.tau_limit.shape != (29,) or not np.isfinite(self.tau_limit).all() or np.any(self.tau_limit <= 0):
+            raise ValueError("Profile tau_limit must contain 29 finite positive values")
+        if np.any(self.tau_limit > np.asarray(cfg["tau_limit"], dtype=np.float32)):
+            raise ValueError("Profile tau_limit cannot exceed the shared deployment limits")
         self.clip_actions = float(cfg["clip_actions"])
         self.warmup_steps = int(cfg["warmup_steps"])
         self.control_dt = float(cfg["control_dt"])
@@ -78,7 +82,7 @@ class SmpRecovery(FSMState):
             )
 
         self.log_metadata = {"profile": self.profile, "onnx_sha256": actual_sha256,
-            "config": cfg, "model_path": model_path, "observation_order":
+            "config": cfg, "effective_tau_limit": self.tau_limit.tolist(), "model_path": model_path, "observation_order":
             ["root_ang_vel_b", "gravity_ori", "q_minus_default", "dq", "last_clipped_action"]}
         self._activation_id = 0
 

@@ -14,12 +14,18 @@
 # velocity and deployment-time placeholder zeros are both absent.
 # The exported ONNX embeds the checkpoint observation normalizer.
 #
+# V34 model-only fine-tune: v34_model_only_ft5999 (completed plate run, not table fine-tune).
 # Legacy profiles: a11 | a13 | v34_93d_gate6000 | v35_rd_gate5999 | ft12k_sim | e1_prone_9999 | p5_all_low_2500
 profile: a6_no_alpha_9999
 
 model_path: "smp_ft_r0_9500_93d.onnx"
 model_sha256: "abd7d9e79eba5ff138217d059682311970e429e0cc3c7d202b5867c5e7f9a907"
 model_profiles:
+  v34_model_only_ft5999:
+    # Match this checkpoint's training actuator limits (90% of nominal).
+    tau_limit: [79.2, 125.1, 79.2, 125.1, 45.0, 45.0, 79.2, 125.1, 79.2, 125.1, 45.0, 45.0, 79.2, 45.0, 45.0, 22.5, 22.5, 22.5, 22.5, 22.5, 4.5, 4.5, 22.5, 22.5, 22.5, 22.5, 22.5, 4.5, 4.5]
+    model_path: "smp_v34_model_only_ft5999_93d.onnx"
+    model_sha256: "49d6b2f7fde413effbbe8662378f2f01e5dd8a7a869f008cce21ba349e0689fb"
   a6_no_alpha_9999:
     model_path: "smp_a6_no_alpha_9999_93d.onnx"
     model_sha256: "cc1fdc6f19206e62cf367721479cd1bab72888a6fcf58360a9fd8fea30d1d229"

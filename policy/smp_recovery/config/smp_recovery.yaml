@@ -23,6 +23,11 @@ profile: a6_no_alpha_9999
 model_path: "smp_ft_r0_9500_93d.onnx"
 model_sha256: "abd7d9e79eba5ff138217d059682311970e429e0cc3c7d202b5867c5e7f9a907"
 model_profiles:
+  v34_balanced4_hard19000:
+    # Match the balanced checkpoint's 90% training actuator limits.
+    tau_limit: [79.2, 125.1, 79.2, 125.1, 45.0, 45.0, 79.2, 125.1, 79.2, 125.1, 45.0, 45.0, 79.2, 45.0, 45.0, 22.5, 22.5, 22.5, 22.5, 22.5, 4.5, 4.5, 22.5, 22.5, 22.5, 22.5, 22.5, 4.5, 4.5]
+    model_path: "smp_v34_balanced4_hard19000_93d.onnx"
+    model_sha256: "8211f7d39d25d56f4f9227324b90d2e5d76c65efee7d469fb1f24ccf2ef767eb"
   v34_balanced2_5999:
     # Balanced recovery/escape candidate; 90% training torque limits.
     tau_limit: [79.2, 125.1, 79.2, 125.1, 45.0, 45.0, 79.2, 125.1, 79.2, 125.1, 45.0, 45.0, 79.2, 45.0, 45.0, 22.5, 22.5, 22.5, 22.5, 22.5, 4.5, 4.5, 22.5, 22.5, 22.5, 22.5, 22.5, 4.5, 4.5]

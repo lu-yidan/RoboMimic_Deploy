@@ -176,6 +176,9 @@ The preset copies the training `support_ready_supine` arm angles. Adjust only
 `preset_yaw` parameter remains available in radians. The surface-height
 override targets the top of the 7 cm thick plate, not its center.
 
+Use `initial_state.preset=plate_supine_default_arms` to keep the same supine
+under-table placement while restoring the original non-crossed deployment arms.
+
 FreeKick scene (includes ball, required for FreeKick policy):
 ```bash
 python deploy_mujoco/deploy_mujoco.py --config-name mujoco_freekick

@@ -32,7 +32,7 @@ scene:
     rgba: [0.12, 0.72, 0.24, 0.8]
 
 initial_state:
-  preset: "none"  # plate_supine_crossed_arms uses the training supine arm pose
+  preset: "none"  # plate_supine_default_arms or plate_supine_crossed_arms
   preset_root_pos: [0.0, 0.0, 0.12]
   preset_yaw: 0.0
   preset_yaw_deg: null  # horizontal heading in degrees; overrides preset_yaw

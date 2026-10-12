@@ -1,4 +1,4 @@
-# SMP 93D recovery profiles. Default: a6_no_alpha_9999.
+# SMP 93D recovery profiles. Default: v34_balanced2_5999.
 # A6 alpha=1 ablation (not AC3): docs/recovery_a6_no_alpha_deployment_zh.md
 # M2 mixed-scene candidate: m2_9999; docs/recovery_m2_deployment_zh.md
 # EC7 deployment guide: docs/recovery_ec7_deployment_zh.md
@@ -14,13 +14,19 @@
 # velocity and deployment-time placeholder zeros are both absent.
 # The exported ONNX embeds the checkpoint observation normalizer.
 #
+# Balanced escape/recovery candidate: v34_balanced2_5999.
 # V34 model-only fine-tune: v34_model_only_ft5999 (completed plate run, not table fine-tune).
 # Legacy profiles: a11 | a13 | v34_93d_gate6000 | v35_rd_gate5999 | ft12k_sim | e1_prone_9999 | p5_all_low_2500
-profile: v34_model_only_ft5999
+profile: v34_balanced2_5999
 
 model_path: "smp_ft_r0_9500_93d.onnx"
 model_sha256: "abd7d9e79eba5ff138217d059682311970e429e0cc3c7d202b5867c5e7f9a907"
 model_profiles:
+  v34_balanced2_5999:
+    # Match the balanced checkpoint's 90% training actuator limits.
+    tau_limit: [79.2, 125.1, 79.2, 125.1, 45.0, 45.0, 79.2, 125.1, 79.2, 125.1, 45.0, 45.0, 79.2, 45.0, 45.0, 22.5, 22.5, 22.5, 22.5, 22.5, 4.5, 4.5, 22.5, 22.5, 22.5, 22.5, 22.5, 4.5, 4.5]
+    model_path: "smp_v34_balanced2_5999_93d.onnx"
+    model_sha256: "a706b28755d2a609749c321df1e71a1c003e987d45c9aa8732acbb3779d2148c"
   v34_model_only_ft5999:
     # Match this checkpoint's training actuator limits (90% of nominal).
     tau_limit: [79.2, 125.1, 79.2, 125.1, 45.0, 45.0, 79.2, 125.1, 79.2, 125.1, 45.0, 45.0, 79.2, 45.0, 45.0, 22.5, 22.5, 22.5, 22.5, 22.5, 4.5, 4.5, 22.5, 22.5, 22.5, 22.5, 22.5, 4.5, 4.5]

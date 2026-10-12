@@ -138,9 +138,10 @@ def apply_initial_state(model: mujoco.MjModel, data: mujoco.MjData, config: Any)
     """Apply configured robot and obstacle generalized coordinates."""
     preset = str(config.get("preset", "none"))
     if preset != "none":
-        if preset != "plate_supine_crossed_arms":
+        if preset not in ("plate_supine_crossed_arms", "plate_supine_default_arms"):
             raise ValueError(
-                "initial_state.preset must be none or plate_supine_crossed_arms"
+                "initial_state.preset must be none, plate_supine_crossed_arms, "
+                "or plate_supine_default_arms"
             )
         if model.nq < 36 or model.nv < 35:
             raise ValueError("plate_supine_crossed_arms requires a 29-DoF floating-base G1")
@@ -165,7 +166,8 @@ def apply_initial_state(model: mujoco.MjModel, data: mujoco.MjData, config: Any)
             np.cos(np.pi / 4.0) * np.sin(half_yaw),
         )
         data.qpos[7:36] = _DEPLOY_DEFAULT_JOINT_POS
-        data.qpos[7 + 15:7 + 29] = _SUPINE_CROSSED_ARM_POS
+        if preset == "plate_supine_crossed_arms":
+            data.qpos[7 + 15:7 + 29] = _SUPINE_CROSSED_ARM_POS
 
     qpos = config.get("qpos")
     if qpos is not None:

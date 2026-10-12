@@ -17,7 +17,9 @@ from common.utils import get_gravity_orientation, FSMStateName
 from common.logger import Logger
 from common.joystick import JoyStick, JoystickButton
 from omegaconf import DictConfig
-import hydra    
+import hydra
+from threading import Event
+from deploy_mujoco.scene_builder import apply_initial_state, load_model
 
 
 def _draw_viz_spheres(scn, viz_spheres):
@@ -132,9 +134,10 @@ def main(cfg: DictConfig):
     control_decimation = cfg.control_decimation
     tau_limit = np.array(cfg.tau_limit)
         
-    m = mujoco.MjModel.from_xml_path(xml_path)
+    m = load_model(xml_path, cfg.get("scene", {}))
     d = mujoco.MjData(m)
     m.opt.timestep = simulation_dt
+    apply_initial_state(m, d, cfg.get("initial_state", {}))
     torso_body_id = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_BODY, "torso_link")
     ball_body_id  = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_BODY, "ball")  # -1 if no ball in scene
     ball_reset_pos_w = np.array(cfg.get("ball_reset_pos_w", [1.0, 0.0, 0.115]), dtype=np.float64)
@@ -168,6 +171,14 @@ def main(cfg: DictConfig):
     state_cmd = StateAndCmd(num_joints)
     policy_output = PolicyOutput(num_joints)
     FSM_controller = FSM(state_cmd, policy_output)
+    startup_policy = str(cfg.get("startup_policy", "passive"))
+    startup_commands = {"passive": FSMCommand.INVALID, "fixed_pose": FSMCommand.POS_RESET,
+                        "smp_recovery": FSMCommand.CMD_SMP_RECOVERY}
+    if startup_policy not in startup_commands:
+        raise ValueError("startup_policy must be passive, fixed_pose, or smp_recovery")
+    state_cmd.skill_cmd = startup_commands[startup_policy]
+    print(f"[Startup] {startup_policy}; physics={simulation_dt}s; control={simulation_dt * control_decimation}s")
+    print("[Controls] START: FixedPose; Y: SMP; keyboard R: reset simulation into passive mode")
 
     log_cfg = cfg.get("logging", {})
     logger = None
@@ -187,10 +198,34 @@ def main(cfg: DictConfig):
     prev_r2_pressed = False
     prev_l2_pressed = False
     Running = True
-    with mujoco.viewer.launch_passive(m, d) as viewer:
+    reset_requested = Event()
+    def key_callback(key):
+        if key in (ord('R'), ord('r')):
+            reset_requested.set()
+    with mujoco.viewer.launch_passive(m, d, key_callback=key_callback) as viewer:
         sim_start_time = time.time()
         while viewer.is_running() and Running:
             try:
+                if reset_requested.is_set():
+                    reset_requested.clear()
+                    # Physics and FSM changes run on this thread, not the viewer callback.
+                    FSM_controller.cur_policy.exit()
+                    mujoco.mj_resetData(m, d)
+                    apply_initial_state(m, d, cfg.get("initial_state", {}))
+                    state_cmd.q = d.qpos[7:7 + num_joints].copy()
+                    state_cmd.dq = d.qvel[6:6 + num_joints].copy()
+                    state_cmd.skill_cmd = FSMCommand.INVALID
+                    FSM_controller.get_next_policy(FSMStateName.PASSIVE)
+                    FSM_controller.FSMmode = FSMMode.NORMAL
+                    FSM_controller.sim_counter = 0
+                    FSM_controller.cur_policy.enter()
+                    FSM_controller.cur_policy.run()
+                    policy_output_action[:] = policy_output.actions
+                    kps[:] = policy_output.kps
+                    kds[:] = policy_output.kds
+                    print("[Reset] configured initial state; PASSIVE. Press Y to start SMP.")
+                    viewer.sync()
+                    continue
                 if(joystick.is_button_pressed(JoystickButton.SELECT)):
                     Running = False
 

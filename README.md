@@ -1,3 +1,5 @@
+> This branch uses R1 to play the selected ScaleBFM motion from the current simulated state in MuJoCo and the real G1 entry. D-pad Left / Right selects the previous / next motion. FreeKick is disabled in both entries; see [the ScaleBFM guide](README_zh.md) for details. The `sr` tmux launcher now opens idle `control` / `check` windows with `robomimic` activated; `rb` only changes directory. Real G1 uses F1 for damping; simulation reset is not a real-robot operation.
+
 <div align="center">
   <h1 align="center">RoboNaldo Deploy</h1>
   <p align="center">

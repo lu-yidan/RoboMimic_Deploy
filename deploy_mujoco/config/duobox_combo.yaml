@@ -1,0 +1,6 @@
+defaults:
+  - mujoco
+  - _self_
+
+scalebfm:
+  motion: /home/d080/workspace/RoboMimic_Deploy-scalebfm/outputs/duobox_scalebfm/motions/moving_combo_027_ma.npz

@@ -1,5 +1,5 @@
-xml_path: "g1_description/g1_liao.xml"
-# xml_path: "g1_description/scene.xml"
+xml_path: "g1_description/scene.xml"
+# Recovery-specific alternative (not validated with ScaleBFM): g1_description/g1_liao.xml
 # xml_path: "g1_description/g1_29dof_LieDown.xml"
 simulation_dt: 0.002
 control_decimation: 10
@@ -16,4 +16,15 @@ logging:
   enabled: false      # set true to record a freekick log
   log_dir: "logs"
   tag:     "freekick"
-  states:  ["SKILL_FREEKICK", "LOCOMODE", "SKILL_BEYONDMIMIC", "SKILL_BEYONDMIMIC_MJ", "SKILL_STANDUP_MJ", "SKILL_PINOCCHIO_1_6_MJ", "SKILL_AMP", "SKILL_SMP_RECOVERY"]  # FSM states to record
+  states:  ["SKILL_FREEKICK", "LOCOMODE", "SKILL_BEYONDMIMIC", "SKILL_BEYONDMIMIC_MJ", "SKILL_STANDUP_MJ", "SKILL_PINOCCHIO_1_6_MJ", "SKILL_AMP", "SKILL_SMP_RECOVERY", "SKILL_SCALEBFM"]  # FSM states to record
+
+# Workstation-only ScaleBFM FSM adapter. Real deployment entry is unchanged.
+scalebfm:
+  enabled: true
+  root: /home/d080/workspace/ScaleBFM
+  checkpoint: null  # default: official M model_22200.pt
+  motion: null      # default: ScaleBridge/data/motion/g1_29dof/squat.npz
+  reference_forcing: true
+  motion_globs:
+    - outputs/duobox_scalebfm/batch15_v1/motions/*.npz
+    - outputs/duobox_scalebfm/comparison*/motions/*.npz

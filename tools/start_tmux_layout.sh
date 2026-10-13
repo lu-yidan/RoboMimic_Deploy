@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# ScaleBFM uses the direct DDS entry. Keep the former bridge topology opt-in.
+if [[ "${TMUX_PROFILE:-scalebfm}" != "bridge" ]]; then
+  exec bash "$(dirname "${BASH_SOURCE[0]}")/start_tmux_scalebfm.sh" "$@"
+fi
+
 # Real-robot bring-up reference topology.
 #
 # Keep onboarding docs aligned with this script: each tmux pane maps to one

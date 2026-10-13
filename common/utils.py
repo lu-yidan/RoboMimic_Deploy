@@ -16,6 +16,7 @@ class FSMStateName(Enum):
     SKILL_AMP = 16
     SKILL_PINOCCHIO_1_6_MJ = 17
     SKILL_SMP_RECOVERY = 18
+    SKILL_SCALEBFM = 19
 
 @unique
 class FSMCommand(Enum):
@@ -30,6 +31,7 @@ class FSMCommand(Enum):
     CMD_AMP = 16
     CMD_PINOCCHIO_1_6_MJ = 19
     CMD_SMP_RECOVERY = 20
+    CMD_SCALEBFM = 21
 
 
 

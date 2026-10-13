@@ -6,6 +6,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.absolute()))
 
 from common.path_config import PROJECT_ROOT
+from deploy_mujoco.reset_sim import reset_to_fixed_pose
 
 import copy
 import time
@@ -130,7 +131,7 @@ def _reset_ball_state(m, d, ball_body_id, pos_w, vel_w, quat_w=None, ang_vel_w=N
     mujoco.mj_forward(m, d)
     return True
 
-@hydra.main(config_path="config", config_name="mujoco")
+@hydra.main(version_base="1.1", config_path="config", config_name="mujoco")
 def main(cfg: DictConfig):
     xml_path = os.path.join(PROJECT_ROOT, cfg.xml_path)
     simulation_dt = cfg.simulation_dt
@@ -173,7 +174,24 @@ def main(cfg: DictConfig):
 
     state_cmd = StateAndCmd(num_joints)
     policy_output = PolicyOutput(num_joints)
-    FSM_controller = FSM(state_cmd, policy_output)
+    scalebfm_cfg = cfg.get("scalebfm")
+    if scalebfm_cfg and scalebfm_cfg.enabled and not np.isclose(mj_per_step_duration, .02):
+        raise ValueError("ScaleBFM requires a 50 Hz control loop")
+    joint_names = [mujoco.mj_id2name(m, mujoco.mjtObj.mjOBJ_JOINT, int(m.actuator_trnid[i, 0]))
+                   for i in range(num_joints)]
+    if scalebfm_cfg and scalebfm_cfg.enabled:
+        actuator_joints = m.actuator_trnid[:, 0]
+        if not (np.array_equal(m.jnt_qposadr[actuator_joints], np.arange(7, 7 + num_joints))
+                and np.array_equal(m.jnt_dofadr[actuator_joints], np.arange(6, 6 + num_joints))):
+            raise ValueError("Deployment loop requires actuator order to match qpos/dof order")
+    FSM_controller = FSM(state_cmd, policy_output, scalebfm_cfg, joint_names, enable_freekick=False)
+
+    catalog = None
+    if FSM_controller.scalebfm_policy is not None:
+        from policy.scalebfm.motion_catalog import MotionCatalog, play_selected
+        catalog = MotionCatalog(FSM_controller.scalebfm_policy.motion_path,
+                                scalebfm_cfg.get("motion_globs", []), PROJECT_ROOT)
+        print(catalog.describe())
     startup_policy = str(cfg.get("startup_policy", "passive"))
     startup_commands = {"passive": FSMCommand.INVALID, "fixed_pose": FSMCommand.POS_RESET,
                         "smp_recovery": FSMCommand.CMD_SMP_RECOVERY}
@@ -202,9 +220,12 @@ def main(cfg: DictConfig):
     prev_l2_pressed = False
     Running = True
     reset_requested = Event()
+    standing_reset_requested = Event()
     def key_callback(key):
         if key in (ord('R'), ord('r')):
             reset_requested.set()
+        elif key == 259:
+            standing_reset_requested.set()
     with mujoco.viewer.launch_passive(m, d, key_callback=key_callback) as viewer:
         sim_start_time = time.time()
         while viewer.is_running() and Running:
@@ -233,12 +254,40 @@ def main(cfg: DictConfig):
                     Running = False
 
                 joystick.update()
+                if joystick.is_button_pressed(JoystickButton.SELECT):
+                    break
+                if (standing_reset_requested.is_set() or
+                        (joystick.is_button_pressed(JoystickButton.L1) and
+                         joystick.is_button_released(JoystickButton.START))):
+                    reset_to_fixed_pose(m, d, FSM_controller, state_cmd, policy_output)
+                    policy_output_action = policy_output.actions.copy()
+                    kps, kds = policy_output.kps.copy(), policy_output.kds.copy()
+                    standing_reset_requested.clear()
+                    print("[Simulation] Reset to standing FixedPose; R1 starts ScaleBFM.")
+                    continue
                 hat = joystick.get_hat_direction()
                 hat_just_pressed = lambda hx, hy: (hat == (hx, hy) and prev_hat != (hx, hy))
                 r2_pressed = joystick.get_axis_value(5) > 0.5
                 r2_just_pressed = r2_pressed and not prev_r2_pressed
                 l2_pressed = joystick.get_axis_value(2) > 0.5
                 l2_just_released = prev_l2_pressed and not l2_pressed
+                if catalog is not None and not l2_just_released:
+                    if not joystick.is_button_pressed(JoystickButton.L1):
+                        delta = 1 if hat_just_pressed(1, 0) else -1 if hat_just_pressed(-1, 0) else 0
+                        if delta:
+                            catalog.move(delta)
+                            FSM_controller.scalebfm_policy._close_progress()
+                            print(catalog.describe())
+                    if joystick.is_button_released(JoystickButton.R1):
+                        # Consume edges even on a rejected file, so a held input cannot repeat.
+                        prev_hat, prev_r2_pressed, prev_l2_pressed = hat, r2_pressed, l2_pressed
+                        try:
+                            play_selected(catalog, m, d, FSM_controller, state_cmd, policy_output)
+                        except (OSError, ValueError, KeyError, AssertionError) as exc:
+                            print(f"[Motion] Cannot load {catalog.selected.name}: {exc}")
+                        policy_output_action = policy_output.actions.copy()
+                        kps, kds = policy_output.kps.copy(), policy_output.kds.copy()
+                        continue
                 if joystick.is_button_released(JoystickButton.L3):                                                    # Ghost toggle, L3
                     ghost_flags[0] = not ghost_flags[0]
                     print(f"[Ghost] {'ON' if ghost_flags[0] else 'OFF'}")
@@ -275,7 +324,7 @@ def main(cfg: DictConfig):
                 # This prevents a fast START → policy switch sequence from overwriting POS_RESET before the FSM
                 # processes it, which would leave the current controller without a clean exit().
                 # elif state_cmd.skill_cmd == FSMCommand.INVALID:
-                if joystick.is_button_released(JoystickButton.START):                                              # 回 FixedPose, START
+                elif joystick.is_button_released(JoystickButton.START):                                              # 回 FixedPose, START
                     state_cmd.skill_cmd = FSMCommand.POS_RESET
                 elif joystick.is_button_released(JoystickButton.B):                                                # Loco, B
                     state_cmd.skill_cmd = FSMCommand.LOCO
@@ -283,8 +332,6 @@ def main(cfg: DictConfig):
                     state_cmd.skill_cmd = FSMCommand.CMD_AMP
                 elif joystick.is_button_just_pressed(JoystickButton.Y) and not joystick.is_button_pressed(JoystickButton.L1):  # SMP Recovery, Y
                     state_cmd.skill_cmd = FSMCommand.CMD_SMP_RECOVERY
-                elif joystick.is_button_released(JoystickButton.R1):                                               # FreeKick, R1
-                    state_cmd.skill_cmd = FSMCommand.CMD_FREEKICK
                 elif hat_just_pressed(0, -1):                                                                     # BeyondMimicMJ, D-pad DOWN
                     state_cmd.skill_cmd = FSMCommand.CMD_BEYONDMIMIC_MJ
                 elif hat_just_pressed(0, 1):                                                                      # StandUpMJ, D-pad UP
@@ -371,6 +418,8 @@ def main(cfg: DictConfig):
                 time_until_next_step = m.opt.timestep - (time.time() - step_start)
                 if time_until_next_step > 0:
                     time.sleep(time_until_next_step)
+            except KeyboardInterrupt:
+                Running = False
             except ValueError as e:
                 print(str(e))
 

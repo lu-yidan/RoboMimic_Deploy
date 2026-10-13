@@ -1,6 +1,6 @@
 import sys
 from pathlib import Path
-sys.path.append(str(Path(__file__).parent.parent.absolute()))
+sys.path.insert(0, str(Path(__file__).parent.parent.absolute()))
 
 from common.path_config import PROJECT_ROOT
 from common.ctrlcomp import *
@@ -29,7 +29,9 @@ from common.rotation_helper import get_gravity_orientation_real, transform_imu_d
 from common.remote_controller import RemoteController, KeyMap
 from common.ball_state_dds import BallStateSubscriber
 from common.target_state_dds import TargetStateSubscriber, TargetStatePublisher
-from config import Config
+from deploy_real.config import Config
+from deploy_real.scalebfm_input import RealPolicyInput
+from policy.scalebfm.motion_catalog import MotionCatalog
 
 
 def _repository_provenance() -> dict:
@@ -61,6 +63,21 @@ class Controller:
         self.control_dt = config.control_dt
         
         
+        import torch
+        torch.set_num_threads(config.torch_threads)
+        # Load/warm the policy and all motion references before creating DDS channels.
+        self.state_cmd = StateAndCmd(self.num_joints)
+        self.policy_output = PolicyOutput(self.num_joints)
+        self.FSM_controller = FSM(self.state_cmd, self.policy_output,
+                                  config.scalebfm, config.joint_names, enable_freekick=False)
+        self.catalog = None
+        if config.scalebfm.enabled:
+            tracker = self.FSM_controller.scalebfm_policy
+            self.catalog = MotionCatalog(tracker.motion_path, config.scalebfm.motion_globs, PROJECT_ROOT)
+            tracker.preload_motions(self.catalog.paths)
+            print(self.catalog.describe())
+        self.policy_input = RealPolicyInput(self.catalog)
+
         self.low_cmd = unitree_hg_msg_dds__LowCmd_()
         self.low_state = unitree_hg_msg_dds__LowState_()
         self.mode_pr_ = MotorMode.PR
@@ -85,9 +102,6 @@ class Controller:
         self.ang_vel = np.zeros(3, dtype=np.float32)
         self.gravity_orientation = np.array([0,0,-1], dtype=np.float32)
         
-        self.state_cmd = StateAndCmd(self.num_joints)                   # 定义了机器人的state
-        self.policy_output = PolicyOutput(self.num_joints)              # 定义了action, kp, kd
-        self.FSM_controller = FSM(self.state_cmd, self.policy_output)
 
         # Ball state subscriber (DDS, from on-robot ball_detector_service)
         self.ball_sub = BallStateSubscriber(domain_id=0)
@@ -168,28 +182,10 @@ class Controller:
                     print(f"\n[BIAS] target_y_bias = {self.state_cmd.target_y_bias:+.2f} m", flush=True)
             self._prev_right_pressed = right_now
             self._prev_left_pressed  = left_now
-            y_just_pressed = self.remote_controller.is_button_just_pressed(KeyMap.Y)
 
-            # PASSIVE: safety command — always overrides any pending command
-            if self.remote_controller.is_button_pressed(KeyMap.F1):             # F1 阻尼保护模式
-                self.state_cmd.skill_cmd = FSMCommand.PASSIVE
-            elif self.remote_controller.is_button_pressed(KeyMap.start):
-                self.state_cmd.skill_cmd = FSMCommand.POS_RESET
-            elif self.remote_controller.is_button_pressed(KeyMap.B):            # Loco, B
-                self.state_cmd.skill_cmd = FSMCommand.LOCO
-            elif self.remote_controller.is_button_pressed(KeyMap.A):            # AMP, A
-                self.state_cmd.skill_cmd = FSMCommand.CMD_AMP
-            elif y_just_pressed:                                                 # SMP Recovery, Y
-                self.state_cmd.skill_cmd = FSMCommand.CMD_SMP_RECOVERY
-            elif self.remote_controller.is_button_pressed(KeyMap.R1):           # FreeKick, R1
-                self.state_cmd.skill_cmd = FSMCommand.CMD_FREEKICK
-            elif self.remote_controller.is_button_pressed(KeyMap.down):         # BeyondMimicMJ, Down
-                self.state_cmd.skill_cmd = FSMCommand.CMD_BEYONDMIMIC_MJ
-            elif self.remote_controller.is_button_pressed(KeyMap.up):           # StandUpMJ, Up
-                self.state_cmd.skill_cmd = FSMCommand.CMD_STANDUP_MJ
-            elif self.remote_controller.is_button_pressed(KeyMap.R2):           # Pinocchio1.6MJ, R2
-                self.state_cmd.skill_cmd = FSMCommand.CMD_PINOCCHIO_1_6_MJ
-            
+            self.policy_input.update(self.remote_controller.button_states.copy(),
+                                     self.FSM_controller, self.state_cmd, self.policy_output)
+
             self.state_cmd.vel_cmd[0] =  self.remote_controller.ly              # 速度指令
             self.state_cmd.vel_cmd[1] =  self.remote_controller.lx * -1
             self.state_cmd.vel_cmd[2] =  self.remote_controller.rx * -1

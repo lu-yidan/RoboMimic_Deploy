@@ -19,7 +19,7 @@ class FSMMode(Enum):
     NORMAL = 2
 
 class FSM:
-    def __init__(self, state_cmd:StateAndCmd, policy_output:PolicyOutput):
+    def __init__(self, state_cmd:StateAndCmd, policy_output:PolicyOutput, scalebfm_config=None, joint_names=None, enable_freekick=True):
         self.state_cmd = state_cmd
         self.policy_output = policy_output
         self.cur_policy : FSMState
@@ -41,9 +41,14 @@ class FSM:
             "g1_result_pinocchio_1_6_mj.yaml",
             FSMStateName.SKILL_PINOCCHIO_1_6_MJ,
         )
-        self.freekick_policy = FreeKick(state_cmd, policy_output)
+        self.freekick_policy = FreeKick(state_cmd, policy_output) if enable_freekick else None
         self.amp_policy = Amp(state_cmd, policy_output)
         self.smp_recovery_policy = SmpRecovery(state_cmd, policy_output)
+
+        self.scalebfm_policy = None
+        if scalebfm_config is not None and scalebfm_config.enabled:
+            from policy.scalebfm.ScaleBFM import ScaleBFM
+            self.scalebfm_policy = ScaleBFM(state_cmd, policy_output, scalebfm_config, joint_names)
 
         print("initalized all policies!!!")
         
@@ -53,9 +58,20 @@ class FSM:
         
         
     def run(self):
-        start_time = time.time()
         self.policy_output.recovery_debug = {}
         self.policy_output.executed_fsm_state = -1
+        # Damping preempts even a pending enter(), before any learned policy runs.
+        if self.state_cmd.skill_cmd == FSMCommand.PASSIVE:
+            self.state_cmd.skill_cmd = FSMCommand.INVALID
+            if self.cur_policy is not self.passive_mode:
+                self.cur_policy.exit()
+                self.cur_policy = self.passive_mode
+                self.cur_policy.enter()
+            self.FSMmode = FSMMode.NORMAL
+            self.policy_output.executed_fsm_state = self.cur_policy.name.value
+            self.cur_policy.run()
+            return
+        start_time = time.time()
         # Recovery is globally preemptive so Y works from every FSM state.
         # The input layer gives the damping command higher priority.
         if (self.state_cmd.skill_cmd == FSMCommand.CMD_SMP_RECOVERY and
@@ -68,10 +84,22 @@ class FSM:
 
         if(self.FSMmode == FSMMode.NORMAL): 
             self.policy_output.executed_fsm_state = self.cur_policy.name.value
-            self.cur_policy.run()
-            nextPolicyName = self.cur_policy.checkChange()
+            restart_scalebfm = False
+            # A newly loaded reference must enter/reset before its first inference.
+            if self.state_cmd.skill_cmd != FSMCommand.CMD_SCALEBFM:
+                self.cur_policy.run()
+            if self.state_cmd.skill_cmd == FSMCommand.CMD_SCALEBFM:
+                self.state_cmd.skill_cmd = FSMCommand.INVALID
+                if self.scalebfm_policy is not None and self.cur_policy.name in (FSMStateName.FIXEDPOSE, FSMStateName.LOCOMODE, FSMStateName.SKILL_AMP, FSMStateName.SKILL_SCALEBFM):
+                    nextPolicyName = FSMStateName.SKILL_SCALEBFM
+                    restart_scalebfm = self.cur_policy.name == FSMStateName.SKILL_SCALEBFM
+                else:
+                    print("[ScaleBFM] Start from FixedPose, Loco or AMP.")
+                    nextPolicyName = self.cur_policy.name
+            else:
+                nextPolicyName = self.cur_policy.checkChange()
             
-            if(nextPolicyName != self.cur_policy.name):
+            if(nextPolicyName != self.cur_policy.name or restart_scalebfm):
                 # change policy
                 self.FSMmode = FSMMode.CHANGE
                 self.cur_policy.exit()
@@ -110,7 +138,7 @@ class FSM:
         elif((policy_name == FSMStateName.SKILL_BEYONDMIMIC_MJ)):
             self.cur_policy = self.beyondmimic_mj_policy
         elif((policy_name == FSMStateName.SKILL_FREEKICK)):
-            self.cur_policy = self.freekick_policy
+            self.cur_policy = self.freekick_policy if self.freekick_policy is not None else self.fixed_pose_1
         elif((policy_name == FSMStateName.SKILL_STANDUP_MJ)):
             self.cur_policy = self.standup_mj_policy
         elif((policy_name == FSMStateName.SKILL_AMP)):
@@ -119,6 +147,8 @@ class FSM:
             self.cur_policy = self.smp_recovery_policy
         elif((policy_name == FSMStateName.SKILL_PINOCCHIO_1_6_MJ)):
             self.cur_policy = self.pinocchio_1_6_mj_policy
+        elif policy_name == FSMStateName.SKILL_SCALEBFM and self.scalebfm_policy is not None:
+            self.cur_policy = self.scalebfm_policy
         else:
             pass
             

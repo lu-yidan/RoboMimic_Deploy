@@ -10,6 +10,17 @@ class Config:
         mujoco_yaml_path = os.path.join(current_dir, "config", "real.yaml")
         with open(mujoco_yaml_path, "r") as f:
             config = yaml.load(f, Loader=yaml.FullLoader)
+            from omegaconf import OmegaConf
+            self.scalebfm = OmegaConf.create(config.get("scalebfm", {"enabled": False}))
+            self.joint_names = config.get("joint_names", [])
+            self.torch_threads = int(config.get("torch_threads", 1))
+            if self.torch_threads < 1:
+                raise ValueError("torch_threads must be positive")
+            if self.scalebfm.enabled:
+                if config["num_joints"] != 29 or abs(config["control_dt"] - .02) > 1e-9:
+                    raise ValueError("ScaleBFM requires 29 joints and 50 Hz control")
+                if not self.scalebfm.reference_forcing:
+                    raise ValueError("LowState has no root localization: reference_forcing must be true")
             self.net = os.environ.get("BRIDGE_NETWORK_INTERFACE") or os.environ.get("ROBOT_IFACE") or config["net"]
             self.num_joints = config["num_joints"]
             self.lowcmd_topic = config["lowcmd_topic"]

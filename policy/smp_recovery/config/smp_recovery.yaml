@@ -18,7 +18,7 @@
 # Table fine-tune: v34_table2233_ft2000 (20/20/30/30, checkpoint 2000).
 # V34 model-only fine-tune: v34_model_only_ft5999 (completed plate run, not table fine-tune).
 # Legacy profiles: a11 | a13 | v34_93d_gate6000 | v35_rd_gate5999 | ft12k_sim | e1_prone_9999 | p5_all_low_2500
-profile: a6_no_alpha_9999
+profile: v34_balanced4_hard19000
 
 model_path: "smp_ft_r0_9500_93d.onnx"
 model_sha256: "abd7d9e79eba5ff138217d059682311970e429e0cc3c7d202b5867c5e7f9a907"

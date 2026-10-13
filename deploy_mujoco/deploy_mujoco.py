@@ -234,8 +234,6 @@ def main(cfg: DictConfig):
     with mujoco.viewer.launch_passive(m, d, key_callback=key_callback) as viewer:
         deadline = time.perf_counter()
         next_render = deadline
-        report_start = deadline
-        report_steps = 0
         while viewer.is_running() and Running:
             try:
                 if reset_requested.is_set():
@@ -430,7 +428,6 @@ def main(cfg: DictConfig):
                     viewer.sync()
                     next_render = time.perf_counter() + 1.0 / render_hz
 
-                report_steps += 1
                 deadline += m.opt.timestep
                 now = time.perf_counter()
                 remaining = deadline - now
@@ -439,11 +436,6 @@ def main(cfg: DictConfig):
                 elif remaining < -0.1:
                     # Do not burst through seconds of motion after a stalled window.
                     deadline = now
-                now = time.perf_counter()
-                if now - report_start >= 5.0:
-                    speed = report_steps * m.opt.timestep / (now - report_start)
-                    print(f"[Simulation] {speed:.2f}x realtime (target 1.00x)")
-                    report_start, report_steps = now, 0
             except KeyboardInterrupt:
                 Running = False
             except ValueError as e:

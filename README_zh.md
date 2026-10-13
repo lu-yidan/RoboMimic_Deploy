@@ -535,7 +535,7 @@ python tools/check_scalebfm_onboard.py --steps 100
 
 ### MuJoCo 实时播放速度
 
-默认物理步长为 2 ms，策略每 10 步运行一次（50 Hz），画面同步独立限制为 60 Hz（`render_hz`）。累计时钟允许推理耗时在后续物理步中补偿；滞后超过 100 ms 时重新对齐，避免长时间卡顿后连续追帧。终端每 5 秒显示 `[Simulation] ...x realtime`：接近 1.00x 为实时，持续低于 1.00x 表示计算或显示仍不足以实时运行。ScaleBFM 默认启用 CUDA graph，并将 PyTorch CPU 线程设为 1。修改后需要重启仿真进程。
+默认物理步长为 2 ms，策略每 10 步运行一次（50 Hz），画面同步独立限制为 60 Hz（`render_hz`）。累计时钟允许推理耗时在后续物理步中补偿；滞后超过 100 ms 时重新对齐，避免长时间卡顿后连续追帧。默认不打印周期性实时倍率信息。ScaleBFM 默认启用 CUDA graph，并将 PyTorch CPU 线程设为 1。修改后需要重启仿真进程。
 
 ### ScaleBFM 真机使用 C++ bridge
 

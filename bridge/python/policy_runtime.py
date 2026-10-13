@@ -15,6 +15,9 @@ from common.ball_state_dds import BallStateSubscriber, BallStatePublisher
 from common.target_state_dds import TargetStateSubscriber, TargetStatePublisher
 from bridge.python.bridge_state_dds import BridgeStateSubscriber
 from common.logger import Logger
+from common.path_config import PROJECT_ROOT
+from deploy_real.scalebfm_input import RealPolicyInput
+from policy.scalebfm.motion_catalog import MotionCatalog
 from bridge.python.bridge_diagnostics_dds import DiagnosticsSubscriber, apply_diagnostics
 
 
@@ -39,7 +42,18 @@ class PolicyRuntime:
 
         self.state_cmd = StateAndCmd(self.num_joints)
         self.policy_output = PolicyOutput(self.num_joints)
-        self.FSM_controller = FSM(self.state_cmd, self.policy_output)
+        import torch
+        torch.set_num_threads(config.torch_threads)
+        self.FSM_controller = FSM(self.state_cmd, self.policy_output,
+                                  config.scalebfm, config.joint_names, enable_freekick=False)
+        self.catalog = None
+        if config.scalebfm.enabled:
+            tracker = self.FSM_controller.scalebfm_policy
+            self.catalog = MotionCatalog(tracker.motion_path, config.scalebfm.motion_globs, PROJECT_ROOT)
+            tracker.preload_motions(self.catalog.paths)
+            print(self.catalog.describe())
+        self.policy_input = RealPolicyInput(self.catalog)
+        # All model/reference loading finishes before bridge subscriptions start.
 
         self.bridge_state_sub = BridgeStateSubscriber(
             domain_id=config.bridge_domain_id,
@@ -142,26 +156,8 @@ class PolicyRuntime:
                 print(f"\n[BALL BIAS] ball_y_bias = {self.state_cmd.ball_y_bias:+.2f} m", flush=True)
         self._prev_l2_right_pressed = l2_right
         self._prev_l2_left_pressed  = l2_left
-        y_just_pressed = self.remote_controller.is_button_just_pressed(KeyMap.Y)
-
-        if self.remote_controller.is_button_pressed(KeyMap.F1):
-            self.state_cmd.skill_cmd = FSMCommand.PASSIVE
-        elif self.remote_controller.is_button_pressed(KeyMap.start):
-            self.state_cmd.skill_cmd = FSMCommand.POS_RESET
-        elif self.remote_controller.is_button_pressed(KeyMap.B):
-            self.state_cmd.skill_cmd = FSMCommand.LOCO
-        elif self.remote_controller.is_button_pressed(KeyMap.A):
-            self.state_cmd.skill_cmd = FSMCommand.CMD_AMP
-        elif y_just_pressed:
-            self.state_cmd.skill_cmd = FSMCommand.CMD_SMP_RECOVERY
-        elif self.remote_controller.is_button_pressed(KeyMap.R1):
-            self.state_cmd.skill_cmd = FSMCommand.CMD_FREEKICK
-        elif self.remote_controller.is_button_pressed(KeyMap.down):
-            self.state_cmd.skill_cmd = FSMCommand.CMD_BEYONDMIMIC_MJ
-        elif self.remote_controller.is_button_pressed(KeyMap.up):
-            self.state_cmd.skill_cmd = FSMCommand.CMD_STANDUP_MJ
-        elif self.remote_controller.is_button_pressed(KeyMap.R2):
-            self.state_cmd.skill_cmd = FSMCommand.CMD_PINOCCHIO_1_6_MJ
+        self.policy_input.update(self.remote_controller.button_states.copy(),
+                                 self.FSM_controller, self.state_cmd, self.policy_output)
 
         self.state_cmd.vel_cmd[0] = self.remote_controller.ly
         self.state_cmd.vel_cmd[1] = -self.remote_controller.lx
@@ -245,8 +241,8 @@ class PolicyRuntime:
             self._logger.event("state_resumed", time_s=started-self._log_start)
         self._was_stale = False
         self._set_remote_from_bridge(bridge_state)
-        self._apply_remote_commands()
         self._apply_robot_state(bridge_state)
+        self._apply_remote_commands()
         self.state_cmd.telemetry = {
             "state_tick_words": [int(bridge_state.tick) & 65535, (int(bridge_state.tick) >> 16) & 65535],
             "command_seq_words": [self._cmd_seq & 65535, (self._cmd_seq >> 16) & 65535],

@@ -17,7 +17,7 @@ class RealPolicyInput:
         if buttons[KeyMap.F1] or buttons[KeyMap.select]:
             state.skill_cmd = FSMCommand.PASSIVE
             return
-        if self.catalog is not None and not buttons[KeyMap.L1]:
+        if self.catalog is not None and not buttons[KeyMap.L1] and not buttons[KeyMap.L2]:
             delta = int(rising(KeyMap.right)) - int(rising(KeyMap.left))
             if delta:
                 self.catalog.move(delta)

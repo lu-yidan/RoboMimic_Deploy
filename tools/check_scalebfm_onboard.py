@@ -19,8 +19,8 @@ def main():
     parser.add_argument('--steps', type=int, default=100)
     args = parser.parse_args()
     if args.steps < 1: parser.error('--steps must be positive')
-    # Importing the entry checks SDK imports, but never constructs Controller or channels.
-    importlib.import_module('deploy_real.deploy_real')
+    # Importing the entry checks bridge imports, but never constructs runtime or DDS channels.
+    importlib.import_module('bridge.python.deploy_policy')
     cfg = Config()
     torch.set_num_threads(cfg.torch_threads)
     state, output = StateAndCmd(29), PolicyOutput(29)

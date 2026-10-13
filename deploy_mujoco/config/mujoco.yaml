@@ -3,6 +3,8 @@ xml_path: "g1_description/scene.xml"
 # xml_path: "g1_description/g1_29dof_LieDown.xml"
 simulation_dt: 0.002
 control_decimation: 10
+render_hz: 60
+torch_threads: 1
 ghost_enabled: true        # show reference motion ghost; toggle with L3 at runtime
 ghost_rgba: [0.2, 0.9, 0.4, 0.2]  # [R, G, B, alpha]  lower alpha = more transparent
 tau_limit: [88, 139, 88, 139, 50, 50,
@@ -25,6 +27,7 @@ scalebfm:
   checkpoint: null  # default: official M model_22200.pt
   motion: null      # default: ScaleBridge/data/motion/g1_29dof/squat.npz
   reference_forcing: true
+  cuda_graph: true
   motion_globs:
     - outputs/duobox_scalebfm/batch15_v1/motions/*.npz
     - outputs/duobox_scalebfm/comparison*/motions/*.npz

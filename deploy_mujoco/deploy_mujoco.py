@@ -133,6 +133,11 @@ def _reset_ball_state(m, d, ball_body_id, pos_w, vel_w, quat_w=None, ang_vel_w=N
 
 @hydra.main(version_base="1.1", config_path="config", config_name="mujoco")
 def main(cfg: DictConfig):
+    import torch
+    torch.set_num_threads(int(cfg.get("torch_threads", 1)))
+    render_hz = float(cfg.get("render_hz", 60))
+    if render_hz <= 0:
+        raise ValueError("render_hz must be positive")
     xml_path = os.path.join(PROJECT_ROOT, cfg.xml_path)
     simulation_dt = cfg.simulation_dt
     control_decimation = cfg.control_decimation
@@ -227,7 +232,10 @@ def main(cfg: DictConfig):
         elif key == 259:
             standing_reset_requested.set()
     with mujoco.viewer.launch_passive(m, d, key_callback=key_callback) as viewer:
-        sim_start_time = time.time()
+        deadline = time.perf_counter()
+        next_render = deadline
+        report_start = deadline
+        report_steps = 0
         while viewer.is_running() and Running:
             try:
                 if reset_requested.is_set():
@@ -249,6 +257,7 @@ def main(cfg: DictConfig):
                     kds[:] = policy_output.kds
                     print("[Reset] configured initial state; PASSIVE. Press Y to start SMP.")
                     viewer.sync()
+                    deadline = time.perf_counter()
                     continue
                 if(joystick.is_button_pressed(JoystickButton.SELECT)):
                     Running = False
@@ -263,6 +272,7 @@ def main(cfg: DictConfig):
                     policy_output_action = policy_output.actions.copy()
                     kps, kds = policy_output.kps.copy(), policy_output.kds.copy()
                     standing_reset_requested.clear()
+                    deadline = time.perf_counter()
                     print("[Simulation] Reset to standing FixedPose; R1 starts ScaleBFM.")
                     continue
                 hat = joystick.get_hat_direction()
@@ -346,7 +356,7 @@ def main(cfg: DictConfig):
                 state_cmd.vel_cmd[1] = -joystick.get_axis_value(0)
                 state_cmd.vel_cmd[2] = -joystick.get_axis_value(3)
                 
-                step_start = time.time()
+                # The deadline accumulates physics time, including inference/input cost.
                 
                 tau = pd_control(policy_output_action, d.qpos[7:7+num_joints], kps, np.zeros_like(kps), d.qvel[6:6+num_joints], kds)
                 tau = np.clip(tau, -tau_limit, tau_limit)
@@ -396,28 +406,44 @@ def main(cfg: DictConfig):
                         logger.log(log_step, t, state_cmd, policy_output)
                         log_step += 1
 
-                # ---- Ghost visualization ----
-                if ghost_flags[0] and policy_output.ghost_qpos is not None:
-                    ghost_d.qpos[:7 + num_joints] = policy_output.ghost_qpos
-                    mujoco.mj_forward(ghost_m, ghost_d)
-                    with viewer.lock():
-                        viewer.user_scn.ngeom = 0
-                        mujoco.mjv_addGeoms(
-                            ghost_m, ghost_d,
-                            mujoco.MjvOption(), mujoco.MjvPerturb(),
-                            mujoco.mjtCatBit.mjCAT_DYNAMIC.value,
-                            viewer.user_scn,
-                        )
-                        _draw_viz_spheres(viewer.user_scn, policy_output.viz_spheres)
-                else:
-                    with viewer.lock():
-                        viewer.user_scn.ngeom = 0
-                        _draw_viz_spheres(viewer.user_scn, policy_output.viz_spheres)
+                # Rendering is independent of the 500 Hz physics / 50 Hz policy loop.
+                now = time.perf_counter()
+                if now >= next_render:
+                    # ---- Ghost visualization ----
+                    if ghost_flags[0] and policy_output.ghost_qpos is not None:
+                        ghost_d.qpos[:7 + num_joints] = policy_output.ghost_qpos
+                        mujoco.mj_forward(ghost_m, ghost_d)
+                        with viewer.lock():
+                            viewer.user_scn.ngeom = 0
+                            mujoco.mjv_addGeoms(
+                                ghost_m, ghost_d,
+                                mujoco.MjvOption(), mujoco.MjvPerturb(),
+                                mujoco.mjtCatBit.mjCAT_DYNAMIC.value,
+                                viewer.user_scn,
+                            )
+                            _draw_viz_spheres(viewer.user_scn, policy_output.viz_spheres)
+                    else:
+                        with viewer.lock():
+                            viewer.user_scn.ngeom = 0
+                            _draw_viz_spheres(viewer.user_scn, policy_output.viz_spheres)
 
-                viewer.sync()
-                time_until_next_step = m.opt.timestep - (time.time() - step_start)
-                if time_until_next_step > 0:
-                    time.sleep(time_until_next_step)
+                    viewer.sync()
+                    next_render = time.perf_counter() + 1.0 / render_hz
+
+                report_steps += 1
+                deadline += m.opt.timestep
+                now = time.perf_counter()
+                remaining = deadline - now
+                if remaining > 0:
+                    time.sleep(remaining)
+                elif remaining < -0.1:
+                    # Do not burst through seconds of motion after a stalled window.
+                    deadline = now
+                now = time.perf_counter()
+                if now - report_start >= 5.0:
+                    speed = report_steps * m.opt.timestep / (now - report_start)
+                    print(f"[Simulation] {speed:.2f}x realtime (target 1.00x)")
+                    report_start, report_steps = now, 0
             except KeyboardInterrupt:
                 Running = False
             except ValueError as e:

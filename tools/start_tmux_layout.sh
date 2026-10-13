@@ -1,11 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ScaleBFM uses the direct DDS entry. Keep the former bridge topology opt-in.
-if [[ "${TMUX_PROFILE:-scalebfm}" != "bridge" ]]; then
-  exec bash "$(dirname "${BASH_SOURCE[0]}")/start_tmux_scalebfm.sh" "$@"
-fi
-
 # Real-robot bring-up reference topology.
 #
 # Keep onboarding docs aligned with this script: each tmux pane maps to one
@@ -13,9 +8,10 @@ fi
 # publisher.
 
 SESSION_NAME="${1:-robomimic}"
+DETACH="${2:-}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="${REPO_DIR:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
-TMUX_SHELL="bash --noprofile --norc"
+printf -v TMUX_SHELL 'bash --noprofile --rcfile %q -i' "${REPO_DIR}/tools/tmux_scalebfm.bashrc"
 if [[ -z "${ROBOT_IFACE:-}" ]]; then
   # Use the canonical sysfs name. Some G1 boards expose enP8p1s0 only as
   # an altname of eth0; CycloneDDS must bind the real interface name.
@@ -67,7 +63,12 @@ if ! command -v tmux >/dev/null 2>&1; then
 fi
 
 if tmux has-session -t "${SESSION_NAME}" 2>/dev/null; then
-  tmux attach-session -t "${SESSION_NAME}"
+  [[ "$DETACH" == "--detach" ]] && exit 0
+  if [[ -n "${TMUX:-}" ]]; then
+    tmux switch-client -t "${SESSION_NAME}"
+  else
+    tmux attach-session -t "${SESSION_NAME}"
+  fi
   exit 0
 fi
 
@@ -103,4 +104,10 @@ tmux new-window -d -t "${SESSION_NAME}" -n monitor -c "${REPO_DIR}" "${TMUX_SHEL
 tmux send-keys -t "${SESSION_NAME}:1.0" -l "cd ${REPO_DIR} && ${PYTHON_BIN} tools/check_ball_state.py"
 
 tmux select-pane -t "${LEFT_TOP}"
-tmux attach-session -t "${SESSION_NAME}"
+if [[ "$DETACH" != "--detach" ]]; then
+  if [[ -n "${TMUX:-}" ]]; then
+    tmux switch-client -t "${SESSION_NAME}"
+  else
+    tmux attach-session -t "${SESSION_NAME}"
+  fi
+fi

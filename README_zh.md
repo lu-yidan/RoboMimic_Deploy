@@ -506,89 +506,39 @@ python tools/batch_duobox_scalebfm.py --out outputs/duobox_scalebfm/batch15_new
 ```
 
 
-### ScaleBFM 真机 DDS 接口
+### ScaleBFM 真机 C++ bridge 接口
 
-`deploy_real/deploy_real.py` 通过 G1 `LowState` 的 29 个电机位置/速度、pelvis IMU
-四元数（wxyz）和机体系角速度构建观测，将 29 维目标角和 checkpoint 的 kp/kd 写入
-`LowCmd`。手部电机不由这个策略控制。电机顺序显式配置在
-`deploy_real/config/real.yaml` 的 `joint_names`，与仿真 G1 actuator 顺序核对。
+`sr` 使用原六屏布局：左上 C++ 电机通信、左中 Python 策略、左下传感器看板；右侧依次为相机、雷达、球位置融合。命令只预填，按 Enter 才启动。`Ctrl-b` 加方向键切换分屏，`Ctrl-b d` 分离，`sr` 重新连接；分离不停止程序，`rb` 只切换项目目录。
 
-真机没有在此接口提供根位置估计，因此要求 `reference_forcing: true`，仅相对参考跟踪，
-不声称能跟踪世界坐标路径。控制周期必须是 0.02 秒，关节数必须是 29。
-模型和全部 motion 在建立 LowCmd publisher 前加载；切换只能使用预加载缓存。
-机载配置需要修改 `net`、`scalebfm.root` 和动作路径，并安装匹配的 CUDA PyTorch、
-ScaleBFM 依赖以及 `unitree_sdk2py`。默认 native CUDA 后端，尚未测量机载实时性。
+C++ bridge 通过 Unitree C++ SDK 接收 LowState、发送 LowCmd。Python 入口是 `bridge/python/deploy_policy.py`，只通过自定义 DDS bridge 消息接收关节状态、IMU 和手柄，返回 29 维关节目标及 kp/kd，不使用 Unitree Python SDK 驱动电机。不要同时启动旧 `deploy_real/deploy_real.py` 直连入口。C++ 保留命令超时阻尼，Python 保留状态断流阻尼。
 
-- 左/右：选择 motion，L1 按住时仍用于偏置调整。
-- R1：按下沿启动/重播，允许从 FixedPose、AMP、Loco 或 ScaleBFM 进入；不改变物理状态。
-- A/B：AMP/Loco；START：FixedPose 关节目标插值，不是物理 reset，也不是倒地恢复。
-- F1：阻尼优先，不能被同时按下的其他策略键覆盖；SELECT：阻尼并退出。
+真机缺少根位置估计，必须保持 `reference_forcing: true`；控制周期为 0.02 秒，关节数为 29，手部电机不由此策略控制。模型和全部 motion 在策略创建 bridge 订阅之前加载及预热，运行中只允许选择缓存动作。
+
+- 左右选择待播动作；L1/L2 加方向键保留感知偏置功能。
+- R1 按下沿启动/重播，允许从 FixedPose、AMP、Loco 或 ScaleBFM 进入。
+- A/B：AMP/Loco；START：FixedPose；Y：SMP 恢复；F1：阻尼优先；SELECT：阻尼并退出。
 - 初始 Passive 下拒绝直接进入 ScaleBFM，需先进入 FixedPose。
 
-在确认部署依赖和网卡配置后，真机入口为（该命令会连接机器人并发送电机指令）：
+机载目录 `/home/unitree/RoboMimic_Deploy`，分支 `lyd/scalebfm-table-config-balanced4`；ScaleBFM 在 `/home/unitree/ScaleBFM`。沿用 Conda `robomimic`（Python 3.8、NVIDIA PyTorch 2.0 / CUDA 11.4），机载配置保留 `net: eth0` 和对应 ScaleBFM 根路径。`cuda_graph: true`、`torch_threads: 1` 用于预热和推理。
 
 ```bash
-conda activate scalebfm-native
-python deploy_real/deploy_real.py
-```
-
-离线检查（不建立 DDS、不发送电机指令）：
-
-```bash
-python tools/test_scalebfm_real.py
-python tools/smoke_scalebfm_fsm.py
-```
-
-当前已执行通过按键/配置测试和预加载后的 MuJoCo FSM smoke；尚未连接真实 G1，
-未验证 DDS 实际收发、机载 20 ms 时限和实机跟踪稳定性。
-
-
-### Orin NX 本机配置与无 DDS 检查
-
-机载部署目录为 `/home/unitree/RoboMimic_Deploy`；同步后应切换到 `lyd/scalebfm-table-config-balanced4`。
-ScaleBFM 位于 `/home/unitree/ScaleBFM`；机载本地配置保留 `net: eth0`，
-并将 `scalebfm.root` 改为该路径。使用现有 Conda `robomimic`（Python 3.8、
-NVIDIA PyTorch 2.0 / CUDA 11.4），不复制工作站 x86 环境。
-
-机载开启 `cuda_graph: true`，在启动预热时捕获 CUDA graph，并验证与 native 输出一致；
-checkpoint 权重与输出定义不变。全部缓存 reference 在 DDS publisher 创建前预热。
-CPU torch 线程由 `torch_threads: 1` 固定，与离线测速保持一致。
-
-```bash
-# 仅检查：不会建立 DDS 或发送电机指令
-cd /home/unitree/RoboMimic_Deploy
-/home/unitree/miniconda3/envs/robomimic/bin/python tools/check_scalebfm_onboard.py --steps 100
-
-# 真机控制入口：会发送电机指令
-source /home/unitree/robomimic-env.sh
-python deploy_real/deploy_real.py
-```
-
-无 DDS 检查包含 SDK/入口导入、完整 FSM 初始化、16 段动作预加载、CUDA graph/native
-逐动作输出对比、有限输出与同步 CUDA 耗时统计。静态状态测速不包含 DDS、日志、电机通信，
-不能替代实际控制闭环测试。机载原始配置/雷达修改保存在 Git stash 与
-`~/setup-downloads/pre-scalebfm-local-changes.patch`，并已重新应用。
-
-
-### 机载 sr / rb 与 tmux
-
-机载 `.bashrc` 的 `sr` 调用 `tools/start_tmux_layout.sh`，默认创建/连接
-`robomimic` 会话，含 `control`、`check` 两个窗口；不自动启动程序。
-窗口使用专用 rc 文件初始化 `~/robomimic-env.sh`，避免普通 `.bashrc` 的 ROS 交互选择阻塞，
-并保留 `sr` 与 `rb`。`rb` 仅切换到项目目录。
-
-```bash
+# 六屏启动入口（在各分屏确认命令后按 Enter）
 sr
-rb
-# 可先执行无 DDS 检查
+# 离线检查：不创建 DDS 或发送电机指令
+source ~/robomimic-env.sh
 python tools/check_scalebfm_onboard.py --steps 100
-# 需要实际控制时手动执行（会发送电机指令）
-python deploy_real/deploy_real.py
 ```
 
-Ctrl-b n 切换窗口，Ctrl-b d 分离；再次 `sr` 连接原会话。
-分离不会停止已运行的程序。控制程序退出使用 SELECT/正常退出流程。
-前文六窗 bridge/感知布局为旧方式，仍可通过 `TMUX_PROFILE=bridge` 显式选择；
-它不接入本节的 ScaleBFM，且旧路径/网卡需另行核对。
+离线检查覆盖 bridge 入口导入、FSM 初始化、16 段动作预加载、CUDA graph/native 输出对比及推理耗时，不包含真实 DDS 收发、日志开销、电机通信或闭环跟踪。
 
 当前分支基于 `codex/table-config-balanced4`（`4678455`）迁入 ScaleBFM；保留 SMP Recovery、Y 键恢复、桌面场景与原日志功能。SMP 状态/指令编号保持 18/20，ScaleBFM 使用 19/21，避免协议编号冲突。
+
+### MuJoCo 实时播放速度
+
+默认物理步长为 2 ms，策略每 10 步运行一次（50 Hz），画面同步独立限制为 60 Hz（`render_hz`）。累计时钟允许推理耗时在后续物理步中补偿；滞后超过 100 ms 时重新对齐，避免长时间卡顿后连续追帧。终端每 5 秒显示 `[Simulation] ...x realtime`：接近 1.00x 为实时，持续低于 1.00x 表示计算或显示仍不足以实时运行。ScaleBFM 默认启用 CUDA graph，并将 PyTorch CPU 线程设为 1。修改后需要重启仿真进程。
+
+### ScaleBFM 真机使用 C++ bridge
+
+真机默认入口恢复为 `sr` 的六屏布局：左上 C++ bridge、左中 `bridge/python/deploy_policy.py`、左下看板；右侧为相机、雷达和融合。命令仅预填，按 Enter 才执行。C++ 独占 Unitree LowCmd/LowState 通信，Python 通过自定义 bridge DDS 消息交换状态和关节目标，不使用 Unitree Python SDK 驱动电机。不要启动旧 `deploy_real/deploy_real.py` 直连入口。
+
+策略启动时先预加载 ScaleBFM 与动作库，再等待 bridge 状态。R1 从 FixedPose/AMP/Loco 启动或重播，左右选择待播动作，L1/L2 加方向键仍用于感知偏置，Y 恢复、F1 阻尼保持原有作用。`tools/check_scalebfm_onboard.py` 只做离线加载和推理检查，不创建通信或发送电机命令。

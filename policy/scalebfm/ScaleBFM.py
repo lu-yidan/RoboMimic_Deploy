@@ -57,7 +57,7 @@ class ScaleBFM(FSMState):
             'metadata': str(artifact / 'model_22200_tensorrt_metadata.json'),
             'mode_table': str(artifact / 'mode_table.pt'),
             'xml_path': str(bridge / 'scalebridge/data/robot/g1_29dof/g1_29dof.xml'),
-            'backend': 'torch', 'control_mode': 7,
+            'backend': 'torch', 'control_mode': int(config.get('control_mode', 7)),
             'cuda_graph': bool(config.get('cuda_graph', False)),
         })
         self.agent = BFMAgent(agent_cfg, 'cuda')

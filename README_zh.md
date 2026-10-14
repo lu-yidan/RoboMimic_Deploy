@@ -542,3 +542,81 @@ python tools/check_scalebfm_onboard.py --steps 100
 真机默认入口恢复为 `sr` 的六屏布局：左上 C++ bridge、左中 `bridge/python/deploy_policy.py`、左下看板；右侧为相机、雷达和融合。命令仅预填，按 Enter 才执行。C++ 独占 Unitree LowCmd/LowState 通信，Python 通过自定义 bridge DDS 消息交换状态和关节目标，不使用 Unitree Python SDK 驱动电机。不要启动旧 `deploy_real/deploy_real.py` 直连入口。
 
 策略启动时先预加载 ScaleBFM 与动作库，再等待 bridge 状态。R1 从 FixedPose/AMP/Loco 启动或重播，左右选择待播动作，L1/L2 加方向键仍用于感知偏置，Y 恢复、F1 阻尼保持原有作用。`tools/check_scalebfm_onboard.py` 只做离线加载和推理检查，不创建通信或发送电机命令。
+
+### 浏览器因果响应仿真
+
+`tools/reactive_stream_tracker.py --job <job>` 由 GMR 浏览器 pipeline 启动，只运行 MuJoCo，无 DDS/真机接口。消费增量 GMR qpos 前缀，复用 `prepare_duobox_scalebfm.convert` 生成 50 Hz 机器人位姿参考；保持同一个 ScaleBFM 实例、动作历史和物理状态，仅更新参考缓冲。未生成的未来参考由 MotionTrackingEnv clamp 保持末帧。首帧初始化使用参考姿态，不适用于直接真机启动。物理轨迹输出 `physical_50hz.npz`，页面输出 `pair_motion.npz`，语义和时序限制见 GMR README。
+
+### 响应链路延迟实验（2026-10-13，工作站）
+
+数据与复测统计见 `outputs/reactive_latency_modes/summary.json`。003/004 前 120 人体帧，Ready-to-React 每次生成 4 帧；剔除前两次预测，27 个样本/序列，计时包含 CUDA synchronize 和 agent 更新，不含启动、IPC、感知。串行复测 1 CPU 线程的中位数 57.72/61.98 ms，P95 67.80/75.27 ms；4 线程中位数 76.40/75.70 ms。早期与 CPU retarget 并行的测量波动更大，不作为串行基线。流式 worker 默认改为 1 线程。
+
+单人内存输入的 GMR v10：003 中位 20.22 ms/帧，P95 26.48 ms；004 中位 19.45 ms、P95 38.38 ms（112 样本，排除前 8 帧）。解算后直接提取 14 部位位姿约 0.013 ms，与另一个官方 XML FK 对应位置一致、朝向误差小于 1.3e-7 rad。原型已修正每关节重复解压 NPZ 的问题。
+
+`tools/benchmark_scalebfm_modes.py` 测试全部 8 种掩码，CUDA graph 暖机后各 100 次；推理中位约 0.98–1.08 ms。掩码不缩小网络张量，减少目标部位并不明显加速网络。mode 2/4/7 在相同 003 参考的各一次约 4 秒仿真均完成，目标分别为骨盆+双手、骨盆+双手双脚、全身。
+
+GMR `benchmark_direct_targets.py` 是无 IK 实验：仅做人体骨盆/手部比例缩放和机器人坐标轴偏置，以 mode 2 输入。向量化映射约 0.10 ms/帧，数值对齐完整 GMR 目标预处理。003/004 短仿真均完成，004 最大躯干倾角约 27.5 度。未选部位和关节参考是占位值，输出 NPZ 只能用于此 mode 2 实验；不能当作全身参考使用。它没有 v10 的几何可执行性修正，不是已批准的真机替代方案。不同参考方案的跟踪误差不可直接作为同一目标下的优劣比较。
+
+以上是分段计算与短仿真测试，不是端到端实时截止期、机载性能或长期稳定性验证。部署默认 mode 7 不变，实验通过 `evaluate_scalebfm_motion.py --control-mode` 显式选择。
+
+
+### 无 IK 的 3 / 5 部位对照（2026-10-13）
+
+`outputs/sparse_comparison_v1/summary.json` 保存 7 段 × 3 方案的实测结果：原始 DuoBox 的 000 护架、003 直拳、007 勾拳、021 转圈（32.22s）、027 移动组合（37.30s），以及已有 R2R 003/004 各 3.98s 输出。同一官方 M checkpoint、FixedPose 起步、50Hz 控制 / 500Hz 物理、无支撑，21 次均完成且未触发跌倒阈值。每段每方案仅一次固定初态测试，不是统计成功率，也没有测实时生成时的缓冲欠载。
+
+直接目标使用 GMR 的人体缩放与坐标轴偏移，但不调用 IK；5 部位额外把脚趾目标按模型固定变换转换成踝部目标。Mode 2 只启用骨盆/双手，mode 4 再启用双脚；二者读取同一个目标文件。文件其余部位和关节角为占位值，禁止按 full-body reference 使用。基线复用现有 GMR v10 + mode 7。没有改变真机默认模式。
+
+相对于统一的人体映射目标，去除首秒、在骨盆 heading 坐标系比较手脚位置；7 段等权平均：3 部位手/脚误差 3.65/20.34cm，5 部位 5.52/13.77cm，GMR14 为 7.43/13.55cm。该指标衡量原动作保留，不是各自 reference 跟踪误差，也不评估肘/胸/头与自碰撞。平均接触脚滑分别 0.084/0.107/0.101m/s。5 部位改善脚步位置但不保证更小脚滑；027 的根部水平路径 RMSE 从 3 部位的 1.21m 降至 5 部位的 0.57m，仍有明显路径漂移。007 的 5 部位路径误差反而更大。视频左/中/右为 direct3/direct5/GMR14，摄像机跟随各自机器人，不能直接从画面判断绝对路径误差。
+
+复现（输出目录必须新建；批量执行可跳过已有完整 report）：
+```bash
+cd /home/d080/workspace/GMR
+.venv/bin/python scripts/prepare_sparse_comparison.py --out /path/to/new_comparison
+cd /home/d080/workspace/RoboMimic_Deploy-scalebfm
+conda activate scalebfm-native
+python tools/run_sparse_comparison.py --manifest /path/to/new_comparison/manifest.json
+python tools/summarize_sparse_comparison.py --manifest /path/to/new_comparison/manifest.json --video
+```
+
+本轮 checkpoint SHA256：`88d5a79946c03ed25503f48b2af71d16290844ef066ca9b6c8fa8dc3837422e3`。三组并排视频为输出目录下 `007_ma_rear_hook_comparison.mp4`、`021_ma_circle_comparison.mp4`、`reactive_004_comparison.mp4`。
+
+
+### 3 部位墙钟实时仿真（2026-10-13）
+
+入口 `tools/reactive_realtime.py`：预录对手按时间释放历史 → 常驻 Ready-to-React（每次 4 帧，30Hz）→ 人体骨盆/双手的缩放及坐标转换，无 IK → 50Hz ScaleBFM mode 2 → 500Hz MuJoCo。两个常驻进程用本地 Unix socket 传递新块；控制期间不写逐块 NPZ、不等待生成。初始化后按墙钟调度，报告实际实时倍率和每个 20ms 截止时间的超时量；不是硬实时保证。上层仍使用自己生成的身体历史，没有接 G1 实际状态反馈；下层保留 `reference_forcing` 默认配置。
+
+默认参考播放延迟 300ms，未来六步预览不足时钳制到最后可用目标。当前目标不足时继续物理仿真，使用最后目标；缺帧期间新块到达或恢复正常时做 100ms smoothstep 位置/旋转过渡。报告把 current target hold 与 preview shortage 分开；末尾正常 0.5s 保持不计入欠载。`simulation_completed` 与完整生成 `completed` 分开，避免把生成未完成的运行标成通过。
+
+```bash
+conda activate scalebfm-native
+cd /home/d080/workspace/RoboMimic_Deploy-scalebfm
+python tools/reactive_realtime.py --out outputs/my_realtime3 --clip 21 --frames 600
+python tools/validate_realtime_run.py outputs/my_realtime3
+# 注入一次 400ms 生成延迟：
+python tools/reactive_realtime.py --out outputs/my_realtime3_stall --clip 21 --frames 600 --stall-at 120 --stall-ms 400
+```
+
+输出目录必须不存在，所有原实验保留。`report.json` 包含逐块生成/首次使用时间、逐控制周期欠载/超时/目标变化；`trace.npz` 是真实 MuJoCo qpos，`human.npz` 是本轮生成及固定对手。延迟统计为对手观测时间戳到目标收到/首次进入策略当前或未来预览的指令时间，不是机器人肢体实际开始响应的延迟。
+
+RTX4090 本地测试：`realtime3_circle200` 为 20s、200ms 缓冲，当前目标欠载 30/999；`realtime3_circle300` 为 300ms 缓冲，1/999；`realtime3_combo300` 为 20s 移动组合，0/999。三者控制超时均为 0，实时倍率约 1.001，均完成且未跌倒。300ms 两个正常运行生成块耗时中位数约 77–85ms，P95 约 140–180ms，长尾不能用平均值代替。
+
+压力测试保留两个结果：初版 `realtime3_circle_stall` 仿真走完但 producer 未结束（旧 report 的 completed 字段未区分此情况），后半段持续落后；不能算生成成功。修正缺帧连续新块的过渡后，`realtime3_stall_fixed` 收齐 600 帧并完成，当前目标保持 63/999、一次控制截止超时约 2.15ms，最大骨盆倾斜 24.6°。调度抖动使两次运行不能视为严格等时 A/B；缓冲并不解决持续吞吐不足，尚无任意长时稳定保证。
+
+浏览器 `http://127.0.0.1:19093/?id=21&mode=reactive_rt3` 新增“实时响应 → 3 部位（无 IK）→ ScaleBFM”。021/027 缓存为上述 20s 正常运行，其他动作点击生成默认最多 10s。页面是已完成实时调度实验的回放，并非浏览器实时推流。橙色 GMR 仅在实验后离线生成/读取用于显示，不进入控制链；无双方物理碰撞。
+
+
+### 实时四视图网页与对手输入对照
+
+打开 `http://127.0.0.1:19093/live`，选择动作、正常/冻结/延迟对手、4–60s 时长，点击“开始实时运行”。模型加载预热之后边生成边显示，不等待整段结束。四个视图分别是：对手 21 关节骨架（输入时钟）、生成自身 21 关节骨架（带 300ms 延迟的参考时钟）、骨盆/双手目标的位置朝向及实际部位误差、实际 MuJoCo G1。人体视图用原始人体世界坐标，后两者用校准后的机器人坐标；摄像机跟随各自骨盆，可旋转缩放。手部指标同时显示骨盆相对误差和世界误差，不能把整体位置漂移解释成局部姿态误差。
+
+控制进程通过非阻塞 localhost UDP 最多 25Hz 发出最新状态，浏览器服务通过 SSE 推送；慢浏览器只丢中间显示帧，不让控制循环等待。控制截止时间统计包含 telemetry 打包时间。四个视图共享 WebGL renderer，以减少资源竞争。服务器实现在 GMR 的 `scripts/reactive_live.py`，由原 19093 服务加载。网页的停止只终止对应本地实验进程组，不连接 DDS。输出保存在 `outputs/live_runs/<run>/`，日志位于同级 `.log`；完整实验结果重启服务后仍会列出。初次及每次重新开始都需要加载模型，运行期间两模型常驻。
+
+对照模式保持种子 42、初始姿态及前 2s 输入相同。freeze 从 2s 起保持对手姿态；delay 在 2s 起停顿 500ms 再续播，位置和旋转同步变换，并重新计算速度等输入特征。生成模型不接触变换后的未来对手帧。网页表格显示干预前生成骨架最大差异和干预后生成双手世界位置相对正常输入的平均差异（共同可比较时段，排除干预后首个 4 帧块）。这是输入敏感性实验，不是躲闪或反击成功率。
+
+本轮 004 各 8s 测试：normal、freeze、delay 均完成且控制超时为 0；目标欠载分别 0、0、24 帧。干预前最大差异为 0，freeze/delay 干预后手部差异分别 11.41/10.53cm。两组干预的输入位置/旋转变换、相同前缀、因果时间戳和增量重采样检查通过，可用 `tools/validate_realtime_run.py <variant_job> --baseline <normal_job>` 重验。初版四 renderer 的 021 20s 测试出现明显生成欠载；共享 renderer 后的一次 20s 测试欠载/控制超时均为 0，实时倍率 1.001、生成中位数 76.2ms / P95 129.4ms。这是单次本机负载测试，不保证任意浏览器/GPU负载下性能。
+
+### 当前保存节点（2026-10-14）
+
+300ms 是实现中选择的参考缓冲，可通过 `reactive_realtime.py --delay-ms` 调整；网页目前使用默认值。降低它可以减小参考滞后，但可能增加保持末目标及未来预览不足。每块 4 帧覆盖约 133ms，策略还使用 0–100ms 的未来预览，因此参考播放延迟、生成耗时、首次进入策略的延迟和实际肢体响应延迟是不同指标，不应直接相加。上面的 200/300ms 单次对照是选用默认值的依据，尚非最优延迟结论。
+
+本次保存包括实时仿真、3/5/14 部位对照、逐块因果校验与网页遥测。ScaleBFM 的 control_mode 可配置，原默认 mode 7 保持不变；本轮实时实验显式使用 mode 2。没有改变真机部署配置。当前网页尚未叠加录制的原始自身骨架。三个仓库的相关 Python 文件已做语法检查，既有仿真和对照结果见前述记录；保存节点不重复运行整批实验。

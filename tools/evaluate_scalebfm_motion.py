@@ -24,11 +24,19 @@ def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--motion',type=Path,required=True)
     p.add_argument('--out',type=Path,required=True)
+    p.add_argument('--control-mode', type=int, choices=range(8), default=7)
     p.add_argument('--no-video',action='store_true',help='Batch metrics without rendering')
     a=p.parse_args()
+    archive_header=dict(np.load(a.motion,allow_pickle=False))
+    partial=bool(archive_header.get('partial_reference',False))
+    if partial and a.control_mode not in (2,4):
+        p.error('Partial pelvis/hands/feet archive requires control-mode 2 or 4')
+    import torch
+    torch.set_num_threads(1)
     a.out.mkdir(parents=True,exist_ok=False)
     cfg=OmegaConf.load(ROOT/'deploy_mujoco/config/mujoco.yaml')
     cfg.scalebfm.motion=str(a.motion.resolve())
+    cfg.scalebfm.control_mode=a.control_mode
     model=mujoco.MjModel.from_xml_path(str(ROOT/'g1_description/scene.xml'))
     model.opt.timestep=cfg.simulation_dt
     data=mujoco.MjData(model)
@@ -42,6 +50,8 @@ def main():
     cam=mujoco.MjvCamera()
     cam.distance,cam.azimuth,cam.elevation=3.2,135,-15
     trace,errors,heights,tilts,actual_wrists,ref_wrists=[],[],[],[],[],[]
+    actual_bodies=[]
+    aligned_references=[]
     selected=[model.body(n).id for n in tracker.agent.get_meta_data()['selected_body_names']]
     wrist_indices=[tracker.agent.get_meta_data()['selected_body_names'].index(n) for n in ['left_wrist_yaw_link','right_wrist_yaw_link']]
 
@@ -71,6 +81,8 @@ def main():
             for t in range(tracker.motion_len):
                 step()
                 actual=data.xpos[selected].copy()
+                actual_bodies.append(actual)
+                aligned_references.append(tracker.obs['body_pos_w_future'][0,0].cpu().numpy().copy())
                 reference=tracker.obs['body_pos_w_future'][0,0].cpu().numpy().copy()
                 errors.append(np.linalg.norm((actual-actual[0])-(reference-reference[0]),axis=1))
                 actual_wrists.append(actual[wrist_indices]-actual[0])
@@ -99,7 +111,8 @@ def main():
                 if writer is not None:
                     cam.lookat[:]=data.qpos[:3]
                     renderer.update_scene(data,cam)
-                    for pos in reference-reference[0]+actual[0]:
+                    valid_indices=([0]+wrist_indices if a.control_mode==2 else [i for i,n in enumerate(tracker.agent.get_meta_data()['selected_body_names']) if n in archive_header.get('valid_body_names',[])]) if partial else range(len(reference))
+                    for pos in (reference-reference[0]+actual[0])[valid_indices]:
                         scene=renderer.scene
                         mujoco.mjv_initGeom(scene.geoms[scene.ngeom],mujoco.mjtGeom.mjGEOM_SPHERE,np.full(3,.025),pos,np.eye(3).flatten(),np.array([.1,.9,.25,.8]))
                         scene.ngeom+=1
@@ -113,7 +126,7 @@ def main():
                     failure='fall_threshold'
                     break
         # Full kinematic reference: deliberately separate from physical rollout.
-        if not a.no_video:
+        if not a.no_video and not partial:
             archive=np.load(a.motion,allow_pickle=False)
             indices=[model.joint(n).qposadr[0] for n in archive['joint_names']]
             with imageio.get_writer(a.out/'reference.mp4',fps=50,codec='libx264') as writer:
@@ -132,12 +145,12 @@ def main():
             renderer.close()
     errors=np.asarray(errors)
     report=dict(motion=str(a.motion.resolve()),robot='g1_description/scene.xml',backend='deployment FSM + native official M checkpoint',
-                reference_forcing=True,external_support=False,policy_hz=50,physics_hz=500,
+                reference_forcing=True,external_support=False,policy_hz=50,physics_hz=500,control_mode=a.control_mode,
                 initialization='reset FixedPose, 0.2s settle, start reference at frame 0',
                 requested_seconds=tracker.motion_len/50,completed_seconds=len(trace)/50,
                 failure=failure,completed=not failure and len(trace)==tracker.motion_len,
                 min_root_height_m=min(heights),max_pelvis_tilt_deg=max(tilts),
-                mean_root_relative_body_error_m=float(errors.mean()),
+                mean_root_relative_body_error_m=None if partial else float(errors.mean()),
                 mean_root_relative_wrist_error_m=float(errors[:,wrist_indices].mean()),
                 actual_root_xy_range_m=np.ptp(np.asarray(trace)[:,:2],axis=0).tolist(),
                 scope='One rollout; relative tracking; no opponent, no absolute-location assessment')
@@ -157,7 +170,7 @@ def main():
         actual_p95=np.asarray(report['actual_wrist_speed_p95_after_1s_m_s'])
         ref_p95=np.asarray(report['reference_wrist_speed_p95_after_1s_m_s'])
         report['wrist_speed_p95_ratio_after_1s']=(actual_p95/np.maximum(ref_p95,1e-6)).tolist()
-    np.savez_compressed(a.out/'trace.npz' ,qpos=trace,body_error=errors,actual_wrists=actual_wrists,reference_wrists=ref_wrists,fps=50)
+    np.savez_compressed(a.out/'trace.npz' ,qpos=trace,actual_bodies=actual_bodies,aligned_references=aligned_references,selected_body_names=np.array(tracker.agent.get_meta_data()['selected_body_names']),body_error=errors,actual_wrists=actual_wrists,reference_wrists=ref_wrists,fps=50)
     (a.out/'report.json').write_text(json.dumps(report,indent=2)+'\n')
     print(json.dumps(report,indent=2))
 

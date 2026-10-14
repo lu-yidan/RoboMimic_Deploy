@@ -158,6 +158,9 @@ def main():
                 raw_files=sorted((ws/'ready_to_react/data/DuoBox/fbx_export_joints').glob('*.npy'))
                 raw=np.load(raw_files[a.clip],allow_pickle=True).item();who=first['actors'][1]
                 live_opponent=np.asarray(raw[who+'_position'][4::4]).copy()
+                # Display only: recorded self shares the generated skeleton's 30Hz index.
+                # Never send these future recorded poses to the generator or tracker.
+                recorded_self=np.asarray(raw[first['actors'][0]+'_position'][4::4])
                 cut=int(a.intervention_s*30);ix=np.arange(len(live_opponent))
                 if a.opponent_mode=='freeze':ix[cut:]=min(cut,len(ix)-1)
                 elif a.opponent_mode=='delay':ix[cut:]=np.maximum(cut,ix[cut:]-int(a.opponent_delay_ms*.03))
@@ -209,6 +212,8 @@ def main():
                     actual_targets=np.array([data.body(n).xpos.copy() for n in ref.robot_names])
                     packet=dict(run=a.out.name,frame=t,time_s=t/50,source_time_s=done-epoch,total_s=steps/50,opponent_mode=a.opponent_mode,
                                 opponent=live_opponent[oi].round(5).tolist(),generated=np.asarray(all_pos[gi])[0].round(5).tolist(),
+                                reference_frame=gi,recorded_self_frame=gi,
+                                recorded_self=recorded_self[gi].round(5).tolist(),
                                 targets=pp[0].round(5).tolist(),target_quats=qq[0].round(5).tolist(),actual_targets=actual_targets.round(5).tolist(),
                                 robot=np.column_stack([visual_data.xpos,visual_data.xquat]).round(5).tolist(),
                                 starved=starved,preview_short=preview_short,generation_ms=chunks[-1]['prediction_ms'] if chunks else 0,

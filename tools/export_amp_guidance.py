@@ -57,6 +57,8 @@ def main():
     parser.add_argument('--checkpoint', type=Path, required=True)
     parser.add_argument('--bank', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--task', default='Unitree-G1-MultiAMP-Stratified-Guidance-Flat',
+                        choices=['Unitree-G1-AMP-Stratified-Flat', 'Unitree-G1-MultiAMP-Stratified-Guidance-Flat'])
     args = parser.parse_args()
     torch.set_num_threads(1)
     import src.tasks  # noqa: F401
@@ -66,7 +68,7 @@ def main():
     from mjlab.tasks.registry import load_env_cfg, load_rl_cfg, load_runner_cls
     from rsl_rl.runners.amp_on_policy_runner import _unpack_obs, _unpack_step
 
-    task = 'Unitree-G1-MultiAMP-Stratified-Guidance-Flat'
+    task = args.task
     deploy_cfg = yaml.safe_load((args.deploy_root/'policy/amp/config/amp.yaml').read_text())
     xml = ET.parse(args.deploy_root/'g1_description/g1_29dof_rev_1_0.xml')
     motor_names = [a.attrib['joint'] for a in xml.getroot().find('actuator')]

@@ -632,3 +632,5 @@ RTX4090 本地测试：`realtime3_circle200` 为 20s、200ms 缓冲，当前目�
 ### AMP 分层恢复策略（60k）
 
 原 AMP 模式支持在 [`policy/amp/config/amp.yaml`](policy/amp/config/amp.yaml) 中仅切换 `model_path`，选择旧模型或新模型 `amp_stratified_guidance_60000.onnx`。新模型内置关节顺序、动作尺度转换和观测归一化；其余配置复用。默认仍为旧模型。详见[部署说明与验证](docs/amp_guidance_60000_deployment_zh.md)。
+
+同一配置还可选择 `amp_stratified_single_60000.onnx`，用于对比[分层 reset＋单判别器 60k 策略](docs/amp_stratified_single_60000_deployment_zh.md)。

@@ -3,9 +3,12 @@
 model_path: "amp_0309_1.onnx"
 # Stratified reset + dual discriminator + recovery reward, checkpoint 60000:
 # model_path: "amp_stratified_guidance_60000.onnx"
-# The new ONNX embeds normalization, joint reordering and action-unit conversion.
+# Stratified reset + single discriminator, checkpoint 60000 (no added recovery reward):
+# model_path: "amp_stratified_single_60000.onnx"
+# Both new ONNX models embed normalization, joint reordering and action-unit conversion.
 # Keep all observation, mapping, default-position and action-scale settings below.
-# See docs/amp_guidance_60000_deployment_zh.md for validation and limitations.
+# See docs/amp_guidance_60000_deployment_zh.md and
+# docs/amp_stratified_single_60000_deployment_zh.md for validation and limitations.
 
 # ── Observation ───────────────────────────────────────────────────────────────
 # 96-dim per frame × 4 frames history = 384-dim total input

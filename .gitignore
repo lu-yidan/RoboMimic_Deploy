@@ -76,3 +76,4 @@ recordings/*.mp4
 
 # AMP guidance actor with the legacy AMP deployment interface.
 !policy/amp/model/amp_stratified_guidance_60000.onnx
+!policy/amp/model/amp_stratified_single_60000.onnx

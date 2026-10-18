@@ -628,3 +628,7 @@ RTX4090 本地测试：`realtime3_circle200` 为 20s、200ms 缓冲，当前目�
 验证：004 正常输入 8s 实时仿真完成；遥测中 recorded_self_frame 与 reference_frame 相等，原始演员位置与源数据相应帧在五位小数序列化精度内一致。浏览器实际检查开关能显示/隐藏灰色骨架。实验输出为部署仓库 outputs/live_runs/1791947599742892391_004_normal。
 
 本次运行当前目标欠载 38 个控制周期、控制截止超时 0；因果时间戳、物理数值、控制连续性及增量映射/重采样校验通过。不能将本次结果解读为无缓冲欠载。
+
+### AMP 分层恢复策略（60k）
+
+原 AMP 模式支持在 [`policy/amp/config/amp.yaml`](policy/amp/config/amp.yaml) 中仅切换 `model_path`，选择旧模型或新模型 `amp_stratified_guidance_60000.onnx`。新模型内置关节顺序、动作尺度转换和观测归一化；其余配置复用。默认仍为旧模型。详见[部署说明与验证](docs/amp_guidance_60000_deployment_zh.md)。

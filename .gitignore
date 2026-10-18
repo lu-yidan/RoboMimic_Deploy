@@ -73,3 +73,6 @@ recordings/*.mp4
 !policy/smp_recovery/model/smp_ec7_9000_93d.onnx
 !policy/smp_recovery/model/smp_m2_9999_93d.onnx
 !policy/smp_recovery/model/smp_a6_no_alpha_9999_93d.onnx
+
+# AMP guidance actor with the legacy AMP deployment interface.
+!policy/amp/model/amp_stratified_guidance_60000.onnx

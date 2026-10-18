@@ -1,4 +1,11 @@
+# Choose ONE model_path, then restart the deployment process.
+# Original AMP:
 model_path: "amp_0309_1.onnx"
+# Stratified reset + dual discriminator + recovery reward, checkpoint 60000:
+# model_path: "amp_stratified_guidance_60000.onnx"
+# The new ONNX embeds normalization, joint reordering and action-unit conversion.
+# Keep all observation, mapping, default-position and action-scale settings below.
+# See docs/amp_guidance_60000_deployment_zh.md for validation and limitations.
 
 # ── Observation ───────────────────────────────────────────────────────────────
 # 96-dim per frame × 4 frames history = 384-dim total input
@@ -25,7 +32,7 @@ cmd_range_fast:
 cmd_smooth: 0.60   # EMA coefficient for command smoothing (tuned for 50 Hz; original C++ used 0.95 @ 500 Hz)
 
 # ── Safety ───────────────────────────────────────────────────────────────────
-safe_tilt_threshold: 0.6   # |proj_gravity_z - (-1)| threshold; triggers exit if exceeded
+safe_tilt_threshold: 0.6   # Legacy field; Amp.py currently does not use it to trigger an exit.
 
 # ── Joint mapping (policy DOF order → motor index) ───────────────────────────
 # Same ordering as wbc_fsm dof_mapping and LocoMode joint2motor_idx

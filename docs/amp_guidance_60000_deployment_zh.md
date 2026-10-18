@@ -5,6 +5,21 @@
 双判别器、额外恢复引导奖励，checkpoint 为 `model_60000.pt`。
 部署只运行 actor；判别器、奖励和训练 reset 数据不参与部署推理。
 
+## 训练来源与发布记录
+
+- 训练仓库：`lu-yidan/AMP_mjlab`，工作分支 `lyd-multi-discriminator-amp`。
+- 训练分支基线：`6c7a2947fccc973e4af8e6d90e550400f1b6fcfc`。
+- 截至 2026-10-18，本轮多判别器、分层 reset 和恢复奖励实现仍是该训练工作分支上的未提交改动；上述基线提交本身不包含这些新增功能，不能仅 checkout 基线来复现本模型。
+- 训练任务：`Unitree-G1-MultiAMP-Stratified-Guidance-Flat`，4096 个环境 × 24 steps，计划 100k iterations，本次发布取 60k checkpoint。
+- W&B：[wwwrf04a](https://forge.coreweave.com/wandb/tabletennis/lyd-multi-amp/runs/wwwrf04a)。
+- Checkpoint：`logs/rsl_rl/g1_multi_amp_stratified_guidance/2026-10-17_12-54-34_stratified-dual-guidance-4096x24-100k/model_60000.pt`。
+- ONNX 首次发布提交：部署仓库 `496310913d8d7658d3613a99965f1d3878979420`，已推送到 `lyd-amp-stratified-guidance-deploy`，模型二进制随 Git 提交分发。
+- 模型路径：`policy/amp/model/amp_stratified_guidance_60000.onnx`。
+- ONNX SHA-256：`dc28ed74ae86ab197ab18dd43f49dc90f812971e40c19e29fffcecaad7e5e97c`。
+
+导出时关键训练源文件及运行时观测补丁的 SHA-256 已记录在同目录 manifest 的
+`source_sha256` 字段中；这些校验值用于核对导出来源，不代替完整训练代码的版本归档。
+
 ## 选择模型
 
 只编辑 `policy/amp/config/amp.yaml` 的 `model_path`，保留一条生效的设置，然后重启：

@@ -123,6 +123,49 @@ def _add_vertical_plate(worldbody: Any, config: Any) -> None:
     )
 
 
+
+def _add_coffin(worldbody: Any, config: Any) -> None:
+    """Inner horizontal dimensions; height includes base, excludes loose lid."""
+    pos = _vec(config.get("pos", [0.14373179, 0.000005, 0]), 3, "coffin.pos")
+    length, width, height, base, wall, lid_thickness, mass, lid_mass = (
+        float(config.get(k, v)) for k, v in (
+            ("length", 1.4), ("width", .6), ("height", .4),
+            ("base_thickness", .04), ("wall_thickness", .035),
+            ("lid_thickness", .03), ("mass", 15), ("lid_mass", 3)))
+    values = (*pos, length, width, height, base, wall, lid_thickness, mass, lid_mass)
+    if not all(np.isfinite(v) for v in values) or min(values[3:]) <= 0 or height <= base:
+        raise ValueError("Invalid coffin dimensions/masses: height must exceed base thickness")
+    friction = _vec(config.get("friction", [1, .01, .001]), 3, "coffin.friction")
+    if not all(np.isfinite(v) and v >= 0 for v in friction):
+        raise ValueError("coffin.friction must be finite and nonnegative")
+    yaw = float(config.get("yaw_deg", 0))
+    if not np.isfinite(yaw):
+        raise ValueError("coffin.yaw_deg must be finite")
+    quat = _text((np.cos(np.deg2rad(yaw)/2), 0, 0, np.sin(np.deg2rad(yaw)/2)))
+    body = ET.SubElement(worldbody, "body", name="coffin", pos=_text(pos), quat=quat)
+    if config.get("free", True):
+        ET.SubElement(body, "freejoint", name="box_free")
+    box_rgba = _text(_vec(config.get("rgba", [.24, .10, .05, 1]), 4, "coffin.rgba"))
+    lid_rgba = _text(_vec(config.get("lid_rgba", [.32, .12, .045, 1]), 4, "coffin.lid_rgba"))
+    h = height - base
+    parts = [("coffin_base", (0, 0, base/2), (length/2+wall, width/2+wall, base/2))]
+    for sign in (-1, 1):
+        parts += [(f"coffin_side{sign}", (0, sign*(width/2+wall/2), base+h/2), (length/2+wall, wall/2, h/2)),
+                  (f"coffin_end{sign}", (sign*(length/2+wall/2), 0, base+h/2), (wall/2, width/2, h/2))]
+    volume = sum(8*np.prod(size) for _, _, size in parts)
+    for name, offset, size in parts:
+        ET.SubElement(body, "geom", name=name, type="box", pos=_text(offset), size=_text(size),
+                      mass=str(mass*8*np.prod(size)/volume), rgba=box_rgba,
+                      friction=_text(friction), contype="1", conaffinity="1")
+    if config.get("lid_enabled", True):
+        lid = ET.SubElement(worldbody, "body", name="coffin_lid", quat=quat,
+                            pos=_text((pos[0], pos[1], pos[2]+height+lid_thickness/2)))
+        ET.SubElement(lid, "freejoint", name="lid_free")
+        ET.SubElement(lid, "geom", name="lid", type="box", size=_text((length/2+wall, width/2+wall, lid_thickness/2)),
+                      mass=str(lid_mass), rgba=lid_rgba, friction=_text(friction), contype="1", conaffinity="1")
+    print(f"[Coffin] inside={length} x {width} m, box top={height} m, base={base} m; box={mass} kg, lid={lid_mass} kg")
+
+
 def load_model(xml_path: str | Path, scene: Any) -> mujoco.MjModel:
     """Load the robot and append the requested static or sliding obstacle."""
     xml_path = Path(xml_path).resolve()
@@ -135,9 +178,11 @@ def load_model(xml_path: str | Path, scene: Any) -> mujoco.MjModel:
         _add_table(worldbody, scene.get("table", {}))
     if scene_name in ("plate", "table_and_plate"):
         _add_vertical_plate(worldbody, scene.get("plate", {}))
-    if scene_name not in ("none", "table", "plate", "table_and_plate"):
+    if scene_name == "coffin":
+        _add_coffin(worldbody, scene.get("coffin", {}))
+    if scene_name not in ("none", "table", "plate", "table_and_plate", "coffin"):
         raise ValueError(
-            "scene.name must be one of none, table, plate, table_and_plate"
+            "scene.name must be one of none, table, plate, table_and_plate, coffin"
         )
     with tempfile.NamedTemporaryFile(
         mode="w", suffix=".xml", dir=xml_path.parent, delete=True

@@ -1,6 +1,6 @@
 # A6 棺材场景 V2@500 部署候选
 
-分支：`lyd/scalebfm-table-config-balanced4`。在 `policy/smp_recovery/config/smp_recovery.yaml` 修改一行并重启：
+分支：`codex/table-config-balanced4`。在 `policy/smp_recovery/config/smp_recovery.yaml` 修改一行并重启：
 
 ```yaml
 profile: a6_coffin_v2_500

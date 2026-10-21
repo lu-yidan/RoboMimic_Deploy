@@ -1,6 +1,6 @@
 # 箱体 / 棺材部署仿真
 
-分支：`lyd/scalebfm-table-config-balanced4`。
+分支：`codex/table-config-balanced4`。
 
 1. 在 `policy/smp_recovery/config/smp_recovery.yaml` 设置 `profile: a6_coffin_v2_500`。也可选 `a6_no_alpha_9999`、`path_a6_9999`、`v34_balanced4_hard19000`。环境变量 `SMP_RECOVERY_PROFILE` 优先于 YAML。
 2. 启动：
@@ -21,6 +21,6 @@ python deploy_mujoco/deploy_mujoco.py --config-name=mujoco_coffin
 - `rgba/lid_rgba`最后一个值为透明度；改0.3可看清箱内机器人，纯视觉变化不改变碰撞。
 - `camera`控制初始视角，可在窗口拖动。
 
-使用 `g1_description/g1_liao.xml`，物理2 ms、控制20 ms。此独立配置关闭ScaleBFM和ghost，不改变原桌子/普通配置。未增加真机行为。
+使用 `g1_description/g1_liao.xml`，物理2 ms、控制20 ms。此独立配置关闭ghost，不改变原桌子/普通配置。未增加真机行为。
 
 验证：配置合成、29个机器人执行器索引、质量、初始接触、整箱reset、固定/无盖变体通过；A6 V2@500实际部署控制器23秒headless运行无数值异常。未验证实体手柄或图形窗口交互；沿用既有按键逻辑。策略能力及安全限制见 `coffin_a6_v2_500_deployment_zh.md`。

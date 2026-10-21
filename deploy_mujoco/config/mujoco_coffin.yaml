@@ -6,8 +6,6 @@ defaults:
 xml_path: g1_description/g1_liao.xml
 startup_policy: passive  # Press Y for SMP; START still selects FixedPose.
 ghost_enabled: false
-scalebfm:
-  enabled: false
 scene:
   name: coffin
   coffin:

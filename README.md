@@ -19,6 +19,48 @@
 
 - **[video instruction](https://www.bilibili.com/video/BV1VTKHzSE6C/?vd_source=713b35f59bdf42930757aea07a44e7cb#reply114743994027967)**
 
+## Repository Layout
+
+The `zyc_man` deployment line is organized around these main components:
+
+| Directory | Responsibility |
+|-----------|----------------|
+| `deploy_mujoco/` | MuJoCo simulation, controller input, scene loading and logging |
+| `deploy_real/` | Direct Unitree SDK2 Python deployment over USB/network |
+| `bridge/` | SDK2 C++ low-level I/O split from the Python policy/FSM runtime |
+| `onboard/perception/` | AprilTag target detection, MID360 lidar ball detection, optional camera ball detection, fusion and dashboard |
+| `policy/` | FSM states and policy assets: locomotion, AMP, Score and BeyondMimic variants |
+| `common/` and `FSM/` | Shared state buffers, DDS helpers, joystick mapping and policy switching |
+
+The default real-robot perception path is:
+
+```text
+MID360 -> rt/lidar_ball_state --+
+                                +-> ball_fuser -> rt/ball_state -> Score
+D455/AprilTag -> rt/target_state
+```
+
+`rt/lidar_ball_state` is the raw lidar output. `rt/ball_state` is the fused ball
+topic consumed by the policy runtime. The one-shot launcher
+`tools/start_tmux_layout.sh` starts the bridge, policy runtime, camera/fuser,
+lidar detector and sensor dashboard together.
+
+## Model Artifacts
+
+ONNX policy files are intentionally ignored by Git because they are generated
+deployment artifacts. This branch includes `policy/score/model/motion_kit.zip`
+as a reproducible bundle of the Score ONNX variants and reference motion. After
+cloning, extract it into the model directory when the selected policy file is
+missing:
+
+```bash
+unzip -n policy/score/model/motion_kit.zip -d policy/score/model
+```
+
+The default real-robot Score configuration is `policy/score/config/score.yaml`.
+The MuJoCo ball scene uses `score-aggr.yaml`; select another config with
+`SCORE_CONFIG_FILE` when using the bridge runtime.
+
 ## Installation and Configuration
 
 ## 1. Create a Virtual Environment

@@ -1192,7 +1192,7 @@ class Score(FSMState):
         # ---- Visualization: anchor, anchor orientation, target, and trigger circle ----
         anchor_ori_arrow_to = (
             self._debug_anchor_pos_w.astype(np.float64)
-            + 0.45 * self._debug_anchor_x_axis_w.astype(np.float64)
+            + 0.60 * self._debug_anchor_x_axis_w.astype(np.float64)
         )
         target_pos_w = self._debug_target_pos_w.astype(np.float64)
         target_marker_pos = np.array(
@@ -1200,13 +1200,13 @@ class Score(FSMState):
             dtype=np.float64,
         )
         viz = [
-            {"pos": self._debug_anchor_pos_w.copy(), "radius": 0.06,
+            {"pos": self._debug_anchor_pos_w.copy(), "radius": 0.10,
              "rgba": np.array([1.0, 0.5, 0.0, 0.9], dtype=np.float32)},
             {"from": self._debug_torso_pos_w.copy(),
              "to":   self._debug_anchor_pos_w.copy(), "radius": 0.008,
              "rgba": np.array([1.0, 0.5, 0.0, 0.5], dtype=np.float32)},
             {"from": self._debug_anchor_pos_w.copy(),
-             "to":   anchor_ori_arrow_to, "radius": 0.025, "geom": "arrow",
+             "to":   anchor_ori_arrow_to, "radius": 0.040, "geom": "arrow",
              "rgba": np.array([0.6, 0.0, 1.0, 0.9], dtype=np.float32)},
             {"pos": target_pos_w, "radius": 0.07,
              "rgba": np.array([1.0, 0.0, 1.0, 0.95], dtype=np.float32)},

@@ -8,6 +8,10 @@ Subscribes to:
 Publishes via DDS:
   "rt/lidar_ball_state"  (raw lidar BallState in pelvis body frame, ~10 Hz)
 
+The default raw topic is intentionally different from ``rt/ball_state``:
+``ball_fuser.py`` consumes the raw lidar and camera topics and publishes the
+authoritative fused state on ``rt/ball_state``.
+
 Usage (from this repository root, e.g. RoboMimic_Deploy):
 
     python3 onboard/perception/lidar/ball_detector.py
@@ -56,8 +60,8 @@ from common.lidar_ball_debug_dds import LidarBallDebugPublisher
 # Least-squares ball center estimator
 # ---------------------------------------------------------------------------
 
-def estimate_ball_center_ls(points, r=0.115, offset=0.095, max_iter=10):
-    """Fit sphere of known radius r to point cloud. Returns center (3,)."""
+def estimate_ball_center_ls(points, r=0.115, offset=0.085, max_iter=10):
+    """Estimate the center of a known-radius ball from candidate points."""
     center = points.mean(axis=0).astype(np.float64)
     dist   = np.linalg.norm(points - center, axis=1)
     core   = points[dist < 0.2]
@@ -66,7 +70,9 @@ def estimate_ball_center_ls(points, r=0.115, offset=0.095, max_iter=10):
     c = core.mean(axis=0).astype(np.float64) if len(core) > 0 else center
     norm_c = np.linalg.norm(c)
     if norm_c < 1e-6:
-        return c   # guard against divide-by-zero at the origin
+        # Keep the return shape consistent with the normal path.  The caller
+        # unpacks the estimated center and shell count even for degenerate data.
+        return c, 0
     pc = c + c / norm_c * offset
     dists = np.linalg.norm(points - pc[None, :], axis=1)
     in_shell = (dists < (r + 0.01)) & (dists > (r - 0.01))
@@ -134,6 +140,9 @@ class BallDetector(Node):
         dds_topic: str = "rt/ball_state",
         debug_topic: str = "rt/lidar_ball_debug",
         base_y_bias: float = 0.0,
+        reflect_thr: float = 190.0,
+        min_points: int = 5,
+        max_range: float = 10.0,
         show: bool = False,
         msg_type: str = "pc2",
         lowstate_net: str | None = None,
@@ -146,9 +155,9 @@ class BallDetector(Node):
 
         # ---- Detection params ----
         self.r           = 0.115   # ball radius [m]
-        self.reflect_thr = 190
-        self.min_points  = 5
-        self.max_range   = 10
+        self.reflect_thr = float(reflect_thr)
+        self.min_points  = int(min_points)
+        self.max_range   = float(max_range)
         self.min_range   = 0.2
         self.z_low       = -5.0
         self.z_high      =  5.0
@@ -194,6 +203,10 @@ class BallDetector(Node):
         self._debug = LidarBallDebugPublisher(domain_id=0, topic_name=debug_topic)
         self.get_logger().info(
             f"LiDAR debug DDS ready on '{debug_topic}', base_y_bias={self.base_y_bias:+.3f}m"
+        )
+        self.get_logger().info(
+            f"Detection params: reflect_thr={self.reflect_thr:g}, "
+            f"min_points={self.min_points}, max_range={self.max_range:g}m"
         )
 
         # ---- RViz2 publisher ----
@@ -520,6 +533,12 @@ def main():
                         help="DDS debug topic for pre-FK LiDAR values")
     parser.add_argument("--base-y-bias", type=float, default=0.0,
                         help="Add this bias to pelvis-frame y before publishing, e.g. 0.02 for +2cm")
+    parser.add_argument("--reflect-thr", type=float, default=190.0,
+                        help="Minimum LiDAR reflectivity for ball candidates. Lower it if the ball is missed; raise it if background is selected.")
+    parser.add_argument("--min-points", type=int, default=5,
+                        help="Minimum candidate points required before publishing a valid ball detection.")
+    parser.add_argument("--max-range", type=float, default=10.0,
+                        help="Maximum LiDAR range in metres for ball candidates.")
     parser.add_argument("--show", action="store_true",
                         help="Enable RViz debug publishers (slower)")
     parser.add_argument("--msg-type", choices=("pc2", "custom"), default="pc2",
@@ -562,6 +581,9 @@ def main():
         dds_topic=args.dds_topic,
         debug_topic=args.debug_topic,
         base_y_bias=args.base_y_bias,
+        reflect_thr=args.reflect_thr,
+        min_points=args.min_points,
+        max_range=args.max_range,
         show=args.show,
         msg_type=args.msg_type,
         lowstate_net=args.lowstate_net,

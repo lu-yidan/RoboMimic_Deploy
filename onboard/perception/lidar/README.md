@@ -1,9 +1,14 @@
 # Lidar Ball Detector — 使用手册
 
-Livox MID360 点云 → 球心检测 → DDS 发布 + RViz2 可视化。
+Livox MID360 点云 → 球心检测 → 原始 DDS 发布 + RViz2 可视化。
 
-> 环境配置（ROS2 Foxy、CycloneDDS Python 绑定、livox_ros_driver2）
-> 见上级目录的 [`onboard/README.md`](../../README.md)。
+默认发布 `rt/lidar_ball_state`。标准真机启动还会运行
+`ball_fuser.py`，将该原始 topic 与可选相机球状态融合后发布为策略使用的
+`rt/ball_state`。
+
+> 环境配置（ROS2、CycloneDDS Python 绑定、livox_ros_driver2）
+> 见 [`onboard/docs/README.md`](../../docs/README.md) 和
+> [`onboard/docs/INSTALL_AGENT_GUIDE.md`](../../docs/INSTALL_AGENT_GUIDE.md)。
 
 ---
 
@@ -11,7 +16,7 @@ Livox MID360 点云 → 球心检测 → DDS 发布 + RViz2 可视化。
 
 ```
 onboard/perception/lidar/
-├── ball_detector.py          ← 主服务：订阅 /livox/lidar，发布 rt/ball_state
+├── ball_detector.py          ← 主服务：订阅 /livox/lidar，发布 rt/lidar_ball_state
 ├── rviz_publisher.py         ← RViz2 可视化辅助：发布点云 + Marker
 ├── center_kalman_filter.py   ← 卡尔曼滤波器（平滑球心轨迹）
 ├── mid360_to_base.py         ← 坐标变换：MID360 系 → pelvis body 系
@@ -36,6 +41,12 @@ ros2 launch livox_ros_driver2 msg_MID360_launch.py
 
 ```bash
 python onboard/perception/lidar/ball_detector.py
+```
+
+或使用启动脚本并调整反射率阈值：
+
+```bash
+bash onboard/perception/lidar/run.sh --show --reflect-thr 170 --max-range 4 --base-y-bias 0.0
 ```
 
 启动成功后终端持续打印：
@@ -165,7 +176,7 @@ livox_frame
 ```
 原始点云（灰白小点）
     +
-候选点（黄色大点） ← 反射率 ≥ 150 且在 ROI 范围内
+候选点（黄色大点） ← 反射率 ≥ 190 且在 ROI 范围内
 
 红球（半透明）← LS 质心估计，偏移 center_offset
 绿球（实心）  ← 卡尔曼滤波平滑后，用于发布到控制器
@@ -201,13 +212,13 @@ livox_frame
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
-| `reflect_thr` | `150` | 反射率阈值。球面反射率高，背景低；若候选点太少可适当降低 |
-| `min_points` | `4` | 候选点数下限，低于此值视为未检测到球 |
+| `reflect_thr` | `190` | 反射率阈值。球面反射率高，背景低；若候选点太少可适当降低。启动时可用 `--reflect-thr` 覆盖 |
+| `min_points` | `5` | 候选点数下限，低于此值视为未检测到球。启动时可用 `--min-points` 覆盖 |
 | `min_range` | `0.2 m` | ROI 最小距离（过滤自身遮挡） |
-| `max_range` | `1.8 m` | ROI 最大距离 |
+| `max_range` | `10 m` | ROI 最大距离。启动时可用 `--max-range` 覆盖 |
 | `x_low / x_high` | `0 ~ 5 m` | 仅检测机器人正前方（MID360 X 轴方向） |
 | `z_low / z_high` | `±1.5 m` | MID360 坐标系下的高度范围 |
-| `center_offset` | `0.05 m` | 质心偏移修正量（可键盘实时调整，见上方） |
+| `center_offset` | `0.085 m` | 质心偏移修正量（可键盘实时调整，见上方） |
 | `r` (ball radius) | `0.115 m` | 球半径，影响 LS 拟合与球体 Marker 大小 |
 
 **调参建议流程：**
@@ -216,7 +227,7 @@ livox_frame
 2. 观察 `/ball_detector/cloud_candidates`（黄色），若候选点很少或始终没有 → 降低 `reflect_thr`
 3. 候选点位置正确后，观察红球和绿球是否与球的实际位置一致
 4. 用 `+`/`-` 键微调 `center_offset` 直到绿球中心对准真实球心
-5. 确认 DDS 输出正常后，可取消 `# self._dds.publish(...)` 的注释启用实际发布
+5. 确认 DDS 输出正常后，检查 `rt/lidar_ball_state`；标准启动由 `ball_fuser.py` 再发布 `rt/ball_state`
 
 ---
 
@@ -234,7 +245,8 @@ DDS Topic（控制器订阅）：
 
 | Topic | 类型 | 说明 |
 |-------|------|------|
-| `rt/ball_state` | BallState（自定义 DDS） | 球心在 pelvis body 系坐标，`valid` 标志位 |
+| `rt/lidar_ball_state` | BallState（自定义 DDS） | 雷达原始球心在 pelvis body 系坐标，`valid` 标志位 |
+| `rt/ball_state` | BallState（自定义 DDS） | `ball_fuser.py` 融合后的策略输入 |
 
 调试 Topic（网页可视化订阅）：
 
@@ -249,4 +261,5 @@ DDS Topic（控制器订阅）：
 bash onboard/perception/lidar/run.sh --base-y-bias 0.02
 ```
 
-这个 bias 只加在 FK 后、发布到 `rt/ball_state` 的 pelvis-frame `y` 上；网页中的 `lidar raw MID360` 仍显示 FK 前原始 LiDAR 坐标，方便判断偏差来自检测本身还是安装/FK。
+这个 bias 只加在 FK 后、发布到 `rt/lidar_ball_state` 的 pelvis-frame `y` 上；网页中的
+`lidar raw MID360` 仍显示 FK 前原始 LiDAR 坐标，方便判断偏差来自检测本身还是安装/FK。

@@ -4,7 +4,10 @@
 
 ## 适用范围
 
-- 仿真优先：默认配置在 `policy/score/config/score.yaml` 中启用。
+- 仿真优先：默认由 `deploy_mujoco/config/mujoco_score.yaml` 选择
+  `policy/score/config/score-aggr.yaml`，其中已启用手动触发。
+- 真机默认使用 `policy/score/config/score.yaml`，手动触发默认关闭，避免把仿真手柄
+  命令误带入真机；如需启用，必须先确认 runtime 和策略输入已经验证。
 - Score 模式：进入 `FSMCommand.CMD_SCORE` 后由 `policy/score/Score.py` 消费命令。
 - 其他策略不受影响：Loco、AMP、BeyondMimic 等仍使用原有 `vel_cmd` 和 skill command。
 - 真实机器人路径暂未作为主要目标；如果真实部署需要同样手动命令，应确认 DDS / runtime 输入是否也写入相同 `StateAndCmd` 字段。
@@ -32,7 +35,8 @@
 
 ## 配置项
 
-配置位于 `policy/score/config/score.yaml`。
+配置位于 `policy/score/config/score-aggr.yaml`（MuJoCo）或
+`policy/score/config/score.yaml`（真机）。下面的参数示例对应仿真配置。
 
 - `manual_trigger: true`
   - 开启后，Score 的等待触发只响应 R3 手动 trigger，不再使用球进入 trigger circle。
@@ -43,15 +47,15 @@
   - 摇杆回中或输入为 null / deadzone 内时，会沿用默认 anchor 行为，例如 motion_ref、ball_as_anchor_pos 或 ball_facing_anchor_ori，不会给 policy 写入零 anchor / 零 yaw 覆盖。
   - `anchor_pos_b.z` 仍沿用参考 motion anchor 与 torso 的高度差，避免摇杆直接控制高度。
 
-- `manual_anchor_pos_scale_xy: [1.0, 0.6]`
+- `manual_anchor_pos_scale_xy: [0.2, 0.2]`
   - 左摇杆归一化输入到 body-frame anchor x/y 的比例，单位为米。
   - 例：左摇杆前推到 1.0 时，`anchor_pos_b.x` 约为 `+1.0 m`。
 
-- `manual_anchor_yaw_scale: 1.57`
+- `manual_anchor_yaw_scale: 0.5`
   - 右摇杆横向归一化输入到相对 yaw 的比例，单位为弧度。
-  - `1.57` 约等于 90 度。
+  - 需要更大范围时再逐步增大。
 
-- `manual_cmd_deadzone: 0.05`
+- `manual_cmd_deadzone: 0.02`
   - 对左摇杆 x/y 与右摇杆 yaw 输入的死区。
   - 小于该绝对值的输入会被视为 inactive，降低摇杆漂移影响。
   - 左摇杆 x/y 和右摇杆 yaw 分开判断 active：只推左摇杆不会把 yaw 强制为 0，只推右摇杆也不会把 anchor x/y 强制为 0。
@@ -70,7 +74,7 @@
 3. 左摇杆与右摇杆横向写入归一化 raw command：
    - `state_cmd.score_anchor_pos_raw_b`
    - `state_cmd.score_anchor_yaw_raw`
-4. `policy/score/Score.py` 读取 `score.yaml` 中的 deadzone 与 scale。
+4. `policy/score/Score.py` 读取当前选择的 Score YAML 中的 deadzone 与 scale。
 5. Score 将 raw command 转成最终命令：
    - `state_cmd.score_anchor_pos_cmd_b`
    - `state_cmd.score_anchor_yaw_cmd`
@@ -103,8 +107,8 @@
 
 ## 注意事项与调参建议
 
-- 如果摇杆轻微漂移导致状态行 `active=1`，先增大 `manual_cmd_deadzone`，例如从 `0.05` 调到 `0.08`；如果正常小幅操作不生效，则适当减小 deadzone。
+- 如果摇杆轻微漂移导致状态行 `active=1`，先增大 `manual_cmd_deadzone`，例如从 `0.02` 调到 `0.05`；如果正常小幅操作不生效，则适当减小 deadzone。
 - 如果 active 后 anchor 移动过大，降低 `manual_anchor_pos_scale_xy`；如果模型反应不明显，可小幅增大。
-- 如果 active 后 yaw 转向过强，降低 `manual_anchor_yaw_scale`；默认 `1.57` 是较大的测试范围。
+- 如果 active 后 yaw 转向过强，降低 `manual_anchor_yaw_scale`；默认 `0.5` 已是有限的测试范围。
 - 手动 anchor 是直接进入 policy obs 的命令，不保证训练分布完全覆盖；调参时建议先在低风险仿真场景中逐步增加幅度。
 - 若要回到球触发测试，将 `manual_trigger` 设为 `false`，并按原有 `wait_for_ball`、`trigger_radius`、`trigger_horizon` 配置使用。

@@ -1,3 +1,5 @@
+# Default real-robot Score configuration.  The model file is supplied by
+# policy/score/model/motion_kit.zip (ONNX files are ignored by Git).
 # onnx_path:   "policy-obs-33.onnx"
 onnx_path:   "policy-obs-aic.onnx"
 # onnx_path:   "policy-obs-a2c.onnx"
@@ -35,7 +37,7 @@ action_clip:
 
 # false = simulation (ball_pos from MuJoCo world frame)
 # true  = real robot (ball_pos from DDS, already in pelvis body frame)
-use_body_frame_ball: false
+use_body_frame_ball: true
 
 # When ball_valid is false and sensor ball is ~zero: use this pelvis-frame default for
 # soccer_pos_b history, ball_as_anchor_pos blend, and ball_facing_anchor_ori (not raw [0,0,0]).
@@ -100,7 +102,8 @@ target_use_fixed_fallback: true
 # Fixed target:
 # - Simulation: world-frame target position [x, y, z]
 # - Real robot: entry时刻记录的 pelvis/body-frame target offset
-target_pos: [5.0, 0.0, 0.115]
+#target_pos: [5.0, 0.0, 0.115]
+target_pos: [5.0, -1.0, 0.3]
 
 # Ball-trigger gate: hold at frame 0 until the ball enters the circle.
 # When `trigger_play_end_frame` is set, on trigger play inclusive segment

@@ -1,17 +1,19 @@
+# MuJoCo ball-scene Score configuration.  The model file is supplied by
+# policy/score/model/motion_kit.zip (ONNX files are ignored by Git).
 # onnx_path:   "policy-obs-33.onnx"
 # onnx_path:   "policy-obs-aic.onnx"
 # onnx_path:   "policy-obs-a2c.onnx"
 # onnx_path:   "policy-obs-325-uz8.onnx"
 # onnx_path:   "policy-obs-utf8-486.onnx"
 # onnx_path:   "policy-obs-410-vvj.onnx"
-onnx_path:   "policy-obs-ae.onnx"
 # onnx_path:   "policy-obs-54-vhh.onnx"
-# onnx_path:   "policy-obs-54-4s.onnx"
+# onnx_path:   "policy-obs-e7.onnx"
+onnx_path:   "policy-obs-xb-590.onnx"
 motion_path: "score_motion.npz"
 
 control_dt:      0.02     # 50 Hz control (sim: 2ms * 10 decimation)
 warmup_steps:    10       # interpolation steps from current pose to motion t=0
-clip_actions:    6.0      # fallback raw-action clip for joints not listed below
+clip_actions:    3.0      # fallback raw-action clip for joints not listed below
 action_clip:
   .*_hip_yaw_joint:   [-6.0, 6.0]
   .*_hip_roll_joint:  [-6.0, 6.0]
@@ -65,8 +67,8 @@ freeze_motion_at_first_frame: false
 # right stick horizontal commands relative yaw.
 manual_trigger: true
 manual_anchor_cmd: true
-manual_anchor_pos_scale_xy: [0.04, 0.04]
-manual_anchor_yaw_scale: 0.01
+manual_anchor_pos_scale_xy: [0.2, 0.2]
+manual_anchor_yaw_scale: 0.5
 manual_cmd_deadzone: 0.02
 
 # If true, anchor_pos_b is always [0, 0, 0] (anchor treated as coincident with torso).
@@ -75,13 +77,13 @@ zero_anchor_pos: false
 # If true, anchor_pos_b is set to the ball position expressed in the torso body frame,
 # instead of the reference-motion anchor position.
 # Has no effect when zero_anchor_pos is true (zero_anchor_pos takes priority).
-ball_anchor_cmd_scale: 0.2
-ball_as_anchor_pos: false
+ball_anchor_cmd_scale: 0.5
+ball_as_anchor_pos: true
 
 # If true, anchor_ori_6d is computed so its +X axis always points toward the ball
 # (world-frame direction from torso to ball, with Z = ref-anchor height - torso height).
 # Overrides the default reference-motion orientation.
-ball_facing_anchor_ori: false
+ball_facing_anchor_ori: true
 
 # Target source:
 # - fixed:    use `target_pos`
@@ -110,10 +112,10 @@ target_pos: [5.0, 0.0, 0.115]
 # If `trigger_play_end_frame` is omitted, plays from `trigger_frame` to clip end (one-shot).
 wait_for_ball:   true
 trigger_play_once: false
-trigger_radius:  0.25    # metres
-trigger_horizon: 0.4    # look-ahead seconds
+trigger_radius:  0.4   # metres
+trigger_horizon: 0.25    # look-ahead seconds
 trigger_base_offset_xy: [0.15, -0.1]  # torso frame: +x forward, +y left; right is negative y
-trigger_frame:            250   # first motion frame on trigger (loaded clip indices)
+trigger_frame:            245   # first motion frame on trigger (loaded clip indices)
 trigger_play_end_frame:   300   # last motion frame inclusive (252..302 = 51 frames)
 # Default settings:
 # wait_for_ball:   false

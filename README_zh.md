@@ -19,6 +19,44 @@
 
 - **[视频教程](https://www.bilibili.com/video/BV1VTKHzSE6C/?vd_source=713b35f59bdf42930757aea07a44e7cb#reply114743994027967)**
 
+## 仓库结构与当前运行链路
+
+`zyc_man` 当前部署线按以下几层组织：
+
+| 目录 | 职责 |
+|------|------|
+| `deploy_mujoco/` | MuJoCo 仿真、手柄输入、场景加载和日志 |
+| `deploy_real/` | 通过 Unitree SDK2 Python 直连真机 |
+| `bridge/` | SDK2 C++ 底层 I/O 与 Python 策略/FSM 解耦 |
+| `onboard/perception/` | AprilTag 目标检测、MID360 雷达球检测、可选相机球检测、融合和 Dashboard |
+| `policy/` | FSM 状态和策略资源：行走、AMP、Score、BeyondMimic 系列 |
+| `common/` 与 `FSM/` | 共享状态、DDS helper、手柄映射和策略切换 |
+
+默认真机感知链路如下：
+
+```text
+MID360 -> rt/lidar_ball_state --+
+                                +-> ball_fuser -> rt/ball_state -> Score
+D455/AprilTag -> rt/target_state
+```
+
+`rt/lidar_ball_state` 是雷达原始输出，`rt/ball_state` 是策略运行时消费的融合球状态。使用
+`tools/start_tmux_layout.sh` 可一次启动 bridge、策略运行时、相机/融合器、雷达检测器和
+Sensor Dashboard。
+
+## 模型资源
+
+ONNX 策略文件属于部署产物，默认由 Git 忽略。本分支保留了
+`policy/score/model/motion_kit.zip`，其中包含 Score 的 ONNX 变体和参考动作资源。克隆后如果
+缺少所选模型，可执行：
+
+```bash
+unzip -n policy/score/model/motion_kit.zip -d policy/score/model
+```
+
+真机默认使用 `policy/score/config/score.yaml`；MuJoCo 带球场景使用
+`score-aggr.yaml`。bridge 真机入口可通过 `SCORE_CONFIG_FILE` 选择其他配置。
+
 ## 安装配置
 
 ## 1. 创建虚拟环境
@@ -212,6 +250,5 @@ Mimic策略不保证100%成功率，特别是在湿滑/沙地等复杂地面上�
 
 ### 5. 强烈建议
 **务必**先在仿真环境中熟练操作，再尝试真机部署。
-
 
 

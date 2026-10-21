@@ -54,7 +54,7 @@ onboard/perception/camera/
 
 | 文件 | 说明 |
 |------|------|
-| `lidar/ball_detector.py` | 雷达球检测 → `rt/ball_state`（当前主球检测） |
+| `lidar/ball_detector.py` | 雷达球检测 → `rt/lidar_ball_state`（原始输入） |
 | `lidar/run.sh` | 雷达启动脚本（tmux 使用） |
 | `ball_fuser.py` | 融合相机+雷达球（相机球暂停时不用，保留备用） |
 | `run_ball_fuser.sh` | 融合器启动脚本（备用） |
@@ -121,7 +121,7 @@ python onboard/perception/camera/debug/target_state_echo.py
 
 ### 2.2 独立球检测（YOLO，备用）
 
-> **注意**：当前球检测由雷达负责（`lidar/run.sh --dds-topic rt/ball_state`），相机球检测暂时停用。  
+> **注意**：当前球检测由雷达负责；标准启动方式由 `ball_fuser.py` 将雷达原始 topic `rt/lidar_ball_state`（以及可选相机 topic）融合后发布为 `rt/ball_state`，相机球检测暂时停用。
 > 如需重新启用，见 `ball_detector.py` 和 `apriltag_detector.py` 的 `--ball` 参数。
 
 独立 YOLO 球检测（使用 D455 彩色+深度流）：
@@ -142,7 +142,7 @@ bash onboard/perception/camera/run_apriltag_target.sh --ball-hsv --show
 
 **如需重新启用相机球检测并与雷达融合：**
 
-1. 将 `lidar/run.sh` 的 `--dds-topic` 改回 `rt/lidar_ball_state`
+1. 确认 `lidar/run.sh` 发布到 `rt/lidar_ball_state`（默认值）
 2. `run_apriltag_target.sh` 加 `--ball`（或 `--ball-hsv`）
 3. 启动 `run_ball_fuser.sh`（`ball_fuser.py` 已保留）
 

@@ -18,12 +18,12 @@ onboard/
     │   ├── mid360_to_base.py     ← 坐标变换：MID360 系 → pelvis (base) 系
     │   └── README.md             ← Lidar 使用手册（含 RViz2 配置）
     └── camera/
-        ├── ball_detector.py      ← 单相机：RealSense D435 + YOLO11m TRT → DDS 发布
+        ├── apriltag_detector.py  ← D455 AprilTag 目标检测（可选球检测）
+        ├── ball_detector.py      ← D455 独立 YOLO 球检测（备用）
         ├── run_gray_perception.sh ← 灰度 AprilTag + bright-ball 启动脚本
-        ├── ball_detector_dual.py ← 双相机：2×D435 + 共享 YOLO → DDS 发布
         ├── camera_to_base.py     ← 坐标变换：相机系 → pelvis 系（含胸部占位外参）
         ├── run.sh                ← 单相机启动脚本（含 TRT 路径、GPU 解锁）
-        ├── run_dual.sh           ← 双相机启动脚本
+        ├── run_apriltag_target.sh ← AprilTag 目标启动脚本
         ├── README.md             ← Camera 使用手册（本地文档）
         ├── TROUBLESHOOTING.md    ← 性能优化全记录
         └── models/
@@ -159,7 +159,7 @@ python onboard/perception/lidar/ball_detector.py
 
 ---
 
-### 方案 B — Camera（RealSense D435 + YOLO11m TRT）
+### 方案 B — Camera（RealSense D455 + YOLO11m TRT）
 
 #### 1. 依赖
 
@@ -189,16 +189,14 @@ bash onboard/perception/camera/run.sh --show          # +MJPEG 预览 (port 8080
 bash onboard/perception/camera/run.sh --model models/yolov8n.pt  # 切换更快的模型
 ```
 
-#### 3b. 双相机启动（head + chest，任意一台检测到即发布）
+#### 3b. AprilTag 目标检测（当前主用）
 
 ```bash
-# 查看两台相机序列号
-bash onboard/perception/camera/run_dual.sh --list-cameras
+# 默认 4-tag 目标板，发布 rt/target_state
+bash onboard/perception/camera/run_apriltag_target.sh --show
 
-# 启动双相机（推荐指定序列号，防止枚举顺序变化）
-bash onboard/perception/camera/run_dual.sh \
-    --head-serial 117322071089 --chest-serial 334622071404
-bash onboard/perception/camera/run_dual.sh --show     # +双路 MJPEG 预览 (port 8080)
+# 灰度相机链路（可选，同时启动球融合器）
+bash onboard/perception/camera/run_gray_perception.sh --with-fuser
 ```
 
 终端持续打印：
@@ -281,7 +279,7 @@ Livox MID360（点云，~10 Hz）
         ▼
 球心（pelvis body 系）
         │
-        │ DDS publish "rt/ball_state"
+        │ DDS publish "rt/lidar_ball_state"
         ▼
 deploy_real.py → state_cmd.ball_pos_b → Score._build_obs()
 ```
@@ -291,7 +289,7 @@ deploy_real.py → state_cmd.ball_pos_b → Score._build_obs()
 ## 感知流程（camera 方案）
 
 ```
-RealSense D435（color + depth，60 Hz）
+RealSense D455（color + depth，60 Hz）
         │  color: 640×480 BGR, fx≈607  │  depth: 640×480 Z16, fx≈386, 基线-14.5mm
         │
         ▼ [主线程] pipeline.wait_for_frames()（释放 GIL，~16ms）
@@ -357,15 +355,15 @@ dds.publish(x, y, z, valid=True)
 
 | 参数 | 默认值 | 含义 |
 |------|--------|------|
-| `reflect_thr` | 150 | 反射率阈值，球面反射率较高，可从 60 逐步调高 |
-| `min_points` | 3 | 候选点数下限，太少则不可靠 |
-| `max_range` | 1.8 m | ROI 最大距离 |
+| `reflect_thr` | 190 | 反射率阈值，球面反射率较高；可用 `--reflect-thr` 覆盖 |
+| `min_points` | 5 | 候选点数下限，太少则不可靠；可用 `--min-points` 覆盖 |
+| `max_range` | 10 m | ROI 最大距离；可用 `--max-range` 覆盖 |
 | `min_range` | 0.2 m | ROI 最小距离（过滤自身遮挡） |
 | `x_low / x_high` | 0~5 m | 仅检测机器人正前方区域 |
 | `z_low / z_high` | ±1.5 m | 高度范围 |
 | `alpha` | 0.6 | EMA 平滑系数，越大跟踪越灵敏，越小越平滑 |
 
-### Camera 方案（`onboard/perception/camera/ball_detector.py` / `ball_detector_dual.py`）
+### Camera 方案（`onboard/perception/camera/apriltag_detector.py` / `ball_detector.py`）
 
 **代码常量**（直接修改源文件）：
 
@@ -389,6 +387,6 @@ dds.publish(x, y, z, valid=True)
 | `--show` | False | 开启 MJPEG 预览流（port 8080） |
 | `--head-serial` | 第一台 | 双相机：指定 head 相机序列号 |
 | `--chest-serial` | 第二台 | 双相机：指定 chest 相机序列号 |
-| `--list-cameras` | — | 双相机：打印所有 D435 序列号后退出 |
+| `--list-cameras` | — | 打印所有 D455 序列号后退出 |
 
 > 完整文档见 `onboard/perception/camera/README.md`。

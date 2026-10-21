@@ -2,6 +2,26 @@
 
 `Score` 从 `config/score.yaml` 读取参数，加载 ONNX 与参考动作 NPZ，构造 **547 维**观测并输出关节目标。本文说明各配置项的含义与典型用法。
 
+## 当前配置入口
+
+| 配置 | 用途 | 关键默认值 |
+|------|------|------------|
+| `config/score.yaml` | 真机/bridge 默认配置 | `use_body_frame_ball: true`，使用 DDS `rt/ball_state`，默认模型 `policy-obs-aic.onnx` |
+| `config/score-aggr.yaml` | MuJoCo 带球场景 | 使用世界系球状态，启用 R3 手动触发和手柄 anchor 控制，默认模型 `policy-obs-xb-590.onnx` |
+
+MuJoCo 入口通过 `deploy_mujoco/config/mujoco_score.yaml` 自动选择
+`score-aggr.yaml`。bridge/真机入口默认选择 `score.yaml`，可通过
+`SCORE_CONFIG_FILE=score-aggr.yaml` 覆盖（仅在对应模型和传感器输入匹配时使用）。
+
+ONNX 文件默认被 `.gitignore` 排除；仓库提供 `policy/score/model/motion_kit.zip` 作为模型包，
+首次使用时可在模型目录解压：
+
+```bash
+unzip -n policy/score/model/motion_kit.zip -d policy/score/model
+```
+
+如果只需要单个模型，也可以直接将它复制到 `policy/score/model/`，并将 `onnx_path` 改为文件名。
+
 ---
 
 ## 文件与路径

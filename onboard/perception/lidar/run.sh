@@ -4,6 +4,7 @@
 # 用法：
 #   bash onboard/perception/lidar/run.sh
 #   bash onboard/perception/lidar/run.sh --dds-topic rt/lidar_ball_state
+#   bash onboard/perception/lidar/run.sh --show --reflect-thr 170 --max-range 4 --base-y-bias 0.0
 #
 # Ctrl-C 退出时自动关闭 Livox 驱动和检测器。
 

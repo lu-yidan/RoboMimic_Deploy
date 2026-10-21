@@ -232,6 +232,12 @@ def main(cfg: DictConfig):
         elif key == 259:
             standing_reset_requested.set()
     with mujoco.viewer.launch_passive(m, d, key_callback=key_callback) as viewer:
+        camera = cfg.get("camera")
+        if camera:
+            viewer.cam.lookat[:] = camera.get("lookat", [0, 0, .4])
+            viewer.cam.distance = float(camera.get("distance", 3.2))
+            viewer.cam.azimuth = float(camera.get("azimuth", 45))
+            viewer.cam.elevation = float(camera.get("elevation", -35))
         deadline = time.perf_counter()
         next_render = deadline
         while viewer.is_running() and Running:

@@ -1,0 +1,26 @@
+{
+  "source_checkpoint": "/home/luyd/workspace/RoboMimic_Deploy/outputs/coffin140_v2/checkpoints/A6_v2_500.pt",
+  "checkpoint_sha256": "e140c972596dbd1c7657e1e50e194c8803e12aee57ce7beb93e4779f7300c212",
+  "onnx_sha256": "b07a299d586a8a663f8472ec75bb51b171442c5b9eab8be53586b92b24d664d5",
+  "input": {
+    "shape": [
+      1,
+      93
+    ],
+    "normalizer_embedded": true
+  },
+  "output": {
+    "shape": [
+      1,
+      29
+    ],
+    "deterministic": true
+  },
+  "architecture": "MLP 93-512-256-128-29, ELU",
+  "opset": 17,
+  "parity_fixture": "/tmp/a6_coffin_v2_500_parity.npz",
+  "hardware_validated": false,
+  "parity_max_abs_error": 4.76837158203125e-06,
+  "parity_samples": 512,
+  "controller_load_enter_run_passed": true
+}

@@ -23,6 +23,10 @@ profile: v34_balanced4_hard19000
 model_path: "smp_ft_r0_9500_93d.onnx"
 model_sha256: "abd7d9e79eba5ff138217d059682311970e429e0cc3c7d202b5867c5e7f9a907"
 model_profiles:
+  a6_coffin_c1_4500:
+    # Original A6 -> fixed 140x60x40 coffin C1; native A6 torque limits.
+    model_path: "smp_a6_coffin_c1_4500_93d.onnx"
+    model_sha256: "7810e3f09b1044376321d8103fbe18630e1a8e72d9e42145a574c56e168a903d"
   a6_coffin_v2_500:
     # Coffin V2 candidate; same control and torque limits as A6 no-alpha.
     model_path: "smp_a6_coffin_v2_500_93d.onnx"

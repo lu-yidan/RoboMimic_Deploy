@@ -1,0 +1,36 @@
+{
+  "source_checkpoint": "/home/luyd/workspace/smp-crawl-first/outputs/coffin_fixed140_final_20261022/checkpoints/C1_4500.pt",
+  "checkpoint_sha256": "f3f323ff4e6acdcd8698e1d73f15a3e9278e9cce6ae442a268329c69076a88fd",
+  "onnx_sha256": "7810e3f09b1044376321d8103fbe18630e1a8e72d9e42145a574c56e168a903d",
+  "input": {
+    "shape": [
+      1,
+      93
+    ],
+    "normalizer_embedded": true
+  },
+  "output": {
+    "shape": [
+      1,
+      29
+    ],
+    "deterministic": true
+  },
+  "architecture": "MLP 93-512-256-128-29, ELU",
+  "opset": 17,
+  "parity_fixture": "/tmp/coffin_c1_4500_parity.npz",
+  "hardware_validated": false,
+  "parity_max_abs_error": 4.76837158203125e-06,
+  "parity_samples": 512,
+  "controller_load_enter_run_passed": true,
+  "deployment_smoke": {
+    "scene": "mujoco_coffin",
+    "duration_s": 23,
+    "physics_dt": 0.002,
+    "control_dt": 0.02,
+    "finite_state": true,
+    "numerical_warnings": false,
+    "reset_passed": true,
+    "success_rate_measured": false
+  }
+}

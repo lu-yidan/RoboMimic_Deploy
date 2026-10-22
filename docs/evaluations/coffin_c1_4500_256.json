@@ -1,0 +1,56 @@
+{
+  "lidded": {
+    "n": 102,
+    "sr3": 0.5,
+    "cleared": 0.37254902720451355,
+    "peak_pen_mm": 25.076574325561523
+  },
+  "lidded/supine": {
+    "n": 51,
+    "sr3": 1.0,
+    "cleared": 0.7450980544090271,
+    "peak_pen_mm": 25.076574325561523
+  },
+  "lidded/prone": {
+    "n": 51,
+    "sr3": 0.0,
+    "cleared": 0.0,
+    "peak_pen_mm": 16.255102157592773
+  },
+  "open": {
+    "n": 26,
+    "sr3": 0.5,
+    "cleared": 1.0,
+    "peak_pen_mm": 13.211414337158203
+  },
+  "open/supine": {
+    "n": 13,
+    "sr3": 1.0,
+    "cleared": 1.0,
+    "peak_pen_mm": 11.152999877929688
+  },
+  "open/prone": {
+    "n": 13,
+    "sr3": 0.0,
+    "cleared": 1.0,
+    "peak_pen_mm": 13.211414337158203
+  },
+  "flat": {
+    "n": 128,
+    "sr3": 0.59375,
+    "cleared": 1.0,
+    "peak_pen_mm": 0.0
+  },
+  "flat/supine": {
+    "n": 64,
+    "sr3": 0.90625,
+    "cleared": 1.0,
+    "peak_pen_mm": 0.0
+  },
+  "flat/prone": {
+    "n": 64,
+    "sr3": 0.28125,
+    "cleared": 1.0,
+    "peak_pen_mm": 0.0
+  }
+}

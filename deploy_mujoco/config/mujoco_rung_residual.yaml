@@ -1,0 +1,5 @@
+rung_residual:
+  checkpoint: outputs/rung_residual_ppo_smoke_v2/policy.zip
+  output_dir: outputs/rung_residual_deploy_replay
+  offset: [0.0, 0.0, 0.0]
+  viewer: false

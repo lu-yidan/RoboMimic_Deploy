@@ -1,0 +1,62 @@
+{
+  "revision": "g1_hook_concept_v1",
+  "units": "CAD mm; MuJoCo m",
+  "trimesh": "5.1.1",
+  "mesh_valid": true,
+  "solid_count": 1,
+  "stl_watertight": true,
+  "step_exported": false,
+  "step_limitation": "CadQuery OCP DLL blocked by Windows application control policy",
+  "openscad_render_tested": false,
+  "dxf_readback_entities": 3,
+  "analytic_volume_mm3": 14496.468341765,
+  "mesh_analytic_volume_relative_error": 4.096248880042841e-06,
+  "stl_volume_relative_error": 9.145925349659297e-09,
+  "volume_mm3": 14496.527722907209,
+  "mass_kg": 0.11379774262482159,
+  "assumed_density_kg_m3": 7850.0,
+  "center_of_mass_m": [
+    -0.0072395185604508605,
+    -2.3527048661860528e-20,
+    0.0009926001436519516
+  ],
+  "inertia_about_com_kg_m2": [
+    [
+      6.583882555804401e-05,
+      5.151044457518512e-23,
+      -2.8207679881092142e-05
+    ],
+    [
+      5.151044457518512e-23,
+      0.00012429281985111017,
+      -1.3592880350753038e-22
+    ],
+    [
+      -2.8207679881092142e-05,
+      -1.3592880350753038e-22,
+      5.966783688106426e-05
+    ]
+  ],
+  "opening_mm": 44.0,
+  "bar_diameter_mm": 30.0,
+  "nominal_diametral_clearance_mm": 14.0,
+  "collision_model": "24 convex arc wedges plus two boxes; no concave single-mesh collider",
+  "collision_approximations": "Mount holes omitted; ring arcs polygonized; no chamfer in this revision",
+  "max_inner_arc_radial_approximation_mm": 0.04710368875072346,
+  "real_wrist_fit_verified": false,
+  "strength_verified": false,
+  "dynamic_hang_verified": false,
+  "repository_reference": "https://github.com/ccrpRepo/RoboMimic_Deploy",
+  "active_checkout_origin": "https://github.com/lu-yidan/RoboMimic_Deploy.git",
+  "source_sha256": "6ea183cacbba792f0663dd71158ae71f90ae5c8b58fbc2c4d0d11d477c4eba1b",
+  "parameters_sha256": "72ada62e096f909fdf96fa5c881f1993963f8dd6c4b91472d7f897845324c966",
+  "files_sha256": {
+    "build_hook.py": "6ea183cacbba792f0663dd71158ae71f90ae5c8b58fbc2c4d0d11d477c4eba1b",
+    "hook.scad": "66c02141a7eb17adc238b8f89e144c61691f0ff09d2cb0297fbd599873d5f4f8",
+    "hook_fit.xml": "d2da89492acd33fec68bdc5c97a349976b18c9760040f7567acbe512e1e87962",
+    "hook_mm.stl": "6d3a4f5b0658086ab03e3c138951a200a0814f35ab6ff73a2eda963ce9ba7048",
+    "hook_profile_mm.dxf": "28b7e66d29bfee182ea3931e8d58175b773c1df69cb7a06510fafcdd586bc7a2",
+    "parameters.json": "72ada62e096f909fdf96fa5c881f1993963f8dd6c4b91472d7f897845324c966",
+    "preview.png": "d9c3460ba29799b1b73072200fba377b28087bc2709cf16c7978230e9e92d723"
+  }
+}

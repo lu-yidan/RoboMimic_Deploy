@@ -1,0 +1,14 @@
+{
+  "accepted_as_selected_simulation_package": true,
+  "reason": "Selected checkpoint and exact simulation replay match",
+  "selection_sha256": "305cd6764805360b352aaf02fe4ff217e7050ca031495b1ef1ca330079a8b2eb",
+  "selected_experiment": "outputs\\closure_margin_control98304_v1",
+  "selected_checkpoint_sha256": "24cde51ccc1f6b38ffce4bbff5b4c4d03fc92bb252851ae3739ccf960f1d7ec0",
+  "package_checkpoint_sha256": "24cde51ccc1f6b38ffce4bbff5b4c4d03fc92bb252851ae3739ccf960f1d7ec0",
+  "archive_sha256": "050476faa1c820f3a12810ffbab5b96b2614bce6a8b827dc5644b383797297b9",
+  "archive_path": "D:\\G1Climbing\\external\\RoboMimic_Deploy\\outputs\\closure_control_simulation_candidate_v1.zip",
+  "package_manifest_sha256": "662bbd54e0bd5fdc2c0c8c822640965da7f41085db728a52822cd1cd77d679eb",
+  "demonstrated_case": "foot_x+5_z13.75",
+  "source_sha256": "0d0a02b608bedee9973f5ee3f4cd40ea841b420b0283c5422b4dbea64329175a",
+  "scope": "Post-selection receipt only. Original candidate archive remains byte-identical. One packaged demonstration; inherited model-selection validation is not an independent test or hardware certification."
+}

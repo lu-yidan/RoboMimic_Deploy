@@ -61,6 +61,9 @@ class FixedPose(FSMState):
         self.policy_output.kds = self._kds_out
     
     def checkChange(self):
+        if self.state_cmd.skill_cmd == FSMCommand.CMD_CLIMB:
+            self.state_cmd.skill_cmd = FSMCommand.INVALID
+            return FSMStateName.SKILL_CLIMB
         if(self.state_cmd.skill_cmd == FSMCommand.LOCO):
             self.state_cmd.skill_cmd = FSMCommand.INVALID
             return FSMStateName.LOCOMODE

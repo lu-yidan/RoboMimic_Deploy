@@ -1,0 +1,4 @@
+# Additional dependencies for the deterministic full-cycle planning/controller.
+# Install after requirements-climb-train.txt in the existing project venv.
+scipy==1.18.1
+osqp==1.0.5

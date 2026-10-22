@@ -1,0 +1,18 @@
+{
+  "revision": "g1_hook_concept_v1",
+  "units": "mm",
+  "bar_diameter": 30.0,
+  "inner_radius": 22.0,
+  "section_width": 12.0,
+  "plate_thickness": 8.0,
+  "back_leg_length": 55.0,
+  "front_lip_length": 12.0,
+  "edge_chamfer": 0.0,
+  "concept_hole_diameter": 5.5,
+  "concept_hole_z": [-44.0, -28.0],
+  "assumed_density_kg_m3": 7850.0,
+  "collision_arc_segments": 24,
+  "mount_status": "Two concept interface holes only; NOT verified G1 wrist bolt pattern",
+  "material_status": "Generic steel density assumption only; alloy and strength not selected",
+  "scope": "CAD and geometric fit prototype; no load rating or wrist assembly verification"
+}

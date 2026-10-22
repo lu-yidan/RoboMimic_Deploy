@@ -1,0 +1,10 @@
+climb_cycle:
+  plan: outputs/compact_cycle_plan_v13/plan.npz
+  output_dir: outputs/climb_cycle_optimized_run
+  seconds: null
+  diagnostic: false
+  resume_from: null
+  joint_kp: 100.0
+  torque_weight: 10000.0
+  leg_kp: 300.0
+  leg_gain_mode: settle

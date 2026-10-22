@@ -12,6 +12,7 @@ bridge/generated/
 .tmp_pkg/
 # Virtual environments
 .venv/
+.venv-cad/
 venv/
 env/
 
@@ -54,5 +55,8 @@ docs/vps_reverse_tunnel_zh.md
 *.mp4
 *.webm
 recordings/*.mp4
+
+# Locally imported research scene/mesh bundle; regenerate with import_climb_scene.py.
+assets/climb_mounted/
 
 .tmp_pkg/

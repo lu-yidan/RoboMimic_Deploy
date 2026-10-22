@@ -1,0 +1,16 @@
+hand_transfer:
+  bundle: outputs/wall_support_bundle_pd15_v2
+  output_dir: outputs/hand_transfer_trial_v1
+  clearance: 0.04
+  initial_clearance: 0.08
+  retreat: 0.075
+  rise: 0.25
+  arm_gain: 3.0
+  support_gain: 3.0
+  joint_speed: 1.0
+  arm_gravity: false
+  base_feedback: false
+  waist_lean: 0.0
+  leg_lean: 0.0
+  load_goal_n: 20.0
+  video: false

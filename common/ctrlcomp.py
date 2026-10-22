@@ -44,6 +44,11 @@ class StateAndCmd:
         # joy cmd
         self.vel_cmd = np.zeros(3)
         self.skill_cmd = FSMCommand.INVALID
+        # Climb-v1 task observation, expressed in the pelvis/body frame.
+        # Producers must explicitly supply a valid measured or simulated target.
+        self.climb_target_pos_b = np.zeros(3, dtype=np.float32)
+        self.climb_target_axis_b = np.zeros(3, dtype=np.float32)
+        self.climb_target_valid = False
         # skill change cmd
 
 class PolicyOutput:
@@ -101,4 +106,3 @@ class PolicyOutput:
     @kds.setter
     def kds(self, value):
         self._kds[:] = value
-        

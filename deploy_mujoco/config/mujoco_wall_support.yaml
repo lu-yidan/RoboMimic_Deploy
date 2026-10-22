@@ -1,0 +1,5 @@
+wall_support:
+  bundle: outputs/wall_support_bundle_pd15_v2
+  output_dir: outputs/wall_support_pd15_10s_v2
+  horizon_s: 10.0
+  video: true

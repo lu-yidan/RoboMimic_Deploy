@@ -1,0 +1,4 @@
+-r requirements-climb-train.txt
+hydra-core==1.3.7
+omegaconf==2.3.1
+pygame==2.6.1

@@ -1,0 +1,813 @@
+{
+  "geometric_entry_passed": true,
+  "seat_contact_detected": true,
+  "samples": 161,
+  "scope": "Prescribed centered vertical insertion; explicit contact pairs on mocap fixture, no physical load test",
+  "rows": [
+    {
+      "z_m": 0.1,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.09932830188679245,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.09865660377358491,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.09798490566037736,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.09731320754716982,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.09664150943396227,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.09596981132075472,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.09529811320754718,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.09462641509433962,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.09395471698113209,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.09328301886792453,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.09261132075471698,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.09193962264150944,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.09126792452830189,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.09059622641509435,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.0899245283018868,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.08925283018867924,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.0885811320754717,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.08790943396226415,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.08723773584905661,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.08656603773584906,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.08589433962264151,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.08522264150943397,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.08455094339622642,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.08387924528301888,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.08320754716981132,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.08253584905660377,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.08186415094339623,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.0811924528301887,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.08052075471698114,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.07984905660377359,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.07917735849056604,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.0785056603773585,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.07783396226415096,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.0771622641509434,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.07649056603773585,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.0758188679245283,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.07514716981132076,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.07447547169811322,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.07380377358490567,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.07313207547169812,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.07246037735849058,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.07178867924528302,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.07111698113207549,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.07044528301886793,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.06977358490566038,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.06910188679245284,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.06843018867924529,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.06775849056603775,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.0670867924528302,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.06641509433962264,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.06574339622641509,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.06507169811320755,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.06440000000000001,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.06372830188679246,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.06305660377358491,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.06238490566037737,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.061713207547169815,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.06104150943396227,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.060369811320754724,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.05969811320754718,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.05902641509433963,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.05835471698113208,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.05768301886792453,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.05701132075471699,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.05633962264150944,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.055667924528301896,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.05499622641509434,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.0543245283018868,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.05365283018867925,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.052981132075471706,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.05230943396226416,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.05163773584905661,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.05096603773584906,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.050294339622641515,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.04962264150943397,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.04895094339622642,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.04827924528301888,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.047607547169811325,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.04693584905660378,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.04626415094339623,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.04559245283018869,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.04492075471698114,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.04424905660377359,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.04357735849056604,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.0429056603773585,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.04223396226415095,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.041562264150943405,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.04089056603773586,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.040218867924528307,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.03954716981132076,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.038875471698113215,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.03820377358490567,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.03753207547169812,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.03686037735849057,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.03618867924528303,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.03551698113207548,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.034845283018867926,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.03417358490566039,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.033501886792452834,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.032830188679245295,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.03215849056603774,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.03148679245283019,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.03081509433962265,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.030143396226415098,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.02947169811320756,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.028800000000000006,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.028128301886792453,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.027456603773584914,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.02678490566037736,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.026113207547169823,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.02544150943396227,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.02476981132075473,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.024098113207547178,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.023426415094339625,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.022754716981132087,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.022083018867924534,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.021411320754716995,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.020739622641509442,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.02006792452830189,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.01939622641509435,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.018724528301886798,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.01805283018867926,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.017381132075471706,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.016709433962264153,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.016037735849056614,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.015366037735849061,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.014694339622641522,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.01402264150943397,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.013350943396226417,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.012679245283018878,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.012007547169811325,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.011335849056603786,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.010664150943396233,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.00999245283018868,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.009320754716981142,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.008649056603773589,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.00797735849056605,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.007305660377358497,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.006633962264150944,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.0059622641509434054,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.005290566037735853,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.004618867924528314,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.003947169811320761,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.003275471698113208,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.0026037735849056692,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.0019320754716981164,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.0012603773584905775,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": 0.0005886792452830247,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": -8.301886792451418e-05,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": -0.000754716981132067,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": -0.0014264150943396198,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": -0.0020981132075471587,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": -0.0027698113207547115,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": -0.0034415094339622504,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": -0.004113207547169803,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": -0.004784905660377356,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": -0.005456603773584895,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": -0.006128301886792448,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": -0.0068,
+      "contacts": 0,
+      "minimum_distance_m": null
+    },
+    {
+      "z_m": -0.0072,
+      "contacts": 6,
+      "minimum_distance_m": -0.00021653152801337158
+    }
+  ]
+}

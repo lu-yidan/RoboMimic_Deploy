@@ -127,6 +127,30 @@ def _reset_ball_state(m, d, ball_body_id, pos_w, vel_w, quat_w=None, ang_vel_w=N
 
 @hydra.main(config_path="config", config_name="mujoco")
 def main(cfg: DictConfig):
+    if cfg.get("rung_residual"):
+        from run_rung_residual import run_rung_residual
+        run_rung_residual(cfg.rung_residual)
+        return
+    if cfg.get("climb_cycle"):
+        from run_climb_cycle import run_climb_cycle
+        run_climb_cycle(cfg.climb_cycle)
+        return
+    if cfg.get("hand_transfer"):
+        from run_hand_transfer import run_hand_transfer
+        run_hand_transfer(cfg.hand_transfer)
+        return
+    if cfg.get("wall_support"):
+        from run_wall_support import run_wall_support
+        run_wall_support(cfg.wall_support)
+        return
+    if cfg.get("baseline"):
+        from reproduce_baseline import run_baseline
+        run_baseline(cfg)
+        return
+    if cfg.get("preview_only", False):
+        from inspect_scene import inspect_scene
+        inspect_scene(cfg, PROJECT_ROOT)
+        return
     xml_path = os.path.join(PROJECT_ROOT, cfg.xml_path)
     simulation_dt = cfg.simulation_dt
     control_decimation = cfg.control_decimation
@@ -182,12 +206,22 @@ def main(cfg: DictConfig):
         log_states = {FSMStateName[s] for s in log_cfg.get("states", ["SKILL_FREEKICK"])}
     log_step = 0
 
-    joystick = JoyStick()
+    keyboard_mode = bool(cfg.get("keyboard", False))
+    if keyboard_mode:
+        from common.keyboard_joystick import KeyboardJoystick
+        joystick = KeyboardJoystick()
+    else:
+        joystick = JoyStick()
     prev_hat = (0, 0)
     prev_r2_pressed = False
     prev_l2_pressed = False
     Running = True
-    with mujoco.viewer.launch_passive(m, d) as viewer:
+    key_callback = joystick.key_callback if keyboard_mode else None
+    with mujoco.viewer.launch_passive(m, d, key_callback=key_callback) as viewer:
+        if keyboard_mode:
+            print("READY: upstream MuJoCo deployment entry; full FSM; keyboard; initially paused.", flush=True)
+            print("SPACE pause/run; 1/Enter FixedPose; 2 Loco; 3 AMP; 4 BeyondMimicMJ; 5 StandUpMJ; 6 Pinocchio; P/F1 Passive; ESC quit.", flush=True)
+            print("W/S A/D Q/E adjust velocity; 0 zero velocity; G ghost; J joint positions. FreeKick (7) requires ball scene.", flush=True)
         sim_start_time = time.time()
         while viewer.is_running() and Running:
             try:
@@ -258,6 +292,11 @@ def main(cfg: DictConfig):
                 state_cmd.vel_cmd[0] = -joystick.get_axis_value(1)
                 state_cmd.vel_cmd[1] = -joystick.get_axis_value(0)
                 state_cmd.vel_cmd[2] = -joystick.get_axis_value(3)
+
+                if keyboard_mode and joystick.paused:
+                    viewer.sync()
+                    time.sleep(0.02)
+                    continue
                 
                 step_start = time.time()
                 
@@ -339,7 +378,3 @@ def main(cfg: DictConfig):
 
 if __name__ == "__main__":
     main()
-
-            
-
-        

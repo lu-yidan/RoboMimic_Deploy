@@ -1,0 +1,4 @@
+# Static inspection only. Generate the scene using the CAD README commands first.
+preview_only: true
+xml_path: outputs/g1_hook_v2_mount_v2/model.xml
+initial_qpos_path: outputs/g1_hook_v2_mount_v2/initial_qpos.npy

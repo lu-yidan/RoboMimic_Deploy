@@ -1,0 +1,16 @@
+defaults:
+  - mujoco_hand_transfer
+  - _self_
+
+hand_transfer:
+  output_dir: outputs/hand_release_reseat_run
+  rise: 0.0
+  initial_clearance: 0.05
+  clearance: 0.05
+  retreat: 0.06
+  support_gain: 5.0
+  arm_gain: 3.0
+  arm_gravity: true
+  base_feedback: true
+  load_goal_n: 20.0
+  video: true

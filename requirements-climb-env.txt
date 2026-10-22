@@ -1,0 +1,3 @@
+-r requirements-climb-check.txt
+mujoco==3.3.7
+gymnasium==1.4.0

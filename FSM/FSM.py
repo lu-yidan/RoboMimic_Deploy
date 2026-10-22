@@ -2,11 +2,6 @@ from common.path_config import PROJECT_ROOT
 
 from policy.passive.PassiveMode import PassiveMode
 from policy.fixedpose.FixedPose import FixedPose
-from policy.loco_mode.LocoMode import LocoMode
-from policy.beyondmimic.BeyondMimic import BeyondMimic
-from policy.beyondmimic_mj.BeyondMimicMJ import BeyondMimicMJ
-from policy.robonaldo.FreeKick import FreeKick
-from policy.amp.Amp import Amp
 from FSM.FSMState import *
 import time
 from common.ctrlcomp import *
@@ -18,7 +13,10 @@ class FSMMode(Enum):
     NORMAL = 2
 
 class FSM:
-    def __init__(self, state_cmd:StateAndCmd, policy_output:PolicyOutput):
+    def __init__(self, state_cmd:StateAndCmd, policy_output:PolicyOutput, *, profile="full", climb_options=None):
+        if profile not in ("full", "climb"):
+            raise ValueError("Unknown policy profile")
+        self.profile = profile
         self.state_cmd = state_cmd
         self.policy_output = policy_output
         self.cur_policy : FSMState
@@ -28,20 +26,28 @@ class FSM:
         
         self.passive_mode = PassiveMode(state_cmd, policy_output)       # 阻尼保护模式
         self.fixed_pose_1 = FixedPose(state_cmd, policy_output)         
-        self.loco_policy = LocoMode(state_cmd, policy_output)
-        self.beyondmimic_policy = BeyondMimic(state_cmd, policy_output)
-        self.beyondmimic_mj_policy = BeyondMimicMJ(state_cmd, policy_output)
-        self.standup_mj_policy = BeyondMimicMJ(state_cmd, policy_output,
-                                               "standup_mj.yaml",
-                                               FSMStateName.SKILL_STANDUP_MJ)
-        self.pinocchio_1_6_mj_policy = BeyondMimicMJ(
-            state_cmd,
-            policy_output,
-            "g1_result_pinocchio_1_6_mj.yaml",
-            FSMStateName.SKILL_PINOCCHIO_1_6_MJ,
-        )
-        self.freekick_policy = FreeKick(state_cmd, policy_output)
-        self.amp_policy = Amp(state_cmd, policy_output)
+        self.climb_policy = None
+        if profile == "climb":
+            from policy.climb.Climb import Climb
+            self.climb_policy = Climb(state_cmd, policy_output, **(climb_options or {}))
+        else:
+            from policy.loco_mode.LocoMode import LocoMode
+            from policy.beyondmimic.BeyondMimic import BeyondMimic
+            from policy.beyondmimic_mj.BeyondMimicMJ import BeyondMimicMJ
+            from policy.robonaldo.FreeKick import FreeKick
+            from policy.amp.Amp import Amp
+            self.loco_policy = LocoMode(state_cmd, policy_output)
+            self.beyondmimic_policy = BeyondMimic(state_cmd, policy_output)
+            self.beyondmimic_mj_policy = BeyondMimicMJ(state_cmd, policy_output)
+            self.standup_mj_policy = BeyondMimicMJ(state_cmd, policy_output,
+                                                   "standup_mj.yaml",
+                                                   FSMStateName.SKILL_STANDUP_MJ)
+            self.pinocchio_1_6_mj_policy = BeyondMimicMJ(
+                state_cmd, policy_output, "g1_result_pinocchio_1_6_mj.yaml",
+                FSMStateName.SKILL_PINOCCHIO_1_6_MJ,
+            )
+            self.freekick_policy = FreeKick(state_cmd, policy_output)
+            self.amp_policy = Amp(state_cmd, policy_output)
 
         print("initalized all policies!!!")
         
@@ -83,6 +89,12 @@ class FSM:
             
             
     def get_next_policy(self, policy_name:FSMStateName):
+        if policy_name == FSMStateName.SKILL_CLIMB:
+            self.cur_policy = self.climb_policy or self.passive_mode
+            return
+        if self.profile == "climb" and policy_name not in (FSMStateName.PASSIVE, FSMStateName.FIXEDPOSE):
+            self.cur_policy = self.passive_mode
+            return
         if(policy_name == FSMStateName.PASSIVE):
             self.cur_policy = self.passive_mode
         elif((policy_name == FSMStateName.FIXEDPOSE)):
@@ -103,6 +115,3 @@ class FSM:
             self.cur_policy = self.pinocchio_1_6_mj_policy
         else:
             pass
-            
-        
-        

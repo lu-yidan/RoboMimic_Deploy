@@ -1,0 +1,277 @@
+{
+  "revision": "g1_hook_black_modular_v2",
+  "part_count": 18,
+  "all_parts_watertight": true,
+  "glb_roundtrip_part_count": 18,
+  "estimated_total_mass_kg": 0.17931934647385273,
+  "bar_diameter_mm": 30.0,
+  "plate_spacing_mm": 18.0,
+  "body_width_mm": 26.0,
+  "width_including_fasteners_mm": 31.0,
+  "effective_seat_diameter_mm": 44.0,
+  "parts": [
+    {
+      "name": "side_plate_front",
+      "role": "primary load plate",
+      "volume_mm3": 7384.080375572702,
+      "estimated_mass_kg": 0.05796503094824571,
+      "assumed_density_kg_m3": 7850.0,
+      "watertight": true,
+      "color_rgb": [
+        0.055,
+        0.067,
+        0.082
+      ]
+    },
+    {
+      "name": "side_plate_rear",
+      "role": "primary load plate",
+      "volume_mm3": 7384.080375572702,
+      "estimated_mass_kg": 0.05796503094824571,
+      "assumed_density_kg_m3": 7850.0,
+      "watertight": true,
+      "color_rgb": [
+        0.055,
+        0.067,
+        0.082
+      ]
+    },
+    {
+      "name": "crown_carrier",
+      "role": "cross-width crown support; bolted between plates",
+      "volume_mm3": 9600.738852741648,
+      "estimated_mass_kg": 0.025921994902402448,
+      "assumed_density_kg_m3": 2700.0,
+      "watertight": true,
+      "color_rgb": [
+        0.11,
+        0.13,
+        0.15
+      ]
+    },
+    {
+      "name": "replaceable_liner",
+      "role": "replaceable contact pad; retention details unresolved",
+      "volume_mm3": 6125.779792554364,
+      "estimated_mass_kg": 0.007350935751065236,
+      "assumed_density_kg_m3": 1200.0,
+      "watertight": true,
+      "color_rgb": [
+        0.27,
+        0.29,
+        0.31
+      ]
+    },
+    {
+      "name": "back_spacer_1",
+      "role": "spacing sleeve",
+      "volume_mm3": 1280.8879898266975,
+      "estimated_mass_kg": 0.0034583975725320836,
+      "assumed_density_kg_m3": 2700.0,
+      "watertight": true,
+      "color_rgb": [
+        0.14,
+        0.16,
+        0.18
+      ]
+    },
+    {
+      "name": "back_spacer_2",
+      "role": "spacing sleeve",
+      "volume_mm3": 1280.887989826698,
+      "estimated_mass_kg": 0.003458397572532085,
+      "assumed_density_kg_m3": 2700.0,
+      "watertight": true,
+      "color_rgb": [
+        0.14,
+        0.16,
+        0.18
+      ]
+    },
+    {
+      "name": "fastener_1_shank",
+      "role": "smooth unthreaded fastener proxy",
+      "volume_mm3": 509.68912971371486,
+      "estimated_mass_kg": 0.004001059668252662,
+      "assumed_density_kg_m3": 7850.0,
+      "watertight": true,
+      "color_rgb": [
+        0.15,
+        0.17,
+        0.2
+      ]
+    },
+    {
+      "name": "fastener_1_head",
+      "role": "solid hex proxy; socket/thread details omitted",
+      "volume_mm3": 114.57516092068131,
+      "estimated_mass_kg": 0.0008994150132273483,
+      "assumed_density_kg_m3": 7850.0,
+      "watertight": true,
+      "color_rgb": [
+        0.19,
+        0.21,
+        0.24
+      ]
+    },
+    {
+      "name": "fastener_1_nut",
+      "role": "solid hex proxy; socket/thread details omitted",
+      "volume_mm3": 114.57516092068131,
+      "estimated_mass_kg": 0.0008994150132273483,
+      "assumed_density_kg_m3": 7850.0,
+      "watertight": true,
+      "color_rgb": [
+        0.19,
+        0.21,
+        0.24
+      ]
+    },
+    {
+      "name": "fastener_2_shank",
+      "role": "smooth unthreaded fastener proxy",
+      "volume_mm3": 509.6891297137151,
+      "estimated_mass_kg": 0.0040010596682526645,
+      "assumed_density_kg_m3": 7850.0,
+      "watertight": true,
+      "color_rgb": [
+        0.15,
+        0.17,
+        0.2
+      ]
+    },
+    {
+      "name": "fastener_2_head",
+      "role": "solid hex proxy; socket/thread details omitted",
+      "volume_mm3": 114.57516092068131,
+      "estimated_mass_kg": 0.0008994150132273483,
+      "assumed_density_kg_m3": 7850.0,
+      "watertight": true,
+      "color_rgb": [
+        0.19,
+        0.21,
+        0.24
+      ]
+    },
+    {
+      "name": "fastener_2_nut",
+      "role": "solid hex proxy; socket/thread details omitted",
+      "volume_mm3": 114.57516092068131,
+      "estimated_mass_kg": 0.0008994150132273483,
+      "assumed_density_kg_m3": 7850.0,
+      "watertight": true,
+      "color_rgb": [
+        0.19,
+        0.21,
+        0.24
+      ]
+    },
+    {
+      "name": "fastener_3_shank",
+      "role": "smooth unthreaded fastener proxy",
+      "volume_mm3": 509.6891297137153,
+      "estimated_mass_kg": 0.004001059668252665,
+      "assumed_density_kg_m3": 7850.0,
+      "watertight": true,
+      "color_rgb": [
+        0.15,
+        0.17,
+        0.2
+      ]
+    },
+    {
+      "name": "fastener_3_head",
+      "role": "solid hex proxy; socket/thread details omitted",
+      "volume_mm3": 114.5751609206812,
+      "estimated_mass_kg": 0.0008994150132273475,
+      "assumed_density_kg_m3": 7850.0,
+      "watertight": true,
+      "color_rgb": [
+        0.19,
+        0.21,
+        0.24
+      ]
+    },
+    {
+      "name": "fastener_3_nut",
+      "role": "solid hex proxy; socket/thread details omitted",
+      "volume_mm3": 114.5751609206812,
+      "estimated_mass_kg": 0.0008994150132273475,
+      "assumed_density_kg_m3": 7850.0,
+      "watertight": true,
+      "color_rgb": [
+        0.19,
+        0.21,
+        0.24
+      ]
+    },
+    {
+      "name": "fastener_4_shank",
+      "role": "smooth unthreaded fastener proxy",
+      "volume_mm3": 509.6891297137154,
+      "estimated_mass_kg": 0.004001059668252665,
+      "assumed_density_kg_m3": 7850.0,
+      "watertight": true,
+      "color_rgb": [
+        0.15,
+        0.17,
+        0.2
+      ]
+    },
+    {
+      "name": "fastener_4_head",
+      "role": "solid hex proxy; socket/thread details omitted",
+      "volume_mm3": 114.57516092068117,
+      "estimated_mass_kg": 0.0008994150132273473,
+      "assumed_density_kg_m3": 7850.0,
+      "watertight": true,
+      "color_rgb": [
+        0.19,
+        0.21,
+        0.24
+      ]
+    },
+    {
+      "name": "fastener_4_nut",
+      "role": "solid hex proxy; socket/thread details omitted",
+      "volume_mm3": 114.57516092068117,
+      "estimated_mass_kg": 0.0008994150132273473,
+      "assumed_density_kg_m3": 7850.0,
+      "watertight": true,
+      "color_rgb": [
+        0.19,
+        0.21,
+        0.24
+      ]
+    }
+  ],
+  "scope": "Black modular concept; no verified material choice, liner retention, wrist fit, strength or dynamic hanging",
+  "collision_scope": "Static mocap geometry only; conservative boxes/capsules omit corner clips, holes and threads",
+  "source_sha256": "c00c4200fa14d900a51e67cf49f7db916731369f95f822f84fef0b3912980e3c",
+  "files_sha256": {
+    "assembly.glb": "f3d3a9b6546536650b67d2336986d6312d1280a3849a9fc015e9d08ecb150837",
+    "assembly_mm.stl": "6055e9e3f2b379dd1388b7d0584ba8314ee10c99baac716cfda986d073760c47",
+    "build_model.py": "c00c4200fa14d900a51e67cf49f7db916731369f95f822f84fef0b3912980e3c",
+    "hook_fit.xml": "3007fe53c1f77bea1136f5b1544877ee88c12cc2e0714617b8533146ce4b2d99",
+    "parameters.json": "c153eae1441d70d3f7cd7da75bb4c8d7085a6dd508f95b5024ea1e733b1ebecc",
+    "preview.png": "98e3a3957517406f908020a3853b4067d8afb0fbc2476d929d81cf4f940a8eec",
+    "parts/back_spacer_1.stl": "246a8dab845127d1958423c7c59185eaaf0a8f6fc349410f672d81c9e1162d33",
+    "parts/back_spacer_2.stl": "b27650d1a6b52412f3d137b9bbef3faf3f148747dbd3db60be7dc93e5620aee2",
+    "parts/crown_carrier.stl": "cf059ad864e3d118bd1b039d002e61c27d2d78c2416025fd256165c65284adf5",
+    "parts/fastener_1_head.stl": "ca5b24877325310f3615080a712457413a6c0d2a90f560d3f648c5fbdd3ea508",
+    "parts/fastener_1_nut.stl": "fd473cc9c7e5415f6629b5ebca39520c1d991efd6108ab0adc465841f978cb15",
+    "parts/fastener_1_shank.stl": "3837fa273447023e9d4cf6867528639f0c8f05cd6b315538a4f345f36e408ac9",
+    "parts/fastener_2_head.stl": "f8d1c052fc196995031f47c7613adf54479d18a34fab72d2b0377c1cf2c2516c",
+    "parts/fastener_2_nut.stl": "f7cdcdcd4161d71190458e77dda9cebf14b601e37ceb1cfc007ac2ebe2347682",
+    "parts/fastener_2_shank.stl": "b689df860d43cd780a52d57bcc0bc4da7a6721328bbd0b29233585036c44e81e",
+    "parts/fastener_3_head.stl": "338ce50e19278e57562b7791af8bda53365008fc9a57139754067dcb2de1a967",
+    "parts/fastener_3_nut.stl": "0e9c2714e45ae04b6adea8b7b1fcd072916dc38a7e4291aa00d053ea91623921",
+    "parts/fastener_3_shank.stl": "23e383c4e38453d8c35475172616b5cc98727873f6b14fbcc0972a51a4a01abb",
+    "parts/fastener_4_head.stl": "a279b5e2d12bbeb89ea5feebc78ab83e777517267c50f88e19969857cd486ee6",
+    "parts/fastener_4_nut.stl": "961cfeff421f6f238a1523aa354b491f62cd6b711dd5d8691d41cce2691c2294",
+    "parts/fastener_4_shank.stl": "90d8060cb405fe24932a21d8b703ad6b907a41c845466d0646b75549e488cc52",
+    "parts/replaceable_liner.stl": "c2e5730652d96678a5adab887b8ee5fcc17a17f09d5d5f7723c769d5809a9ea3",
+    "parts/side_plate_front.stl": "76b7bc9f9187c1e054544f33bb9cb9018efd3a6f318fd62245fd2162202e18f7",
+    "parts/side_plate_rear.stl": "1146b0e4771a4e07a4a4949bd850338c9c07f35d61ce3464a0daeea2c0c5ec1d"
+  }
+}

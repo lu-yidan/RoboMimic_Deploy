@@ -1,0 +1,10 @@
+preview_only: true
+xml_path: outputs/climb_wall_2m_v3/model.xml
+initial_qpos_path: outputs/climb_wall_2m_v3/initial_qpos.npy
+inspection_help: "1 wall, 2 robot, 3 hands, 4 feet, 5 side"
+inspection_cameras:
+  - {key: '1', lookat: [.40, 0, 1.85], distance: 5.7, azimuth: -35, elevation: -9}
+  - {key: '2', lookat: [.30, 0, 1.05], distance: 2.5, azimuth: -35, elevation: -10}
+  - {key: '3', lookat: [.38, 0, 1.52], distance: .9, azimuth: -40, elevation: -12}
+  - {key: '4', lookat: [.27, 0, .37], distance: .85, azimuth: -40, elevation: -18}
+  - {key: '5', lookat: [.42, 0, 1.85], distance: 5.7, azimuth: -90, elevation: -5}

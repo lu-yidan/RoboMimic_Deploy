@@ -1,3 +1,5 @@
+> `liuze-climb` 开发分支：已接通50 Hz、100维观测、29维位置动作的攀爬接口、MuJoCo环境和首轮4096步PPO训练，并完成ONNX导出与适配器仿真验证。当前仅训练初始支撑姿态保持，尚未达到通过标准，未训练换杆或部署真机。说明见 [policy/climb/README.md](policy/climb/README.md) 和 [训练记录](training/README.md)。原QP力矩控制的成功结论不能直接继承。
+
 <div align="center">
   <h1 align="center">RoboNaldo Deploy</h1>
   <p align="center">
@@ -115,6 +117,18 @@ pip install -e .
 ```bash
 python deploy_mujoco/deploy_mujoco.py
 ```
+
+`liuze-climb` 分支新增Windows键盘模式。它使用上述原入口、原场景与完整策略FSM；默认手柄模式不变。需要先检出上游网格和策略权重：
+
+```powershell
+git sparse-checkout add '/g1_description/meshes/' '/policy/*/model/'
+.\.venv\Scripts\python.exe -m pip install -r requirements-mujoco-desktop.txt
+.\.venv\Scripts\python.exe -X utf8 deploy_mujoco\deploy_mujoco.py +keyboard=true hydra.job.chdir=false
+```
+
+键盘模式初始暂停。空格运行/暂停；`1`或Enter请求FixedPose；`2`切换Loco；`3`为AMP；`4/5/6`分别请求BeyondMimicMJ、StandUpMJ和Pinocchio；`P`或F1请求Passive；Esc退出。策略切换仍受原FSM规则约束，先从Passive进入FixedPose再选择技能。`W/S、A/D、Q/E`每次调整对应速度指令0.1，`0`清零；`G`切换参考动作显示，`J`打印关节角。`7`请求FreeKick，只适用于含球场景。Python的`-X utf8`用于正确读取带中文的上游配置。
+
+2026-10-09已验证原默认场景与完整策略加载、窗口打开以及键盘事件转换；未据此宣称所有上游技能的运动性能均已验证。该入口不连接机器人，默认场景不是钩爪攀爬场景。
 
 FreeKick 场景（含球，运行 FreeKick 策略时使用）：
 ```bash
@@ -243,6 +257,38 @@ Mimic策略不保证100%成功率，特别是在湿滑/沙地等复杂地面上�
 ### 5. 强烈建议
 **务必**先在仿真环境中熟练操作，再尝试真机部署。
 
+## G1 钩爪攀爬：148 维策略仿真入口
+
+`deploy_mujoco.run_geometry_full_cycle` 在本仓库内运行已审计的完整周期策略，支持 blind/oracle 两种额外横杆位置输入。入口校验策略、参考轨迹、源码与场景哈希，并记录全过程状态和验收结果。此入口用于 MuJoCo 仿真实验；oracle 使用仿真横杆位置真值，当前仍依赖预设攀爬轨迹和接触控制器。
+
+以下已验证工况为脚杆升高 7.5 mm、完整周期 113.66 s。独立入口的七组记录数组与原策略评估精确一致，验证文件位于 `outputs/geometry_policy_deploy_replay_v1/deployment_reproduction_audit.json`。
+
+在 PowerShell 中运行：
+
+```powershell
+Set-Location D:\G1Climbing\external\RoboMimic_Deploy
+$env:OPENBLAS_NUM_THREADS = '1'
+$env:OMP_NUM_THREADS = '1'
+$climbRun = 'outputs/geometry_viewer_' + (Get-Date -Format 'yyyyMMdd_HHmmss')
+.\.venv\Scripts\python.exe -m deploy_mujoco.run_geometry_full_cycle --experiment outputs/highrod_existing_oracle_policy_v1 --case foot_z_plus7.5 --output $climbRun --viewer
+```
+
+去掉 `--viewer` 可运行无界面实验。每次使用新输出目录；完成后检查其中的 `summary.json` 和 `trajectory.npz`。本例使用已审计策略，不自动替换为正在训练的新检查点。当前高度误差基准为五个离散工况中三个通过，完整进度见 `docs/baselines/full_cycle_training_20261018.md`。
+
+### 已验证的支撑参考改进（+12.5 mm）
+
+`support_retarget_plan_v1` 调整卸载阶段的支撑参考，五个已知杆高工况的独立验收从 3/5 改善到 4/5；+15 mm 仍终点失败。已有策略迁移后同为 4/5，没有追加训练或额外成功项。新参考下的 +12.5 mm 工况已经在独立部署入口完整执行 113.66 s，七组数组与原评估逐元素一致，见 `outputs/support_policy_deploy_replay_v1/deployment_reproduction_audit.json`。
+
+```powershell
+Set-Location D:\G1Climbing\external\RoboMimic_Deploy
+$env:OPENBLAS_NUM_THREADS = '1'
+$env:OMP_NUM_THREADS = '1'
+$supportRun = 'outputs/support_viewer_' + (Get-Date -Format 'yyyyMMdd_HHmmss')
+.\.venv\Scripts\python.exe -m deploy_mujoco.run_geometry_full_cycle --experiment outputs/support_reference_policy_transfer_v1 --case foot_z_plus12.5 --output $supportRun --viewer
+```
+
+前后对比全过程录像：`outputs/support_retarget_calibration_v1/media12.5/reference_repair_8x.mp4`。这次改善来自参考规划；不代表自主视觉攀爬或真机验证。终点接触位置调整等后续候选只有通过完整验收后才替换此版本。
+
 ## 致谢
 
 本部署框架基于 [**ccrpRepo/RoboMimic_Deploy**](https://github.com/ccrpRepo/RoboMimic_Deploy)
@@ -253,3 +299,28 @@ Mimic策略不保证100%成功率，特别是在湿滑/沙地等复杂地面上�
 
 
 
+
+### 已审计策略的仿真候选包（2026-10-22）
+
+`outputs/closure_control_simulation_package_v1`包含零附加收尾惩罚续训策略、黑色复合钩爪横杆场景、参考轨迹与所需源码。该策略五个已知工况4/5、十二项网格11/12，网格属于模型选择验证集。两组续训同分，已按冻结规则选定本策略，详见`outputs/closure_policy_selection_v1/selection.json`。包只开放已审计的`foot_x+5_z13.75`演示工况；包内完整113.66秒复现七数组精确一致。
+
+可搬移ZIP为`outputs/closure_control_simulation_candidate_v1.zip`（约16.4MB）。归档保留原候选标签与哈希，选模接纳记录单独保存在`outputs/closure_control_package_selection_receipt_v1.json`。全部99个ZIP文件已解码核对，解压后的场景加载也已验证。
+
+在本机 PowerShell 使用现有虚拟环境：
+
+```powershell
+Set-Location D:\G1Climbing\external\RoboMimic_Deploy
+$ClimbPython = (Resolve-Path .\.venv\Scripts\python.exe).Path
+Set-Location .\outputs\closure_control_simulation_package_v1
+& $ClimbPython -m deploy_mujoco.run_packaged_geometry --verify-only
+& $ClimbPython -m deploy_mujoco.run_packaged_geometry --output user_viewer_replay --viewer
+```
+
+输出目录须不存在；需要再次运行时换一个目录名。去掉`--viewer`可进行无界面完整复现。运行入口核对包内文件、主要依赖版本，并将完整状态、动作、观测、力矩和奖励与审计轨迹精确比较。窗口提前关闭不算完整通过。
+
+这是MuJoCo仿真包，使用参考轨迹、真实接触反馈与真实杆偏移输入；不连接真机，也不代表视觉自主攀爬。依赖文件记录当前环境，尚未验证另一台全新机器的联网安装。
+
+
+### GitHub 下载后的仿真复现
+
+选定策略、场景、运行源码及单案例完整审计已打包至 [仿真快照与复现说明](artifacts/climb_simulation_20261022/README.md)。首次克隆请按该说明解压并安装运行依赖；历史报告中的 `outputs/` 路径并未全部上传。

@@ -15,6 +15,7 @@ class FSMStateName(Enum):
     SKILL_STANDUP_MJ = 15
     SKILL_AMP = 16
     SKILL_PINOCCHIO_1_6_MJ = 17
+    SKILL_CLIMB = 18
 
 @unique
 class FSMCommand(Enum):
@@ -28,6 +29,7 @@ class FSMCommand(Enum):
     CMD_STANDUP_MJ = 15
     CMD_AMP = 16
     CMD_PINOCCHIO_1_6_MJ = 19
+    CMD_CLIMB = 20
 
 
 
@@ -52,5 +54,3 @@ def scale_values(values, target_ranges):
         scaled_val = (val + 1) * (new_max - new_min) / 2 + new_min
         scaled.append(scaled_val)
     return np.array(scaled)
-
-

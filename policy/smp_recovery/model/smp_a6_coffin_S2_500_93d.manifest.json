@@ -1,0 +1,36 @@
+{
+  "source_checkpoint": "/root/workplace/smp-coffin-eval-20261021/logs/Coffin140_C14500_S2_6000_20261023/model_500.pt",
+  "checkpoint_sha256": "e012e2ae41875e5cf46fb67f80826a7aef7de5425dd606e108b1fdc984027f9e",
+  "onnx_sha256": "877a7deb8d316ce9681bf6505595e6d1f84ba55ec557e6f829c019aceb6f40d5",
+  "input": {
+    "shape": [
+      1,
+      93
+    ],
+    "normalizer_embedded": true
+  },
+  "output": {
+    "shape": [
+      1,
+      29
+    ],
+    "deterministic": true
+  },
+  "architecture": "MLP 93-512-256-128-29, ELU",
+  "opset": 17,
+  "parity_fixture": "/tmp/coffin_S2_500_parity.npz",
+  "hardware_validated": false,
+  "parity_max_abs_error": 1.9073486328125e-06,
+  "parity_samples": 512,
+  "controller_load_enter_run_passed": true,
+  "deployment_smoke": {
+    "scene": "mujoco_coffin",
+    "duration_s": 23,
+    "physics_dt": 0.002,
+    "control_dt": 0.02,
+    "finite_state": true,
+    "numerical_warnings": false,
+    "reset_passed": true,
+    "success_rate_measured": false
+  }
+}

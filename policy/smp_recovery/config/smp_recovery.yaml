@@ -23,6 +23,12 @@ profile: v34_balanced4_hard19000
 model_path: "smp_ft_r0_9500_93d.onnx"
 model_sha256: "abd7d9e79eba5ff138217d059682311970e429e0cc3c7d202b5867c5e7f9a907"
 model_profiles:
+  a6_coffin_s2_500:
+    model_path: "smp_a6_coffin_S2_500_93d.onnx"
+    model_sha256: "877a7deb8d316ce9681bf6505595e6d1f84ba55ec557e6f829c019aceb6f40d5"
+  a6_coffin_s1_500:
+    model_path: "smp_a6_coffin_S1_500_93d.onnx"
+    model_sha256: "913498938d97067d3efb023dec1ad68dd4142264079477188680115203cec246"
   a6_coffin_mv_4000:
     # C1@4500 -> MV@4000; upward speed targets x1.5.
     model_path: "smp_a6_coffin_mv_4000_93d.onnx"

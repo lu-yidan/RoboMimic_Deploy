@@ -23,6 +23,10 @@ profile: v34_balanced4_hard19000
 model_path: "smp_ft_r0_9500_93d.onnx"
 model_sha256: "abd7d9e79eba5ff138217d059682311970e429e0cc3c7d202b5867c5e7f9a907"
 model_profiles:
+  a6_coffin_m15_4000:
+    # C1@4500 -> M15@4000; upper mass/inertia training coverage to 1.5x.
+    model_path: "smp_a6_coffin_m15_4000_93d.onnx"
+    model_sha256: "ea4f554793fcab2536bf1a779d8f8047af24eafd194cfdbbd6593d2aadc89408"
   a6_coffin_c1_4500:
     # Original A6 -> fixed 140x60x40 coffin C1; native A6 torque limits.
     model_path: "smp_a6_coffin_c1_4500_93d.onnx"

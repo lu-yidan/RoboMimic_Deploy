@@ -23,6 +23,10 @@ profile: v34_balanced4_hard19000
 model_path: "smp_ft_r0_9500_93d.onnx"
 model_sha256: "abd7d9e79eba5ff138217d059682311970e429e0cc3c7d202b5867c5e7f9a907"
 model_profiles:
+  a6_coffin_mv_4000:
+    # C1@4500 -> MV@4000; upward speed targets x1.5.
+    model_path: "smp_a6_coffin_mv_4000_93d.onnx"
+    model_sha256: "6110a8e8fe24f01d0c5cd7fb30ac782dafc83989f7968493bcf8055e4abb754f"
   a6_coffin_m15_4000:
     # C1@4500 -> M15@4000; upper mass/inertia training coverage to 1.5x.
     model_path: "smp_a6_coffin_m15_4000_93d.onnx"

@@ -43,6 +43,10 @@ class StateAndCmd:
         # manual ball Y-bias (metres, + = pelvis +Y = left)
         # Adjusted by L2+right/left in policy_runtime / deploy_mujoco.
         self.ball_y_bias = 0.0
+        # PHP normalized depth, timestamped by the active sensor provider.
+        self.php_depth = None
+        self.php_depth_time = 0.0
+        self.php_high_speed = False
         # joy cmd
         self.vel_cmd = np.zeros(3)
         self.skill_cmd = FSMCommand.INVALID

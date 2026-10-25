@@ -179,18 +179,25 @@ def main(cfg: DictConfig):
 
     state_cmd = StateAndCmd(num_joints)
     policy_output = PolicyOutput(num_joints)
-    from common.deployment_config import load_mujoco_scalebfm_config
+    from common.deployment_config import load_mujoco_scalebfm_config, load_php_config
     scalebfm_cfg = load_mujoco_scalebfm_config(cfg)
+    php_cfg = load_php_config()
+    if php_cfg["enabled"] and not np.isclose(mj_per_step_duration, .02):
+        raise ValueError("PHP requires a 50 Hz control loop")
     if scalebfm_cfg and scalebfm_cfg.enabled and not np.isclose(mj_per_step_duration, .02):
         raise ValueError("ScaleBFM requires a 50 Hz control loop")
     joint_names = [mujoco.mj_id2name(m, mujoco.mjtObj.mjOBJ_JOINT, int(m.actuator_trnid[i, 0]))
                    for i in range(num_joints)]
-    if scalebfm_cfg and scalebfm_cfg.enabled:
+    if (scalebfm_cfg and scalebfm_cfg.enabled) or php_cfg["enabled"]:
         actuator_joints = m.actuator_trnid[:, 0]
         if not (np.array_equal(m.jnt_qposadr[actuator_joints], np.arange(7, 7 + num_joints))
                 and np.array_equal(m.jnt_dofadr[actuator_joints], np.arange(6, 6 + num_joints))):
             raise ValueError("Deployment loop requires actuator order to match qpos/dof order")
-    FSM_controller = FSM(state_cmd, policy_output, scalebfm_cfg, joint_names, enable_freekick=False)
+    FSM_controller = FSM(state_cmd, policy_output, scalebfm_cfg, joint_names, enable_freekick=False, php_config=php_cfg)
+    depth_camera = None
+    if FSM_controller.php_policy is not None:
+        from policy.php_parkour.depth import DepthCamera
+        depth_camera = DepthCamera(m)
 
     catalog = None
     if FSM_controller.scalebfm_policy is not None:
@@ -205,7 +212,7 @@ def main(cfg: DictConfig):
         raise ValueError("startup_policy must be passive, fixed_pose, or smp_recovery")
     state_cmd.skill_cmd = startup_commands[startup_policy]
     print(f"[Startup] {startup_policy}; physics={simulation_dt}s; control={simulation_dt * control_decimation}s")
-    print("[Controls] START: FixedPose; Y: SMP; keyboard R: reset simulation into passive mode")
+    print("[Controls] START: FixedPose; L1+A / P: PHP; R3: PHP speed; Y: SMP; keyboard R: reset simulation into passive mode")
 
     log_cfg = cfg.get("logging", {})
     logger = None
@@ -224,12 +231,17 @@ def main(cfg: DictConfig):
     prev_hat = (0, 0)
     prev_r2_pressed = False
     prev_l2_pressed = False
+    from policy.php_parkour.input import PHPButtons
+    php_buttons = PHPButtons()
     Running = True
     reset_requested = Event()
     standing_reset_requested = Event()
+    php_requested = Event()
     def key_callback(key):
         if key in (ord('R'), ord('r')):
             reset_requested.set()
+        elif key in (ord('P'), ord('p')):
+            php_requested.set()
         elif key == 259:
             standing_reset_requested.set()
     with mujoco.viewer.launch_passive(m, d, key_callback=key_callback) as viewer:
@@ -252,6 +264,9 @@ def main(cfg: DictConfig):
                     state_cmd.q = d.qpos[7:7 + num_joints].copy()
                     state_cmd.dq = d.qvel[6:6 + num_joints].copy()
                     state_cmd.skill_cmd = FSMCommand.INVALID
+                    state_cmd.php_depth = None
+                    state_cmd.php_depth_time = 0.0
+                    php_requested.clear()
                     FSM_controller.get_next_policy(FSMStateName.PASSIVE)
                     FSM_controller.FSMmode = FSMMode.NORMAL
                     FSM_controller.sim_counter = 0
@@ -303,6 +318,10 @@ def main(cfg: DictConfig):
                         policy_output_action = policy_output.actions.copy()
                         kps, kds = policy_output.kps.copy(), policy_output.kds.copy()
                         continue
+                if (FSM_controller.cur_policy.name == FSMStateName.SKILL_PHP_PARKOUR
+                        and joystick.is_button_released(JoystickButton.R3)):
+                    state_cmd.php_high_speed = not state_cmd.php_high_speed
+                    print("[PHP] speed:", "HIGH" if state_cmd.php_high_speed else "LOW")
                 if joystick.is_button_released(JoystickButton.L3):                                                    # Ghost toggle, L3
                     ghost_flags[0] = not ghost_flags[0]
                     print(f"[Ghost] {'ON' if ghost_flags[0] else 'OFF'}")
@@ -331,27 +350,26 @@ def main(cfg: DictConfig):
                         state_cmd.target_y_bias = float(np.clip(state_cmd.target_y_bias + 0.05, -1.50, 1.50))
                         print(f"\n[BIAS] target_y_bias = {state_cmd.target_y_bias:+.2f} m", flush=True)
 
-                # PASSIVE: safety command — L2 release
-                if l2_just_released:                                                                                   # 阻尼保护, L2
+                php_button_command = php_buttons.update(joystick, php_requested.is_set())
+                php_requested.clear()
+                # Damping remains latched until FSM consumes it; recovery has priority over PHP.
+                if l2_just_released or state_cmd.skill_cmd == FSMCommand.PASSIVE:
                     state_cmd.skill_cmd = FSMCommand.PASSIVE
-
-                # All other skill commands: latched — only accepted when FSM has cleared the previous one.
-                # This prevents a fast START → policy switch sequence from overwriting POS_RESET before the FSM
-                # processes it, which would leave the current controller without a clean exit().
-                # elif state_cmd.skill_cmd == FSMCommand.INVALID:
-                elif joystick.is_button_released(JoystickButton.START):                                              # 回 FixedPose, START
-                    state_cmd.skill_cmd = FSMCommand.POS_RESET
-                elif joystick.is_button_released(JoystickButton.B):                                                # Loco, B
-                    state_cmd.skill_cmd = FSMCommand.LOCO
-                elif joystick.is_button_released(JoystickButton.A):                                                # AMP, A
-                    state_cmd.skill_cmd = FSMCommand.CMD_AMP
-                elif joystick.is_button_just_pressed(JoystickButton.Y) and not joystick.is_button_pressed(JoystickButton.L1):  # SMP Recovery, Y
+                elif joystick.is_button_just_pressed(JoystickButton.Y) and not joystick.is_button_pressed(JoystickButton.L1):
                     state_cmd.skill_cmd = FSMCommand.CMD_SMP_RECOVERY
-                elif hat_just_pressed(0, -1):                                                                     # BeyondMimicMJ, D-pad DOWN
+                elif state_cmd.skill_cmd == FSMCommand.CMD_SMP_RECOVERY:
+                    pass
+                elif joystick.is_button_released(JoystickButton.START):
+                    state_cmd.skill_cmd = FSMCommand.POS_RESET
+                elif joystick.is_button_released(JoystickButton.B):
+                    state_cmd.skill_cmd = FSMCommand.LOCO
+                elif php_button_command is not None:
+                    state_cmd.skill_cmd = php_button_command
+                elif hat_just_pressed(0, -1):
                     state_cmd.skill_cmd = FSMCommand.CMD_BEYONDMIMIC_MJ
-                elif hat_just_pressed(0, 1):                                                                      # StandUpMJ, D-pad UP
+                elif hat_just_pressed(0, 1):
                     state_cmd.skill_cmd = FSMCommand.CMD_STANDUP_MJ
-                elif r2_just_pressed:                                                                             # Pinocchio1.6MJ, R2
+                elif r2_just_pressed:
                     state_cmd.skill_cmd = FSMCommand.CMD_PINOCCHIO_1_6_MJ
 
                 prev_hat = hat
@@ -400,6 +418,15 @@ def main(cfg: DictConfig):
                         state_cmd.ball_vel_w = d.qvel[ball_qvel_adr:ball_qvel_adr+3].astype(np.float32)
                     ball_sensor_counter += 1
 
+                    if (depth_camera is not None
+                            and state_cmd.skill_cmd not in (FSMCommand.PASSIVE, FSMCommand.CMD_SMP_RECOVERY)
+                            and (state_cmd.skill_cmd == FSMCommand.CMD_PHP_PARKOUR
+                                 or FSM_controller.cur_policy.name == FSMStateName.SKILL_PHP_PARKOUR)):
+                        try:
+                            depth_camera.capture(d, state_cmd)
+                        except Exception as exc:
+                            state_cmd.php_depth = None
+                            print("[PHP camera]", exc)
                     FSM_controller.run()
                     policy_output_action = policy_output.actions.copy()
                     kps = policy_output.kps.copy()
@@ -448,6 +475,8 @@ def main(cfg: DictConfig):
             except ValueError as e:
                 print(str(e))
 
+    if depth_camera is not None:
+        depth_camera.close()
     if logger is not None:
         logger.close()
 

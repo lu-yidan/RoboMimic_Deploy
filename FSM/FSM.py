@@ -19,7 +19,7 @@ class FSMMode(Enum):
     NORMAL = 2
 
 class FSM:
-    def __init__(self, state_cmd:StateAndCmd, policy_output:PolicyOutput, scalebfm_config=None, joint_names=None, enable_freekick=True):
+    def __init__(self, state_cmd:StateAndCmd, policy_output:PolicyOutput, scalebfm_config=None, joint_names=None, enable_freekick=True, php_config=None):
         self.state_cmd = state_cmd
         self.policy_output = policy_output
         self.cur_policy : FSMState
@@ -50,6 +50,11 @@ class FSM:
             from policy.scalebfm.ScaleBFM import ScaleBFM
             self.scalebfm_policy = ScaleBFM(state_cmd, policy_output, scalebfm_config, joint_names)
 
+        self.php_policy = None
+        if php_config is not None and php_config.get("enabled", False):
+            from policy.php_parkour.PHPParkour import PHPParkour
+            self.php_policy = PHPParkour(state_cmd, policy_output, php_config, joint_names)
+
         print("initalized all policies!!!")
         
         self.cur_policy = self.passive_mode             # 当前policy
@@ -71,6 +76,19 @@ class FSM:
             self.policy_output.executed_fsm_state = self.cur_policy.name.value
             self.cur_policy.run()
             return
+        # PHP entry is centralized like ScaleBFM; depth must already be available.
+        if self.state_cmd.skill_cmd == FSMCommand.CMD_PHP_PARKOUR:
+            self.state_cmd.skill_cmd = FSMCommand.INVALID
+            allowed = (FSMStateName.FIXEDPOSE, FSMStateName.LOCOMODE,
+                       FSMStateName.SKILL_AMP, FSMStateName.SKILL_SCALEBFM,
+                       FSMStateName.SKILL_PHP_PARKOUR)
+            if self.php_policy is not None and self.cur_policy.name in allowed and self.php_policy.depth_ready():
+                self.cur_policy.exit()
+                self.cur_policy = self.php_policy
+                self.cur_policy.enter()
+                self.FSMmode = FSMMode.NORMAL
+            else:
+                print("[PHP] Requires enabled PHP, live depth, and FixedPose/Loco/AMP/ScaleBFM.")
         start_time = time.time()
         # Recovery is globally preemptive so Y works from every FSM state.
         # The input layer gives the damping command higher priority.
@@ -90,7 +108,7 @@ class FSM:
                 self.cur_policy.run()
             if self.state_cmd.skill_cmd == FSMCommand.CMD_SCALEBFM:
                 self.state_cmd.skill_cmd = FSMCommand.INVALID
-                if self.scalebfm_policy is not None and self.cur_policy.name in (FSMStateName.FIXEDPOSE, FSMStateName.LOCOMODE, FSMStateName.SKILL_AMP, FSMStateName.SKILL_SCALEBFM):
+                if self.scalebfm_policy is not None and self.cur_policy.name in (FSMStateName.FIXEDPOSE, FSMStateName.LOCOMODE, FSMStateName.SKILL_AMP, FSMStateName.SKILL_SCALEBFM, FSMStateName.SKILL_PHP_PARKOUR):
                     nextPolicyName = FSMStateName.SKILL_SCALEBFM
                     restart_scalebfm = self.cur_policy.name == FSMStateName.SKILL_SCALEBFM
                 else:
@@ -149,6 +167,8 @@ class FSM:
             self.cur_policy = self.pinocchio_1_6_mj_policy
         elif policy_name == FSMStateName.SKILL_SCALEBFM and self.scalebfm_policy is not None:
             self.cur_policy = self.scalebfm_policy
+        elif policy_name == FSMStateName.SKILL_PHP_PARKOUR and self.php_policy is not None:
+            self.cur_policy = self.php_policy
         else:
             pass
             

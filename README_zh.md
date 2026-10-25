@@ -476,13 +476,14 @@ python tools/smoke_scalebfm_fsm.py
 
 本框架源自 [ccrpRepo/RoboMimic_Deploy](https://github.com/ccrpRepo/RoboMimic_Deploy) 与 [OpenDriveLab/RoboNaldo_Deploy](https://github.com/OpenDriveLab/RoboNaldo_Deploy)。RoboNaldo 训练代码见 [OpenDriveLab/RoboNaldo](https://github.com/OpenDriveLab/RoboNaldo)；ScaleBFM 源码见 [zengweishuai/ScaleBFM](https://github.com/zengweishuai/ScaleBFM)，权重见 [Hugging Face](https://huggingface.co/WeishuaiZeng/ScaleBFM/tree/main)。上游许可证及归属信息保留在对应源码中。
 
-## PHP Parkour
+## PHP Parkour（lyd-php-parkour 分支）
 
-已提供外部 `~/workspace/php_parkour` 的统一配置与启动入口，支持台阶和平地深度仿真。完整安装、双终端启动、键盘控制及验证范围见 [PHP 部署说明](docs/php_deployment_zh.md)。PHP 使用独立 Holosoma 运行时，目前不支持在 AMP/SMP FSM 中热切换。
+PHP 与其他策略并列放在 `policy/php_parkour/`，使用统一 MuJoCo / FSM，配置在 `config/deploy.yaml` 的 `php` 节。外部模型保留在 `~/.cache/php-parkour/student/`。详见 [PHP 部署与按键说明](docs/php_deployment_zh.md)。
 
 ```bash
-python deploy_php/deploy_php.py check
-python deploy_php/deploy_php.py sim --scene steps
-# 另一个终端，等待深度共享内存就绪后运行
-python deploy_php/deploy_php.py policy
+python deploy_mujoco/deploy_mujoco.py --config-name mujoco_php
+# 平地
+python deploy_mujoco/deploy_mujoco.py --config-name mujoco_php scene.name=none
 ```
+
+等 FixedPose 稳定后，`L1+A` 或窗口 `P` 进入 PHP；左摇杆控制方向，`R3` 切换速度，`A/B/START` 返回 AMP/Loco/FixedPose，`Y` 进入 SMP，`L2` 阻尼。本次支持 MuJoCo，实机深度接入尚未完成。

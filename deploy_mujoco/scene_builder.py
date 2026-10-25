@@ -166,6 +166,22 @@ def _add_coffin(worldbody: Any, config: Any) -> None:
     print(f"[Coffin] inside={length} x {width} m, box top={height} m, base={base} m; box={mass} kg, lid={lid_mass} kg")
 
 
+def _add_php_steps(worldbody: Any, config: Any) -> None:
+    count = int(config.get("count", 4))
+    height = float(config.get("height", .12))
+    length = float(config.get("length", .6))
+    width = float(config.get("width", 2.))
+    start_x = float(config.get("start_x", 1.5))
+    if not all(np.isfinite(v) for v in (height, length, width, start_x)) or min(height, length, width) <= 0 or not 1 <= count <= 30:
+        raise ValueError("Invalid PHP step geometry")
+    for i in range(count):
+        z = height * (i + 1)
+        ET.SubElement(worldbody, "geom", name=f"php_step_{i}", type="box",
+                      pos=f"{start_x + (i + .5) * length} 0 {z / 2}",
+                      size=f"{length / 2} {width / 2} {z / 2}",
+                      rgba="0.55 0.57 0.6 1", friction="1 0.01 0.001")
+
+
 def load_model(xml_path: str | Path, scene: Any) -> mujoco.MjModel:
     """Load the robot and append the requested static or sliding obstacle."""
     xml_path = Path(xml_path).resolve()
@@ -180,9 +196,11 @@ def load_model(xml_path: str | Path, scene: Any) -> mujoco.MjModel:
         _add_vertical_plate(worldbody, scene.get("plate", {}))
     if scene_name == "coffin":
         _add_coffin(worldbody, scene.get("coffin", {}))
-    if scene_name not in ("none", "table", "plate", "table_and_plate", "coffin"):
+    if scene_name == "php_steps":
+        _add_php_steps(worldbody, scene.get("steps", {}))
+    if scene_name not in ("none", "table", "plate", "table_and_plate", "coffin", "php_steps"):
         raise ValueError(
-            "scene.name must be one of none, table, plate, table_and_plate, coffin"
+            "scene.name must be one of none, table, plate, table_and_plate, coffin, php_steps"
         )
     with tempfile.NamedTemporaryFile(
         mode="w", suffix=".xml", dir=xml_path.parent, delete=True

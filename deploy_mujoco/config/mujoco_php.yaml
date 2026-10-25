@@ -1,0 +1,15 @@
+defaults:
+  - mujoco
+  - _self_
+
+# Same robot/FSM as other policies, with a configurable static staircase.
+startup_policy: fixed_pose
+ghost_enabled: false
+scene:
+  name: php_steps  # none = flat ground
+  steps:
+    count: 4
+    height: 0.12
+    length: 0.6
+    width: 2.0
+    start_x: 1.5

@@ -226,13 +226,14 @@ The [integration report](docs/validation/lyd_deploy_20261025.json) records model
 
 Based on [ccrpRepo/RoboMimic_Deploy](https://github.com/ccrpRepo/RoboMimic_Deploy) and [OpenDriveLab/RoboNaldo_Deploy](https://github.com/OpenDriveLab/RoboNaldo_Deploy). Training: [RoboNaldo](https://github.com/opendrivelab/RoboNaldo). ScaleBFM: [official source](https://github.com/zengweishuai/ScaleBFM) and [weights](https://huggingface.co/WeishuaiZeng/ScaleBFM/tree/main). Upstream licenses and attribution are retained.
 
-## PHP Parkour
+## PHP Parkour (lyd-php-parkour branch)
 
-The external `~/workspace/php_parkour` checkout is supported through `deploy_php/deploy_php.py` and the `php` section in `config/deploy.yaml`. Models remain outside this repository. PHP uses its own Holosoma depth simulation and inference runtimes; it is not an AMP/SMP FSM state. See the [PHP deployment guide](docs/php_deployment_zh.md) for setup, controls and validation scope.
+PHP now lives alongside the other policies in `policy/php_parkour/` and uses the same MuJoCo process and FSM. Configure `php.enabled` and the external `php.model_dir` in `config/deploy.yaml`. No separate Holosoma launcher or depth shared-memory server is needed.
 
 ```bash
-python deploy_php/deploy_php.py check
-python deploy_php/deploy_php.py sim --scene steps  # or flat
-# In a second terminal, after the depth shared memory is ready:
-python deploy_php/deploy_php.py policy
+python deploy_mujoco/deploy_mujoco.py --config-name mujoco_php
+# Flat ground:
+python deploy_mujoco/deploy_mujoco.py --config-name mujoco_php scene.name=none
 ```
+
+Once FixedPose is stable, press L1+A or P in the viewer to enter PHP. Left stick selects direction, R3 toggles speed, A/B/START return to AMP/Loco/FixedPose, Y preempts with SMP and L2 enters damping. This integration is for MuJoCo; hardware depth input is not connected. See the [PHP guide](docs/php_deployment_zh.md).

@@ -1,0 +1,36 @@
+{
+  "date": "2026-10-25",
+  "branch": "lyd-php-parkour",
+  "test": "500 Hz PD, 50 Hz policy and D435i depth, 2 s stand then 8 s forward",
+  "scope": "MuJoCo only; no physical robot",
+  "scenes": [
+    {
+      "scene": "none",
+      "sim_seconds": 10.000000000000009,
+      "position": [
+        6.715046861533422,
+        -0.16315241355247342,
+        0.7557418862951776
+      ],
+      "min_height": 0.7269241488471391,
+      "max_height": 0.7847477429277184,
+      "failed_or_fell": false,
+      "frames": 500,
+      "wall_seconds": 0.6004124760002014
+    },
+    {
+      "scene": "php_steps",
+      "sim_seconds": 10.000000000000009,
+      "position": [
+        7.397292896577176,
+        0.36711967678961044,
+        0.7476763100533457
+      ],
+      "min_height": 0.6942748024375415,
+      "max_height": 1.2299486338044996,
+      "failed_or_fell": false,
+      "frames": 500,
+      "wall_seconds": 0.6192637230014952
+    }
+  ]
+}

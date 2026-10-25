@@ -59,3 +59,13 @@ def load_mujoco_scalebfm_config(sim_config):
         path = Path(cfg.motion).expanduser()
         cfg.motion = str(path if path.is_absolute() else ROOT / path)
     return cfg
+
+
+def load_php_config():
+    cfg = dict(load_deployment_config().get("php", {}))
+    cfg.setdefault("enabled", False)
+    if type(cfg["enabled"]) is not bool:
+        raise ValueError("php.enabled must be true or false")
+    path = Path(cfg.get("model_dir", "~/.cache/php-parkour/student")).expanduser()
+    cfg["model_dir"] = str(path if path.is_absolute() else ROOT / path)
+    return cfg

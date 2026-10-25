@@ -10,6 +10,7 @@
 # config/deploy.yaml
 php:
   enabled: true
+  root: ~/workspace/php_parkour
   model_dir: ~/.cache/php-parkour/student
 ```
 
@@ -31,19 +32,20 @@ conda activate robomimic
 cd ~/workspace/RoboMimic_Deploy
 git switch lyd-php-parkour
 
-# 台阶场景（启动保持 Passive；按 START 才进入 FixedPose，按 L1+A/P 才进入 PHP）
+# 复用 PHP 仓库自带障碍场（启动保持 Passive，不自动执行 START）
 python deploy_mujoco/deploy_mujoco.py --config-name mujoco_php
 
 # 同一套控制器，切换为平地
 python deploy_mujoco/deploy_mujoco.py --config-name mujoco_php scene.name=none
 
-# 调整台阶：4 级，每级高 0.12 m，长 0.6 m，宽 2 m，起点 x=1.5 m
+# 使用该仓库中另一个 OBJ（相对 php.root，或填写绝对路径）
 python deploy_mujoco/deploy_mujoco.py --config-name mujoco_php \
-  scene.steps.count=4 scene.steps.height=0.12 scene.steps.length=0.6 \
-  scene.steps.width=2.0 scene.steps.start_x=1.5
+  scene.php_terrain.obj_path=/absolute/path/to/course.obj
 ```
 
-台阶是本仓库可配置的简单静态阶梯，不等同于外部 PHP 的完整训练地形。也可启动已有 `mujoco`、`mujoco_table` 等场景后切 PHP；模型在这些特殊场景的行为并不因接口兼容而得到保证。
+默认资源直接来自 `php.root/thirdparty/holosoma/src/holosoma/holosoma/data/terrains/terrain.obj`，对应外部部署脚本的 `terrain-load-step`，包含地板和 12 个独立障碍块。它是训练仓库所带的部署/评估障碍场，不是对全部随机训练地形的重建。资源保持外置，无需复制到本仓库。
+
+加载器按连通组件分别生成碰撞几何，使用原始顶点、面、位置和朝向；移除原场景重叠的平面，避免地面闪烁及重复接触。自定义 OBJ 需由闭合凸组件组成；遇到凹组件会报错，不能将整个凹场景用一个凸包代替。依赖 `trimesh==4.11.3`（已写入 requirements.txt，当前环境已安装）。
 
 ## 按键切换
 
@@ -68,10 +70,10 @@ L1+A 的 A 释放不会误触 AMP，即使先松开 L1。L3 仍是 ghost 开关�
 
 ## 实现与验证范围
 
-- 相机：torso_link，位置 `[0.01, 0.01, 0.44]`，与官方 D435i preset 相同朝向及视场角，原始深度 `60×106`。
+- 相机：torso_link，位置 `[0.01, 0.01, 0.44]`，与官方 D435i preset 相同朝向及视场角，原始深度 `60×106`，近裁剪面为官方配置的 0.1 m。
 - 处理：裁剪 `[2:,4:-4]`，0.3–3 m 截断，带抗锯齿 bicubic resize 到 `58×87`，按官方远端/空像素规则归一化。MuJoCo 深度已经是从上到下，无须上下翻转。
 - student 输入：`actions(29), base_ang_vel(3), dof_pos(29), dof_vel(29), torso gravity(3), direction(15), depth latent(32)`，共 140 维；输出按名称映射回 29 关节。
-- 已验证实际 EGL 深度渲染、ONNX 推理、关节映射、FSM 切换、深度超时、组合键释放；平地和 4×0.12 m 台阶分别完成 10 秒闭环（前 2 秒 stand，后 8 秒前进），未触发跌倒判据（pelvis 高度 <0.3 m）。这只是有限时长的仿真验证。
+- 已验证实际 EGL 深度渲染、ONNX 推理、关节映射、FSM 切换、深度超时、组合键释放；平地和外部 PHP 障碍场分别完成 10 秒闭环（前 2 秒 stand，后 8 秒前进），未触发跌倒判据（pelvis 高度 <0.3 m）。这只是有限时长的仿真验证。
 - 本次接入范围是 MuJoCo。实机和 C++ bridge 尚未接入 PHP 深度传感器，因此不启用 PHP；没有将仿真验证描述成实机验证。
 
 ```bash
@@ -95,6 +97,6 @@ Backspace 保留当前策略及内部状态，只复位物理姿态/速度并刷
 
 ## 实时深度窗口
 
-PHP 启用时默认打开 `PHP depth: raw camera / policy input` 窗口，即使当前是 Passive 也持续更新。上图是原始 106×60 米制深度，下图是实际输入 backbone 的 87×58 归一化图；近白远黑，上方显示当前策略。关闭该窗口只停止预览，不关闭 MuJoCo 或 PHP 推理。
+PHP 启用时默认打开 `PHP depth: raw camera / policy input` 窗口，即使当前是 Passive 也持续更新。上图是原始 106×60 米制深度，下图是实际输入 backbone 的 87×58 归一化图；近黄远蓝，上方显示当前策略、采集延迟和原始深度范围。显示运行于独立进程，不与 MuJoCo 共享 SDL 事件循环或图形上下文。远处或无命中的像素显示为蓝色，不能仅凭颜色判断相机故障；采集延迟持续增长才表示数据没有更新。关闭该窗口只停止预览，不关闭 MuJoCo 或 PHP 推理。
 
 不需要窗口时加 `php_depth_preview=false`。成功切换会打印 `[Input] CMD_PHP_PARKOUR` 和 `[PHP] Entering from ...; depth ready.`，窗口状态同步变为 `SKILL_PHP_PARKOUR`。未出现 Input 日志时检查手柄按键编号，可用 `JOYSTICK_L1` / `JOYSTICK_A` 环境变量调整。

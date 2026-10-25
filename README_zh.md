@@ -492,3 +492,5 @@ python deploy_mujoco/deploy_mujoco.py --config-name mujoco_php scene.name=none
 默认恢复自由视角，可继续用鼠标旋转和缩放；`camera.follow=true` 可主动开启跟随。Backspace 不调用控制器的 exit/enter；PHP 速度档位、动作历史、参考轨迹进度均保留，复位前的深度图则会重新采集。
 
 PHP 启用时默认显示实时深度窗口，上图为原始深度，下图为模型输入，顶部显示当前策略；`php_depth_preview=false` 可关闭预览。
+
+PHP 默认场景现直接复用外部 `php.root` 中的 Holosoma `terrain.obj`；深度窗口独立运行，显示原始图、模型输入和采集延迟。详见 [PHP 场景配置](docs/php_deployment_zh.md)。

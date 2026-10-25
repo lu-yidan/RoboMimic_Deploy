@@ -230,8 +230,8 @@ def main(cfg: DictConfig):
     joystick = JoyStick()
     depth_preview = None
     if depth_camera is not None and cfg.get("php_depth_preview", True):
-        from policy.php_parkour.preview import DepthPreview
-        depth_preview = DepthPreview()
+        from policy.php_parkour.preview import DepthPreviewProcess
+        depth_preview = DepthPreviewProcess()
     prev_hat = (0, 0)
     prev_r2_pressed = False
     prev_l2_pressed = False
@@ -450,7 +450,7 @@ def main(cfg: DictConfig):
                 if now >= next_render:
                     if depth_preview is not None:
                         depth_preview.draw(depth_camera.raw_depth, state_cmd.php_depth,
-                                           FSM_controller.cur_policy.name.name)
+                                           FSM_controller.cur_policy.name.name, state_cmd.php_depth_time)
                     # ---- Ghost visualization ----
                     if ghost_flags[0] and policy_output.ghost_qpos is not None:
                         ghost_d.qpos[:7 + num_joints] = policy_output.ghost_qpos

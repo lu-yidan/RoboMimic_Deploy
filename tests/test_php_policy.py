@@ -69,6 +69,7 @@ class PHPTest(unittest.TestCase):
         d = mujoco.MjData(self.model)
         mujoco.mj_forward(self.model,d)
         camera = DepthCamera(self.model)
+        self.assertAlmostEqual(self.model.vis.map.znear * self.model.stat.extent, .1, places=6)
         self.addCleanup(camera.close)
         camera.capture(d,self.state)
         self.assertTrue(self.policy.depth_ready())

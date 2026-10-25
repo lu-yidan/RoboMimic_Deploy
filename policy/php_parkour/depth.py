@@ -24,6 +24,9 @@ class DepthCamera:
         self.body = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, 'torso_link')
         if self.body < 0:
             raise ValueError('PHP camera requires torso_link')
+        # Match the external D435i preset's 0.1 m near plane. The default
+        # 0.008 m plane renders surfaces inside the torso-mounted camera housing.
+        model.vis.map.znear = .1 / float(model.stat.extent)
         self.renderer = mujoco.Renderer(model, height=60, width=106)
         self.renderer.enable_depth_rendering()
         self.camera = mujoco.MjvCamera()

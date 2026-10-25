@@ -62,3 +62,23 @@ pygame.quit()
         if result.returncode == 77:
             self.skipTest('SDL shared library not available for virtual-device test')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_isolated_preview_displays_frames_and_closes(self):
+        script = """
+import numpy as np
+from policy.php_parkour.preview import DepthPreviewProcess
+if __name__ == '__main__':
+    preview = DepthPreviewProcess()
+    try:
+        preview.draw(np.ones((60,106),np.float32), np.zeros((58,87),np.float32), 'PASSIVE')
+        assert preview.presented.wait(10), 'Child did not display a depth frame'
+        assert preview.open
+    finally:
+        preview.close()
+    assert not preview.open
+"""
+        env = dict(os.environ, SDL_VIDEODRIVER='dummy', SDL_AUDIODRIVER='dummy')
+        result = subprocess.run([sys.executable, '-c', script],
+                                cwd=str(Path(__file__).resolve().parents[1]), env=env,
+                                capture_output=True, text=True, timeout=20)
+        self.assertEqual(result.returncode,0,result.stdout + result.stderr)

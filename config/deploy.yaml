@@ -21,4 +21,5 @@ smp:
 # PHP FSM policy (MuJoCo depth camera). Weights remain outside this repository.
 php:
   enabled: true
+  root: ~/workspace/php_parkour
   model_dir: ~/.cache/php-parkour/student

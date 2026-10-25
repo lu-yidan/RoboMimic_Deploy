@@ -239,3 +239,5 @@ python deploy_mujoco/deploy_mujoco.py --config-name mujoco_php scene.name=none
 ```
 
 Startup stays Passive. START explicitly selects FixedPose; L1+A or P explicitly selects PHP, including from Passive. The depth preview displays raw and backbone-input images. Left stick selects direction, R3 toggles speed, A/B/START return to AMP/Loco/FixedPose, Y preempts with SMP and L2 enters damping. This integration is for MuJoCo; hardware depth input is not connected. See the [PHP guide](docs/php_deployment_zh.md).
+
+The PHP preset now reuses `terrain.obj` from the external PHP checkout (`php.root`). The depth preview runs in an isolated process, with raw/input images and capture age.

@@ -26,3 +26,6 @@ cyclonedds
 
 # Onboard perception node only (ROS2, not pip-installable):
 #   rclpy, livox_ros_driver2, unitree_hg
+
+# External PHP terrain import (component-wise MuJoCo collisions)
+trimesh==4.11.3

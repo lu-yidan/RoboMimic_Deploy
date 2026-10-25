@@ -196,11 +196,14 @@ def load_model(xml_path: str | Path, scene: Any) -> mujoco.MjModel:
         _add_vertical_plate(worldbody, scene.get("plate", {}))
     if scene_name == "coffin":
         _add_coffin(worldbody, scene.get("coffin", {}))
+    if scene_name == "php_terrain":
+        from policy.php_parkour.terrain import add_training_terrain
+        add_training_terrain(root, worldbody, scene.get("php_terrain", {}))
     if scene_name == "php_steps":
         _add_php_steps(worldbody, scene.get("steps", {}))
-    if scene_name not in ("none", "table", "plate", "table_and_plate", "coffin", "php_steps"):
+    if scene_name not in ("none", "table", "plate", "table_and_plate", "coffin", "php_steps", "php_terrain"):
         raise ValueError(
-            "scene.name must be one of none, table, plate, table_and_plate, coffin, php_steps"
+            "scene.name must be one of none, table, plate, table_and_plate, coffin, php_steps, php_terrain"
         )
     with tempfile.NamedTemporaryFile(
         mode="w", suffix=".xml", dir=xml_path.parent, delete=True

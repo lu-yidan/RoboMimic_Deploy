@@ -1,4 +1,4 @@
-"""Headless PHP: 2 seconds standing, then 8 seconds forward, on flat/steps.
+"""Headless PHP: 2 seconds standing, then 8 seconds forward, on flat/external PHP course.
 
 Run with MUJOCO_GL=egl in robomimic. This never opens DDS or robot interfaces.
 """
@@ -68,7 +68,7 @@ def run_scene(scene):
 
 if __name__ == '__main__':
     torch.set_num_threads(1)
-    results = [run_scene(scene) for scene in ('none', 'php_steps')]
+    results = [run_scene(scene) for scene in ('none', 'php_terrain')]
     for result in results:
         print(json.dumps(result))
     sys.exit(1 if any(r['failed_or_fell'] for r in results) else 0)

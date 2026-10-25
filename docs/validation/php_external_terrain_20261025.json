@@ -1,0 +1,36 @@
+{
+  "date": "2026-10-25",
+  "scope": "10 seconds per scene, 2 seconds stand + 8 forward; no hardware",
+  "camera_near_m": 0.1,
+  "external_course_components": 13,
+  "scenes": [
+    {
+      "scene": "none",
+      "sim_seconds": 10.000000000000009,
+      "position": [
+        5.524479900528614,
+        -1.298880703307691,
+        0.7609424073384765
+      ],
+      "min_height": 0.729782700604645,
+      "max_height": 0.7856990535296258,
+      "failed_or_fell": false,
+      "frames": 500,
+      "wall_seconds": 0.649120360998495
+    },
+    {
+      "scene": "php_terrain",
+      "sim_seconds": 10.000000000000009,
+      "position": [
+        7.182731973664418,
+        0.5660777121368947,
+        0.754193995875938
+      ],
+      "min_height": 0.714278072789848,
+      "max_height": 1.13205817096335,
+      "failed_or_fell": false,
+      "frames": 500,
+      "wall_seconds": 0.6860742749995552
+    }
+  ]
+}

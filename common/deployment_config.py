@@ -28,6 +28,9 @@ def load_deployment_config():
 def load_scalebfm_config(require_enabled=False):
     from omegaconf import OmegaConf
     cfg = OmegaConf.create(load_deployment_config()["scalebfm"])
+    if cfg.get("motion"):
+        path = Path(cfg.motion).expanduser()
+        cfg.motion = str(path if path.is_absolute() else ROOT / path)
     if require_enabled and not cfg.enabled:
         raise ValueError("This tool requires scalebfm.enabled: true in config/deploy.yaml")
     return cfg
@@ -40,3 +43,19 @@ def resolve_amp_config(cfg, profile=None):
     if selected not in profiles:
         raise ValueError(f"Unknown AMP profile {selected!r}; choose from {', '.join(profiles)}")
     return dict(cfg, **profiles[selected]), selected
+
+
+def load_mujoco_scalebfm_config(sim_config):
+    """Allow a scene/CLI to select a motion; enablement stays in deploy.yaml."""
+    cfg = load_scalebfm_config()
+    overrides = sim_config.get("scalebfm", {}) or {}
+    unsupported = set(overrides) - {"motion"}
+    if unsupported:
+        raise ValueError("Set ScaleBFM switches/options in config/deploy.yaml; "
+                         "MuJoCo only accepts scalebfm.motion")
+    if overrides.get("motion") is not None:
+        cfg.motion = str(overrides["motion"])
+    if cfg.get("motion"):
+        path = Path(cfg.motion).expanduser()
+        cfg.motion = str(path if path.is_absolute() else ROOT / path)
+    return cfg

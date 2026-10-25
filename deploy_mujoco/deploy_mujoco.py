@@ -162,7 +162,7 @@ def main(cfg: DictConfig):
     ghost_m.geom_rgba[:, 3]  = ghost_rgba[3]
     ghost_d = mujoco.MjData(ghost_m)
     # Use a list so the key_callback closure can mutate it.
-    ghost_flags = [bool(cfg.get("ghost_flags[0]", True))]
+    ghost_flags = [bool(cfg.get("ghost_enabled", True))]
 
 
     mj_per_step_duration = simulation_dt * control_decimation
@@ -179,8 +179,8 @@ def main(cfg: DictConfig):
 
     state_cmd = StateAndCmd(num_joints)
     policy_output = PolicyOutput(num_joints)
-    from common.deployment_config import load_scalebfm_config
-    scalebfm_cfg = load_scalebfm_config()
+    from common.deployment_config import load_mujoco_scalebfm_config
+    scalebfm_cfg = load_mujoco_scalebfm_config(cfg)
     if scalebfm_cfg and scalebfm_cfg.enabled and not np.isclose(mj_per_step_duration, .02):
         raise ValueError("ScaleBFM requires a 50 Hz control loop")
     joint_names = [mujoco.mj_id2name(m, mujoco.mjtObj.mjOBJ_JOINT, int(m.actuator_trnid[i, 0]))

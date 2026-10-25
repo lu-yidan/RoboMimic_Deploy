@@ -22,3 +22,7 @@ logging:
 
 
 # ScaleBFM options are shared in config/deploy.yaml.
+
+# Optional scene-specific motion; other ScaleBFM options are in config/deploy.yaml.
+scalebfm:
+  motion: null

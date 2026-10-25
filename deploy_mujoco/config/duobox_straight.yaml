@@ -1,6 +1,7 @@
+# Requires separately prepared DuoBox motion files and scalebfm.enabled: true.
 defaults:
   - mujoco
   - _self_
 
 scalebfm:
-  motion: /home/d080/workspace/RoboMimic_Deploy-scalebfm/outputs/duobox_scalebfm/motions/straight_003_ma.npz
+  motion: outputs/duobox_scalebfm/motions/straight_003_ma.npz

@@ -1,6 +1,8 @@
 # 箱体 / 棺材部署仿真
 
-分支：`lyd/scalebfm-table-config-balanced4`。
+[返回部署手册](../README_zh.md#3-mujoco-场景与参数)
+
+适用分支：`lyd-deploy`。
 
 1. 在 `config/deploy.yaml` 的 `smp.profile` 选择 `path_a6_9999`、`a6_no_alpha_9999` 或 `v34_balanced4_hard19000`（默认）。
 2. 启动：
@@ -21,7 +23,9 @@ python deploy_mujoco/deploy_mujoco.py --config-name=mujoco_coffin
 - `rgba/lid_rgba`最后一个值为透明度；改0.3可看清箱内机器人，纯视觉变化不改变碰撞。
 - `camera`控制初始视角，可在窗口拖动。
 
-使用 `g1_description/g1_liao.xml`，物理2 ms、控制20 ms。此独立配置关闭ScaleBFM和ghost，不改变原桌子/普通配置。未增加真机行为。
+使用 `g1_description/g1_liao.xml`，物理2 ms、控制20 ms。此场景默认关闭 ghost；ScaleBFM 开关由共享 `config/deploy.yaml` 控制，不会因切换场景而自动关闭。该 XML 未通过当前 ScaleBFM squat 兼容性验证，测试箱内 SMP 时保持共享 `enabled: false`。场景配置不改变真机行为。
 
 
 本分支保留箱体场景，不再包含 A6 V2@500 实验模型。场景接口测试不代表三个保留策略都能完成箱内起身。
+
+完整参数表及固定箱体、无盖、质量、透明度和相机覆盖命令见 [README 箱体配置](../README_zh.md#33-箱体固定自由盖子质量透明度)。

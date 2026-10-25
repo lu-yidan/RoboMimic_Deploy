@@ -16,7 +16,7 @@ import onnxruntime as ort
 from hydra import compose, initialize_config_dir
 import yaml
 
-from common.deployment_config import load_deployment_config, load_scalebfm_config
+from common.deployment_config import load_deployment_config, load_scalebfm_config, load_mujoco_scalebfm_config
 from common.ctrlcomp import StateAndCmd, PolicyOutput
 from common.utils import FSMCommand, FSMStateName, get_gravity_orientation
 from deploy_real.config import Config
@@ -68,6 +68,34 @@ class UnifiedDeploymentTest(unittest.TestCase):
             self.select(cfg)
             self.assertEqual(load_scalebfm_config().enabled, enabled)
             self.assertEqual(Config().scalebfm.enabled, enabled)
+
+    def test_scene_motion_override_preserves_shared_switch(self):
+        cfg = load_deployment_config()
+        cfg['scalebfm']['enabled'] = False
+        cfg['scalebfm']['motion'] = 'outputs/shared.npz'
+        self.select(cfg)
+        self.assertEqual(load_scalebfm_config().motion, str(ROOT/'outputs/shared.npz'))
+        inherited = load_mujoco_scalebfm_config({'scalebfm': {'motion': None}})
+        self.assertEqual(inherited.motion, str(ROOT/'outputs/shared.npz'))
+        override = load_mujoco_scalebfm_config({'scalebfm': {'motion': 'outputs/scene.npz'}})
+        self.assertEqual(override.motion, str(ROOT/'outputs/scene.npz'))
+        self.assertFalse(override.enabled)
+        self.assertEqual(load_scalebfm_config().motion, str(ROOT/'outputs/shared.npz'))
+        with self.assertRaisesRegex(ValueError, 'config/deploy.yaml'):
+            load_mujoco_scalebfm_config({'scalebfm': {'enabled': True}})
+
+    def test_duobox_presets_select_distinct_portable_motions(self):
+        names = {'duobox_straight': 'straight_003_ma.npz',
+                 'duobox_guard': 'guard_dodge_004_liu.npz',
+                 'duobox_combo': 'moving_combo_027_ma.npz'}
+        for preset, filename in names.items():
+            with initialize_config_dir(config_dir=str(ROOT/'deploy_mujoco/config'), version_base=None):
+                cfg = compose(config_name=preset)
+            resolved = load_mujoco_scalebfm_config(cfg)
+            self.assertEqual(resolved.motion, str(ROOT/'outputs/duobox_scalebfm/motions'/filename))
+        with initialize_config_dir(config_dir=str(ROOT/'deploy_mujoco/config'), version_base=None):
+            cfg = compose(config_name='duobox_straight', overrides=['scalebfm.motion=/tmp/custom.npz'])
+        self.assertEqual(load_mujoco_scalebfm_config(cfg).motion, '/tmp/custom.npz')
 
     def test_invalid_selectors_and_non_boolean_flag_fail(self):
         cfg = load_deployment_config()

@@ -21,3 +21,7 @@ logging:
   log_dir: "logs"
   tag:     "freekick"
   states:  ["SKILL_FREEKICK", "LOCOMODE", "SKILL_BEYONDMIMIC", "SKILL_BEYONDMIMIC_MJ", "SKILL_STANDUP_MJ", "SKILL_PINOCCHIO_1_6_MJ", "SKILL_AMP", "SKILL_SMP_RECOVERY"]  # FSM states to record
+
+# Optional scene-specific motion; other ScaleBFM options are in config/deploy.yaml.
+scalebfm:
+  motion: null

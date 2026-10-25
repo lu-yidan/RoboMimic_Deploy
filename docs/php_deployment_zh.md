@@ -95,8 +95,12 @@ python deploy_mujoco/deploy_mujoco.py --config-name mujoco_php camera.follow=tru
 
 Backspace 保留当前策略及内部状态，只复位物理姿态/速度并刷新观测。轨迹策略会从原进度继续；需要重新初始化控制器时使用 L1+START 后重新选择策略。
 
-## 实时深度窗口
+## MuJoCo 右上角深度图
 
-PHP 启用时默认打开 `PHP depth: raw camera / policy input` 窗口，即使当前是 Passive 也持续更新。上图是原始 106×60 米制深度，下图是实际输入 backbone 的 87×58 归一化图；近黄远蓝，上方显示当前策略、采集延迟和原始深度范围。显示运行于独立进程，不与 MuJoCo 共享 SDL 事件循环或图形上下文。远处或无命中的像素显示为蓝色，不能仅凭颜色判断相机故障；采集延迟持续增长才表示数据没有更新。关闭该窗口只停止预览，不关闭 MuJoCo 或 PHP 推理。
+参考 `wmp_deploy` 的同窗布局，在 MuJoCo 三维视窗右上角显示实际输入 backbone 的 87×58 图像，近黄远蓝，并显示采集延迟；左上角显示当前 FSM 状态。Passive 下也更新图像。没有额外的深度窗口或显示进程，模型输入本身不受着色影响。
 
-不需要窗口时加 `php_depth_preview=false`。成功切换会打印 `[Input] CMD_PHP_PARKOUR` 和 `[PHP] Entering from ...; depth ready.`，窗口状态同步变为 `SKILL_PHP_PARKOUR`。未出现 Input 日志时检查手柄按键编号，可用 `JOYSTICK_L1` / `JOYSTICK_A` 环境变量调整。
+窗口缩放后深度图仍固定在右上角；左键拖动旋转、右键拖动平移、滚轮缩放，Shift 可切换水平/垂直操作。P/R/Backspace 与手柄逻辑不变，Esc 关闭仿真窗口。
+
+MuJoCo 3.2 的原生 Python viewer 没有图片叠加接口，因此启用深度图时使用同一 MuJoCo 渲染器的简化 GLFW 视窗，保留 ghost、调试球与相机交互，但不带原生参数侧栏。设置 `php_depth_preview=false` 可恢复原生 viewer（同时关闭右上角深度图）。
+
+已删除输入层的 `[Input] CMD_*` 日志。Passive 下 A 不允许直接切 AMP，按 START 进入 FixedPose 后再按 A；没有实际切换时不打印命令。PHP 切换成功时仍显示 `[PHP] Entering from ...; depth ready.`，当前状态也随之更新。深度无效等真正错误仍保留具体诊断。

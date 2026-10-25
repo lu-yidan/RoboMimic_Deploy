@@ -16,7 +16,6 @@ import glob
 import pygame
 from unittest.mock import patch
 from common.joystick import JoyStick, JoystickButton
-from policy.php_parkour.preview import DepthPreview
 from pygame._sdl2 import Window
 
 pygame.init()
@@ -34,7 +33,7 @@ handle = sdl.SDL_JoystickOpen(index)
 original = pygame.joystick.Joystick
 with patch.object(pygame.joystick, 'Joystick', side_effect=lambda _: original(index)):
     joy = JoyStick()
-preview = DepthPreview()
+pygame.display.set_mode((100,100))
 Window.from_display_module().hide()
 for _ in range(5):
     pygame.event.pump()
@@ -46,7 +45,7 @@ assert joy.is_button_just_pressed(JoystickButton.START)
 sdl.SDL_JoystickSetVirtualButton(handle, int(JoystickButton.START), 0)
 joy.update()
 assert joy.is_button_released(JoystickButton.START)
-preview.close()
+Window.from_display_module().hide()
 sdl.SDL_JoystickSetVirtualButton(handle, int(JoystickButton.A), 1)
 sdl.SDL_JoystickSetVirtualButton(handle, int(JoystickButton.L1), 1)
 joy.update()
@@ -62,23 +61,3 @@ pygame.quit()
         if result.returncode == 77:
             self.skipTest('SDL shared library not available for virtual-device test')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-
-    def test_isolated_preview_displays_frames_and_closes(self):
-        script = """
-import numpy as np
-from policy.php_parkour.preview import DepthPreviewProcess
-if __name__ == '__main__':
-    preview = DepthPreviewProcess()
-    try:
-        preview.draw(np.ones((60,106),np.float32), np.zeros((58,87),np.float32), 'PASSIVE')
-        assert preview.presented.wait(10), 'Child did not display a depth frame'
-        assert preview.open
-    finally:
-        preview.close()
-    assert not preview.open
-"""
-        env = dict(os.environ, SDL_VIDEODRIVER='dummy', SDL_AUDIODRIVER='dummy')
-        result = subprocess.run([sys.executable, '-c', script],
-                                cwd=str(Path(__file__).resolve().parents[1]), env=env,
-                                capture_output=True, text=True, timeout=20)
-        self.assertEqual(result.returncode,0,result.stdout + result.stderr)

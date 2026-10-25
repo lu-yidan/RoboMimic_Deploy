@@ -148,3 +148,17 @@ class PHPTest(unittest.TestCase):
         held.clear()
         joy.is_button_released.side_effect = lambda b: b == JoystickButton.A
         self.assertIsNone(buttons.update(joy))
+
+    def test_rejected_amp_in_passive_is_silent(self):
+        import contextlib
+        import io
+        from unittest.mock import patch, MagicMock
+        with patch.multiple('FSM.FSM', **{name: MagicMock() for name in
+                ('FixedPose','LocoMode','BeyondMimic','BeyondMimicMJ','Amp','SmpRecovery')}):
+            fsm = FSM(self.state,self.output,enable_freekick=False)
+        self.state.skill_cmd = FSMCommand.CMD_AMP
+        text = io.StringIO()
+        with contextlib.redirect_stdout(text):
+            fsm.run()
+        self.assertIs(fsm.cur_policy,fsm.passive_mode)
+        self.assertEqual(text.getvalue(),'')

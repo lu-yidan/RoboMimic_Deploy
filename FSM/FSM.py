@@ -84,7 +84,8 @@ class FSM:
                        FSMStateName.SKILL_PHP_PARKOUR)
             if self.php_policy is not None and self.cur_policy.name in allowed and self.php_policy.depth_ready():
                 self.cur_policy.exit()
-                print(f"[PHP] Entering from {self.cur_policy.name.name}; depth ready.")
+                if self.cur_policy is not self.php_policy:
+                    print(f"[PHP] Entering from {self.cur_policy.name.name}; depth ready.")
                 self.cur_policy = self.php_policy
                 self.cur_policy.enter()
                 self.FSMmode = FSMMode.NORMAL

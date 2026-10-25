@@ -1,0 +1,52 @@
+net: enp5s0f1
+num_joints: 29
+
+lowcmd_topic: "rt/lowcmd"
+lowstate_topic: "rt/lowstate"
+
+control_dt: 0.02
+torch_threads: 1
+
+error_over_time: 5
+
+logging:
+  enabled: true      # set true to record a freekick log
+  log_dir: "logs"
+  tag:     "real_policies"
+  states:  ["SKILL_FREEKICK", "LOCOMODE", "SKILL_BEYONDMIMIC", "SKILL_BEYONDMIMIC_MJ", "SKILL_STANDUP_MJ", "SKILL_PINOCCHIO_1_6_MJ", "SKILL_AMP", "SKILL_SMP_RECOVERY", "SKILL_SCALEBFM"]  # FSM states to record
+
+# Unitree G1 LowState motor index order (29 body joints; hands are separate).
+joint_names:
+- left_hip_pitch_joint
+- left_hip_roll_joint
+- left_hip_yaw_joint
+- left_knee_joint
+- left_ankle_pitch_joint
+- left_ankle_roll_joint
+- right_hip_pitch_joint
+- right_hip_roll_joint
+- right_hip_yaw_joint
+- right_knee_joint
+- right_ankle_pitch_joint
+- right_ankle_roll_joint
+- waist_yaw_joint
+- waist_roll_joint
+- waist_pitch_joint
+- left_shoulder_pitch_joint
+- left_shoulder_roll_joint
+- left_shoulder_yaw_joint
+- left_elbow_joint
+- left_wrist_roll_joint
+- left_wrist_pitch_joint
+- left_wrist_yaw_joint
+- right_shoulder_pitch_joint
+- right_shoulder_roll_joint
+- right_shoulder_yaw_joint
+- right_elbow_joint
+- right_wrist_roll_joint
+- right_wrist_pitch_joint
+- right_wrist_yaw_joint
+
+# Native CUDA inference; configure these paths for the onboard computer.
+
+# ScaleBFM options are shared in config/deploy.yaml.

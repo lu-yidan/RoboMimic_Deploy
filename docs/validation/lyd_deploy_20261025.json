@@ -1,0 +1,54 @@
+{
+  "date": "2026-10-25",
+  "source_branches": {
+    "codex/table-config-balanced4": "9c2c2b93b6fe06bec457de3f25489235ba5f5002",
+    "lyd-amp-stratified-guidance-deploy": "da8c91093b86a90af27ad581f4233e4535125e5b",
+    "lyd/scalebfm-table-config-balanced4": "aebb5dedab43baf15e23aeb83ec0899a7ffc6a5e"
+  },
+  "unit_integration_tests": {
+    "passed": 31,
+    "scope": "AMP training trajectory parity; all AMP/SMP config selections; SMP effort bounds and 1s finite-control runs in plain/table/box scenes; ScaleBFM switch and FSM routing; logging"
+  },
+  "real_input_tests": {
+    "passed": 6,
+    "hardware_connected": false
+  },
+  "scalebfm_gpu": {
+    "no_dds": true,
+    "motions": 1,
+    "samples": 100,
+    "torch": "2.3.1",
+    "gpu": "NVIDIA GeForce RTX 4070 Ti SUPER",
+    "step_ms_p50": 0.9750224999152124,
+    "step_ms_p95": 1.2099476997718739,
+    "step_ms_max": 1.5195139985735295,
+    "entry_ms_max": 0.7936959991639014,
+    "budget_ms": 20.0,
+    "over_budget": 0,
+    "scope": "static state inference; excludes DDS, motor IO and closed-loop tracking"
+  },
+  "scalebfm_closed_loop": {
+    "passed": true,
+    "root_height_min_m": 0.33001856157331383,
+    "max_pelvis_tilt_deg": 54.09861262809715,
+    "checks": [
+      "passive entry rejected",
+      "FixedPose to ScaleBFM",
+      "10s physical rollout",
+      "fallen-state reset",
+      "reentry history reset",
+      "2s second rollout",
+      "1 motion selections with same checkpoint",
+      "AMP and Loco direct entry without reset",
+      "bad file preserves active motion",
+      "Passive exit"
+    ]
+  },
+  "scalebfm_source_revision": "abd6f17c02fe0baabc14709feb8d9ea4959aa621",
+  "limitations": [
+    "No robot or DDS control was started",
+    "GPU latency excludes DDS and motor I/O",
+    "SMP scene smoke tests verify finite control, not task success",
+    "ScaleBFM closed-loop validation uses the supplied squat reference, not every possible motion"
+  ]
+}

@@ -1,0 +1,34 @@
+module mjlab {
+  module msg {
+    module dds_ {
+      struct BridgeState_ {
+        unsigned long long timestamp_us;
+        unsigned long long tick;
+        sequence<float, 29> q;
+        sequence<float, 29> dq;
+        sequence<float, 4> imu_quat_wxyz;
+        sequence<float, 3> imu_gyro;
+        sequence<octet, 24> remote_raw;
+      };
+
+      // Optional diagnostics topic: <bridge_state_topic>_diagnostics.
+      struct BridgeDiagnostics_ {
+        unsigned long long tick;
+        sequence<float> tau_est;
+        sequence<float> ddq;
+        sequence<float> imu_accel;
+        sequence<float> motor_temperature;
+      };
+
+      struct BridgeCmd_ {
+        unsigned long long timestamp_us;
+        unsigned long long seq;
+        sequence<float, 29> q_des;
+        sequence<float, 29> kp;
+        sequence<float, 29> kd;
+        octet request_damping;
+        octet exit_requested;
+      };
+    };
+  };
+};

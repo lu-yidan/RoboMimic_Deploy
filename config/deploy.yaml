@@ -1,0 +1,19 @@
+# Shared by MuJoCo, Python DDS and the C++ bridge. Restart after changes.
+scalebfm:
+  enabled: false
+  root: ~/workspace/ScaleBFM
+  checkpoint: null
+  motion: null
+  reference_forcing: true
+  cuda_graph: true
+  motion_globs:
+    - outputs/duobox_scalebfm/batch15_v1/motions/*.npz
+    - outputs/duobox_scalebfm/comparison*/motions/*.npz
+
+amp:
+  profile: amp_0309_1
+  # amp_0309_1 | stratified_guidance_60000 | stratified_single_60000
+
+smp:
+  profile: v34_balanced4_hard19000
+  # path_a6_9999 | a6_no_alpha_9999 | v34_balanced4_hard19000

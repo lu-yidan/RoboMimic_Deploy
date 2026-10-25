@@ -1,0 +1,2 @@
+# Optional dependency for ScaleBFM on top of the deployment environment.
+loguru==0.7.3

@@ -1,0 +1,70 @@
+{
+  "model": "amp_stratified_guidance_60000.onnx",
+  "xml": "g1_description/scene.xml",
+  "duration_s": 20.0,
+  "control_hz": 50,
+  "protocol": "Existing Amp.py controller and deployment PD/torque limits; no resets or pushes; fixed first held-out pose per direction, plus standing velocity ramp.",
+  "scope": "Five nominal examples, not a statistical benchmark or hardware test.",
+  "cases": [
+    {
+      "label": "supine",
+      "success_1s": true,
+      "first_success_s": 3.52,
+      "last5s_upright_percent": 100.0,
+      "finite": true,
+      "final_root_height": 0.7874793052399369,
+      "max_abs_torque": 123.71409607185365,
+      "initial_min_contact_distance": 0.0,
+      "vx_mae_by_5s": null
+    },
+    {
+      "label": "prone",
+      "success_1s": true,
+      "first_success_s": 2.12,
+      "last5s_upright_percent": 100.0,
+      "finite": true,
+      "final_root_height": 0.7776315322155618,
+      "max_abs_torque": 100.0495279179404,
+      "initial_min_contact_distance": 0.0,
+      "vx_mae_by_5s": null
+    },
+    {
+      "label": "left_side_down",
+      "success_1s": true,
+      "first_success_s": 2.36,
+      "last5s_upright_percent": 100.0,
+      "finite": true,
+      "final_root_height": 0.7837735948120204,
+      "max_abs_torque": 115.53737901466195,
+      "initial_min_contact_distance": -0.0011595464270649806,
+      "vx_mae_by_5s": null
+    },
+    {
+      "label": "right_side_down",
+      "success_1s": true,
+      "first_success_s": 2.12,
+      "last5s_upright_percent": 100.0,
+      "finite": true,
+      "final_root_height": 0.7770588771970013,
+      "max_abs_torque": 116.70870653755726,
+      "initial_min_contact_distance": 0.0,
+      "vx_mae_by_5s": null
+    },
+    {
+      "label": "walking",
+      "success_1s": true,
+      "first_success_s": 1.0,
+      "last5s_upright_percent": 100.0,
+      "finite": true,
+      "final_root_height": 0.7849915323754045,
+      "max_abs_torque": 70.29895802856286,
+      "initial_min_contact_distance": 0.0,
+      "vx_mae_by_5s": [
+        0.013885637639516517,
+        0.4005365773815848,
+        0.13412281759303613,
+        0.6685637567099452
+      ]
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+# Full dimensions in metres. height = tabletop TOP surface above table.pos.z.
+defaults:
+  - mujoco
+  - _self_
+
+startup_policy: passive  # passive | fixed_pose | smp_recovery; START always FixedPose
+scene:
+  name: table
+  table:
+    pos: [0.0, 0.0, 0.0]
+    length: 1.6
+    width: 0.6
+    height: 0.4
+    thickness: 0.04
+    leg_width: 0.05
+    leg_inset: 0.0
+    friction: [1.2, 0.01, 0.001]
+    rgba: [0.53, 0.32, 0.15, 1.0]
+initial_state:
+  preset: plate_supine_default_arms
+  preset_root_pos: [-0.1, 0.1, 0.12]
+  preset_yaw_deg: 0
+  qpos: null
+  qvel: null

@@ -1,0 +1,637 @@
+{
+  "source_checkpoint": "/mnt/workspace/user/luyidan/smp-a6-paper/logs/rsl_rl/a6_paper/formal_20260929_seed20261013/A6_no_alpha/model_9999.pt",
+  "checkpoint_sha256": "24f1a4513cf5cabb9bd0b9ef54e90a3d50e625a87774878379af5da5dcf8fbd1",
+  "onnx_sha256": "cc1fdc6f19206e62cf367721479cd1bab72888a6fcf58360a9fd8fea30d1d229",
+  "input": {
+    "shape": [
+      1,
+      93
+    ],
+    "normalizer_embedded": true
+  },
+  "output": {
+    "shape": [
+      1,
+      29
+    ],
+    "deterministic": true
+  },
+  "architecture": "MLP 93-512-256-128-29, ELU",
+  "opset": 17,
+  "parity_fixture": "outputs/recovery_candidates/a6_no_alpha_9999_parity.npz",
+  "hardware_validated": false,
+  "parity": {
+    "random_inputs": 512,
+    "max_abs_error": 8.106231689453125e-06,
+    "interface": [
+      1,
+      93,
+      29
+    ],
+    "enter_run_passed": true
+  },
+  "deployment_contract": {
+    "joint_names": [
+      "left_hip_pitch_joint",
+      "left_hip_roll_joint",
+      "left_hip_yaw_joint",
+      "left_knee_joint",
+      "left_ankle_pitch_joint",
+      "left_ankle_roll_joint",
+      "right_hip_pitch_joint",
+      "right_hip_roll_joint",
+      "right_hip_yaw_joint",
+      "right_knee_joint",
+      "right_ankle_pitch_joint",
+      "right_ankle_roll_joint",
+      "waist_yaw_joint",
+      "waist_roll_joint",
+      "waist_pitch_joint",
+      "left_shoulder_pitch_joint",
+      "left_shoulder_roll_joint",
+      "left_shoulder_yaw_joint",
+      "left_elbow_joint",
+      "left_wrist_roll_joint",
+      "left_wrist_pitch_joint",
+      "left_wrist_yaw_joint",
+      "right_shoulder_pitch_joint",
+      "right_shoulder_roll_joint",
+      "right_shoulder_yaw_joint",
+      "right_elbow_joint",
+      "right_wrist_roll_joint",
+      "right_wrist_pitch_joint",
+      "right_wrist_yaw_joint"
+    ],
+    "action_scale_match": true,
+    "default_pose_match": true,
+    "kp_kd_effort_limit_match": true,
+    "control_dt_match": true,
+    "actor_observation_order_match": true,
+    "source_env_sha256": "a1f071be09a591136e7a1fb44ec4262b4f847ec8cb000690d1979c7baf6ef74e"
+  },
+  "profile": "a6_no_alpha_9999",
+  "export_date": "2026-10-01",
+  "training_run": "formal_20260929_seed20261013/A6_no_alpha",
+  "task_alpha": 1.0,
+  "parent_checkpoint_sha256": "8b4889f80c6b7cc675f6e9b1e98f2d4a1886a15e372f86070f63c329ba9ca5d1",
+  "deployment_validation": {
+    "protocol": {
+      "mujoco": "3.2.3",
+      "seconds": 20,
+      "physics_dt": 0.002,
+      "control_dt": 0.02,
+      "cases_sha256": "e5f45042231264df4f00d0ecc23b9174e765c7a8106e6f9f7dc820d062b1fcca",
+      "model_sha256": {
+        "a6_no_alpha_9999": "cc1fdc6f19206e62cf367721479cd1bab72888a6fcf58360a9fd8fea30d1d229",
+        "path_a6_9999": "350bfc15f7c18e80cfa2ca8b8ef4aa5f6af39b74a665d6c65f3ba35d54f7998e"
+      },
+      "robot_xml_sha256": "66f252f310befd4f1dc3265d223d5f74849e5b9967fdeb49dac19b5c98afc111",
+      "config_sha256": "e76547873d9e44c2fe044c8bbb512a7bece08f8483f21ad062be9f7acfb6dc77",
+      "amp_config_sha256": "063800cc4db03ae97421a04598c70324b3247cfb3a84af58cf25cb8b429b1fb0",
+      "runner_sha256": "0f3d274d959ae2903651061673ac25a275ff58d44d52a1a9af3b9232e047d43b",
+      "controller_eval_sha256": "eb3269cebb3d1654ac8f5e08acf2beb7f972a1e368de137eeca55d7af3c010d1",
+      "scenarios": {
+        "nominal": [
+          1.0,
+          1.0,
+          0.0
+        ],
+        "upper130": [
+          1.3,
+          1.0,
+          0.0
+        ],
+        "motor080": [
+          1.0,
+          0.8,
+          0.0
+        ],
+        "motor120": [
+          1.0,
+          1.2,
+          0.0
+        ],
+        "delay10ms": [
+          1.0,
+          1.0,
+          10.0
+        ],
+        "combined": [
+          1.3,
+          0.8,
+          10.0
+        ]
+      },
+      "stress_cases": [
+        "supine_00",
+        "supine_01",
+        "supine_02",
+        "supine_03",
+        "prone_00",
+        "prone_01",
+        "prone_02",
+        "prone_03",
+        "left_side_down_00",
+        "left_side_down_01",
+        "left_side_down_02",
+        "left_side_down_03",
+        "right_side_down_00",
+        "right_side_down_01",
+        "right_side_down_02",
+        "right_side_down_03"
+      ],
+      "upper_definition": "torso_link and descendants, mass and inertia scaled together",
+      "gain_definition": "physical Kp and Kd scaled together, host target limiter unchanged",
+      "delay_definition": "constant physical position-command delay at 2ms resolution; nominal host observations",
+      "load_definition": "500Hz actual actuator torque and joint velocity; mechanical abs(tau*dq)",
+      "scope": "offline deployment controller, procedural flat cases; no obstacles, push, DDS, hardware or random noise"
+    },
+    "summary": {
+      "nominal": {
+        "a6_no_alpha_9999": {
+          "n": 64,
+          "success": 62,
+          "reached_upright": 64,
+          "unstable": 0,
+          "refall_after_upright": 0,
+          "refall_after_hold1": 0,
+          "last10s_path_mean_m": 0.004110870441169,
+          "peak_tau_p95": 139.0,
+          "peak_tau_max": 139.0,
+          "peak_dq_p95": 13.682401040718846,
+          "peak_dq_max": 29.567955189614516,
+          "peak_power_p95": 1042.7663664656907,
+          "peak_power_max": 1060.871504928128,
+          "above90_cumulative_s_p95": 0.6414000000000004,
+          "above90_cumulative_s_max": 0.7200000000000005,
+          "above90_longest_s_p95": 0.2558,
+          "above90_longest_s_max": 0.3720000000000003,
+          "per_direction": {
+            "left_side_down": {
+              "n": 16,
+              "success": 15
+            },
+            "prone": {
+              "n": 16,
+              "success": 16
+            },
+            "right_side_down": {
+              "n": 16,
+              "success": 16
+            },
+            "supine": {
+              "n": 16,
+              "success": 15
+            }
+          }
+        },
+        "path_a6_9999": {
+          "n": 64,
+          "success": 64,
+          "reached_upright": 64,
+          "unstable": 0,
+          "refall_after_upright": 0,
+          "refall_after_hold1": 0,
+          "last10s_path_mean_m": 0.0056554748145256125,
+          "peak_tau_p95": 139.0,
+          "peak_tau_max": 139.0,
+          "peak_dq_p95": 13.32118665076523,
+          "peak_dq_max": 16.10429907079142,
+          "peak_power_p95": 914.4120921431764,
+          "peak_power_max": 1075.7004190740724,
+          "above90_cumulative_s_p95": 0.36000000000000026,
+          "above90_cumulative_s_max": 0.4040000000000003,
+          "above90_longest_s_p95": 0.33700000000000013,
+          "above90_longest_s_max": 0.4000000000000003,
+          "per_direction": {
+            "left_side_down": {
+              "n": 16,
+              "success": 16
+            },
+            "prone": {
+              "n": 16,
+              "success": 16
+            },
+            "right_side_down": {
+              "n": 16,
+              "success": 16
+            },
+            "supine": {
+              "n": 16,
+              "success": 16
+            }
+          }
+        }
+      },
+      "upper130": {
+        "a6_no_alpha_9999": {
+          "n": 16,
+          "success": 15,
+          "reached_upright": 16,
+          "unstable": 0,
+          "refall_after_upright": 0,
+          "refall_after_hold1": 0,
+          "last10s_path_mean_m": 0.007023827499210667,
+          "peak_tau_p95": 139.0,
+          "peak_tau_max": 139.0,
+          "peak_dq_p95": 13.128903027999838,
+          "peak_dq_max": 13.688032771231818,
+          "peak_power_p95": 952.8879056537189,
+          "peak_power_max": 958.2663651859823,
+          "above90_cumulative_s_p95": 0.6690000000000005,
+          "above90_cumulative_s_max": 0.7200000000000005,
+          "above90_longest_s_p95": 0.3735000000000003,
+          "above90_longest_s_max": 0.5940000000000004,
+          "per_direction": {
+            "left_side_down": {
+              "n": 4,
+              "success": 3
+            },
+            "prone": {
+              "n": 4,
+              "success": 4
+            },
+            "right_side_down": {
+              "n": 4,
+              "success": 4
+            },
+            "supine": {
+              "n": 4,
+              "success": 4
+            }
+          }
+        },
+        "path_a6_9999": {
+          "n": 16,
+          "success": 16,
+          "reached_upright": 16,
+          "unstable": 0,
+          "refall_after_upright": 0,
+          "refall_after_hold1": 0,
+          "last10s_path_mean_m": 0.004243840730418558,
+          "peak_tau_p95": 139.0,
+          "peak_tau_max": 139.0,
+          "peak_dq_p95": 15.349144037904782,
+          "peak_dq_max": 16.088674812443745,
+          "peak_power_p95": 976.5306916751423,
+          "peak_power_max": 1070.6578351806616,
+          "above90_cumulative_s_p95": 0.4175000000000003,
+          "above90_cumulative_s_max": 0.4280000000000003,
+          "above90_longest_s_p95": 0.3050000000000002,
+          "above90_longest_s_max": 0.32000000000000023,
+          "per_direction": {
+            "left_side_down": {
+              "n": 4,
+              "success": 4
+            },
+            "prone": {
+              "n": 4,
+              "success": 4
+            },
+            "right_side_down": {
+              "n": 4,
+              "success": 4
+            },
+            "supine": {
+              "n": 4,
+              "success": 4
+            }
+          }
+        }
+      },
+      "motor080": {
+        "a6_no_alpha_9999": {
+          "n": 16,
+          "success": 16,
+          "reached_upright": 16,
+          "unstable": 0,
+          "refall_after_upright": 0,
+          "refall_after_hold1": 0,
+          "last10s_path_mean_m": 0.005163266977352473,
+          "peak_tau_p95": 112.6442783688088,
+          "peak_tau_max": 113.41524897901576,
+          "peak_dq_p95": 14.546775935501847,
+          "peak_dq_max": 17.723814063973304,
+          "peak_power_p95": 787.6809973602956,
+          "peak_power_max": 802.9744714512038,
+          "above90_cumulative_s_p95": 0.2600000000000002,
+          "above90_cumulative_s_max": 0.2660000000000002,
+          "above90_longest_s_p95": 0.018000000000000002,
+          "above90_longest_s_max": 0.018000000000000002,
+          "per_direction": {
+            "left_side_down": {
+              "n": 4,
+              "success": 4
+            },
+            "prone": {
+              "n": 4,
+              "success": 4
+            },
+            "right_side_down": {
+              "n": 4,
+              "success": 4
+            },
+            "supine": {
+              "n": 4,
+              "success": 4
+            }
+          }
+        },
+        "path_a6_9999": {
+          "n": 16,
+          "success": 15,
+          "reached_upright": 16,
+          "unstable": 0,
+          "refall_after_upright": 0,
+          "refall_after_hold1": 0,
+          "last10s_path_mean_m": 0.007319233654559862,
+          "peak_tau_p95": 111.20000554746636,
+          "peak_tau_max": 111.20001091376592,
+          "peak_dq_p95": 13.459788336782466,
+          "peak_dq_max": 14.443820017547816,
+          "peak_power_p95": 624.9994330021751,
+          "peak_power_max": 687.2167346568843,
+          "above90_cumulative_s_p95": 0.03950000000000002,
+          "above90_cumulative_s_max": 0.044000000000000025,
+          "above90_longest_s_p95": 0.018000000000000002,
+          "above90_longest_s_max": 0.018000000000000002,
+          "per_direction": {
+            "left_side_down": {
+              "n": 4,
+              "success": 4
+            },
+            "prone": {
+              "n": 4,
+              "success": 3
+            },
+            "right_side_down": {
+              "n": 4,
+              "success": 4
+            },
+            "supine": {
+              "n": 4,
+              "success": 4
+            }
+          }
+        }
+      },
+      "motor120": {
+        "a6_no_alpha_9999": {
+          "n": 16,
+          "success": 16,
+          "reached_upright": 16,
+          "unstable": 0,
+          "refall_after_upright": 0,
+          "refall_after_hold1": 0,
+          "last10s_path_mean_m": 0.00520129283605592,
+          "peak_tau_p95": 139.0,
+          "peak_tau_max": 139.0,
+          "peak_dq_p95": 15.042075748713899,
+          "peak_dq_max": 16.825097714502,
+          "peak_power_p95": 1316.6862625666777,
+          "peak_power_max": 1342.5385608087695,
+          "above90_cumulative_s_p95": 5.6534999999996,
+          "above90_cumulative_s_max": 5.813999999999582,
+          "above90_longest_s_p95": 5.614999999999604,
+          "above90_longest_s_max": 5.659999999999599,
+          "per_direction": {
+            "left_side_down": {
+              "n": 4,
+              "success": 4
+            },
+            "prone": {
+              "n": 4,
+              "success": 4
+            },
+            "right_side_down": {
+              "n": 4,
+              "success": 4
+            },
+            "supine": {
+              "n": 4,
+              "success": 4
+            }
+          }
+        },
+        "path_a6_9999": {
+          "n": 16,
+          "success": 16,
+          "reached_upright": 16,
+          "unstable": 0,
+          "refall_after_upright": 0,
+          "refall_after_hold1": 0,
+          "last10s_path_mean_m": 0.00504184011561105,
+          "peak_tau_p95": 139.0,
+          "peak_tau_max": 139.0,
+          "peak_dq_p95": 12.298317108506362,
+          "peak_dq_max": 13.218332877823109,
+          "peak_power_p95": 1165.1243516501117,
+          "peak_power_max": 1320.4001583204433,
+          "above90_cumulative_s_p95": 0.7025000000000006,
+          "above90_cumulative_s_max": 0.7700000000000006,
+          "above90_longest_s_p95": 0.7025000000000006,
+          "above90_longest_s_max": 0.7700000000000006,
+          "per_direction": {
+            "left_side_down": {
+              "n": 4,
+              "success": 4
+            },
+            "prone": {
+              "n": 4,
+              "success": 4
+            },
+            "right_side_down": {
+              "n": 4,
+              "success": 4
+            },
+            "supine": {
+              "n": 4,
+              "success": 4
+            }
+          }
+        }
+      },
+      "delay10ms": {
+        "a6_no_alpha_9999": {
+          "n": 16,
+          "success": 16,
+          "reached_upright": 16,
+          "unstable": 0,
+          "refall_after_upright": 0,
+          "refall_after_hold1": 0,
+          "last10s_path_mean_m": 0.006498404588714599,
+          "peak_tau_p95": 139.0,
+          "peak_tau_max": 139.0,
+          "peak_dq_p95": 13.897143780550765,
+          "peak_dq_max": 14.042915021131508,
+          "peak_power_p95": 1006.0854528177081,
+          "peak_power_max": 1021.5509761984493,
+          "above90_cumulative_s_p95": 0.5940000000000004,
+          "above90_cumulative_s_max": 0.6120000000000004,
+          "above90_longest_s_p95": 0.22200000000000017,
+          "above90_longest_s_max": 0.2460000000000002,
+          "per_direction": {
+            "left_side_down": {
+              "n": 4,
+              "success": 4
+            },
+            "prone": {
+              "n": 4,
+              "success": 4
+            },
+            "right_side_down": {
+              "n": 4,
+              "success": 4
+            },
+            "supine": {
+              "n": 4,
+              "success": 4
+            }
+          }
+        },
+        "path_a6_9999": {
+          "n": 16,
+          "success": 16,
+          "reached_upright": 16,
+          "unstable": 0,
+          "refall_after_upright": 0,
+          "refall_after_hold1": 0,
+          "last10s_path_mean_m": 0.005158960611347828,
+          "peak_tau_p95": 133.44477301811028,
+          "peak_tau_max": 134.64754251831408,
+          "peak_dq_p95": 14.030663181435735,
+          "peak_dq_max": 14.2324113681162,
+          "peak_power_p95": 916.5831930607817,
+          "peak_power_max": 979.4815648858859,
+          "above90_cumulative_s_p95": 0.3810000000000003,
+          "above90_cumulative_s_max": 0.47400000000000037,
+          "above90_longest_s_p95": 0.2850000000000002,
+          "above90_longest_s_max": 0.32400000000000023,
+          "per_direction": {
+            "left_side_down": {
+              "n": 4,
+              "success": 4
+            },
+            "prone": {
+              "n": 4,
+              "success": 4
+            },
+            "right_side_down": {
+              "n": 4,
+              "success": 4
+            },
+            "supine": {
+              "n": 4,
+              "success": 4
+            }
+          }
+        }
+      },
+      "combined": {
+        "a6_no_alpha_9999": {
+          "n": 16,
+          "success": 14,
+          "reached_upright": 16,
+          "unstable": 0,
+          "refall_after_upright": 0,
+          "refall_after_hold1": 0,
+          "last10s_path_mean_m": 0.11693246531293044,
+          "peak_tau_p95": 117.47942855144196,
+          "peak_tau_max": 118.32548611714888,
+          "peak_dq_p95": 23.04606409770742,
+          "peak_dq_max": 37.54745947978674,
+          "peak_power_p95": 815.9488015335863,
+          "peak_power_max": 893.8889879574107,
+          "above90_cumulative_s_p95": 0.7250000000000005,
+          "above90_cumulative_s_max": 1.286000000000001,
+          "above90_longest_s_p95": 0.1225000000000001,
+          "above90_longest_s_max": 0.1360000000000001,
+          "per_direction": {
+            "left_side_down": {
+              "n": 4,
+              "success": 3
+            },
+            "prone": {
+              "n": 4,
+              "success": 3
+            },
+            "right_side_down": {
+              "n": 4,
+              "success": 4
+            },
+            "supine": {
+              "n": 4,
+              "success": 4
+            }
+          }
+        },
+        "path_a6_9999": {
+          "n": 16,
+          "success": 13,
+          "reached_upright": 15,
+          "unstable": 0,
+          "refall_after_upright": 0,
+          "refall_after_hold1": 0,
+          "last10s_path_mean_m": 0.45225529881408244,
+          "peak_tau_p95": 109.31448979491044,
+          "peak_tau_max": 109.61935168114393,
+          "peak_dq_p95": 20.23633849823293,
+          "peak_dq_max": 24.226329229448936,
+          "peak_power_p95": 653.112837977776,
+          "peak_power_max": 666.7909875303706,
+          "above90_cumulative_s_p95": 0.1490000000000001,
+          "above90_cumulative_s_max": 0.20000000000000015,
+          "above90_longest_s_p95": 0.04050000000000002,
+          "above90_longest_s_max": 0.04200000000000002,
+          "per_direction": {
+            "left_side_down": {
+              "n": 4,
+              "success": 4
+            },
+            "prone": {
+              "n": 4,
+              "success": 2
+            },
+            "right_side_down": {
+              "n": 4,
+              "success": 4
+            },
+            "supine": {
+              "n": 4,
+              "success": 3
+            }
+          }
+        }
+      }
+    },
+    "local_artifacts": "outputs/recovery_candidates/a6_no_alpha_deploy_20261001",
+    "hardware_validated": false
+  },
+  "training_sim_matched_ablation": {
+    "scope": "First ablation, seed 20261013, 20s, guided 48 + free 48, balanced four directions, 75% natural / 25% procedural low states; not deployment CPU validation. Displacement conditional on complete 3s window after first clearance; not origin displacement. NumPy linear percentiles.",
+    "results": {
+      "A6_full": {
+        "raw_sha256": "5c5ac81aba58c0b9c621c2435d93eed7e401cc7d141bf6de961417d48a2d82c7",
+        "plate_n": 96,
+        "plate_sr10_count": 45,
+        "post_clear_3s_n": 61,
+        "post_clear_max_offset_median_m": 0.4275135099887848,
+        "post_clear_max_offset_p95_m": 2.4701688289642334,
+        "torque_Nm_peak_p95": 139.0,
+        "speed_rad_s_peak_p95": 15.177029132843018,
+        "power_W_peak_p95": 1157.7617797851562
+      },
+      "A6_no_alpha": {
+        "raw_sha256": "85717e65ea9aff373c02b79b5c5dcb5d64817577428a233d870c810c5ad18aeb",
+        "plate_n": 96,
+        "plate_sr10_count": 70,
+        "post_clear_3s_n": 71,
+        "post_clear_max_offset_median_m": 0.17410020530223846,
+        "post_clear_max_offset_p95_m": 0.4857345372438431,
+        "torque_Nm_peak_p95": 139.0,
+        "speed_rad_s_peak_p95": 15.05186128616333,
+        "power_W_peak_p95": 1010.1047210693359
+      }
+    }
+  }
+}

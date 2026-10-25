@@ -1,0 +1,37 @@
+# Metres / kilograms. Inner length and width; height includes base, excludes lid.
+defaults:
+  - mujoco
+  - _self_
+
+xml_path: g1_description/g1_liao.xml
+startup_policy: passive  # Press Y for SMP; START still selects FixedPose.
+ghost_enabled: false
+scene:
+  name: coffin
+  coffin:
+    pos: [0.14373179, 0.000005, 0.0]  # Center aligned to the default supine body.
+    yaw_deg: 0
+    length: 1.4
+    width: 0.6
+    height: 0.4
+    base_thickness: 0.04
+    wall_thickness: 0.035
+    free: true
+    mass: 15.0
+    lid_enabled: true
+    lid_thickness: 0.03
+    lid_mass: 3.0
+    friction: [1.0, 0.01, 0.001]
+    rgba: [0.24, 0.10, 0.05, 1.0]  # Last value: opacity; try 0.3 to see inside.
+    lid_rgba: [0.32, 0.12, 0.045, 1.0]
+initial_state:
+  preset: plate_supine_default_arms
+  preset_root_pos: [0.0, 0.0, 0.16]
+  preset_yaw_deg: 0
+  qpos: null
+  qvel: null
+camera:
+  lookat: [0.14, 0.0, 0.4]
+  distance: 3.2
+  azimuth: 45
+  elevation: -40

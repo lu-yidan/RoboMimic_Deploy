@@ -1,6 +1,10 @@
 from common.path_config import PROJECT_ROOT
 
 import os
+# The control window is GLFW; the optional depth preview is SDL. SDL must keep
+# polling the joystick when its own window loses focus to MuJoCo (or is closed).
+# Set before SDL/joystick initialization, including imports by other entry points.
+os.environ["SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS"] = "1"
 import pygame
 from pygame.locals import *
 from enum import IntEnum, unique

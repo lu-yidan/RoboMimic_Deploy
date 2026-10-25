@@ -16,8 +16,7 @@ class DepthPreview:
         if not self.open:
             return
         for event in pygame.event.get([pygame.QUIT]):
-            self.open = False
-            pygame.display.quit()
+            self.close()
             return
         self.surface.fill((20, 20, 20))
         def label(text, y):
@@ -39,5 +38,8 @@ class DepthPreview:
 
     def close(self):
         if self.open:
-            pygame.display.quit()
+            # JoyStick.update still needs SDL's video/event subsystem. Destroying
+            # it here makes event.pump fail even though MuJoCo remains open.
+            from pygame._sdl2 import Window
+            Window.from_display_module().hide()
             self.open = False

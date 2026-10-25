@@ -1,3 +1,6 @@
+# Legacy Python 3.8 / hardware deployment dependencies.
+# For official MuJoCo 3.10, use environment/mujoco-official-requirements.txt
+# in a separate Python 3.10 environment (see docs/native_depth_overlay.md).
 # Core dependencies
 # numpy 1.24.x is required: 1.20.0 lacks numpy.typing.NDArray and breaks
 # torchvision 0.18.1 import.

@@ -1,4 +1,4 @@
-# RoboMimic Deploy · lyd-deploy
+# RoboMimic Deploy · lyd-php-parkour
 
 [English](README.md) | 中文
 
@@ -22,7 +22,7 @@
 ### 1.1 获取仓库
 
 ```bash
-git clone --branch lyd-deploy git@github.com:lu-yidan/RoboMimic_Deploy.git
+git clone --branch lyd-php-parkour git@github.com:lu-yidan/RoboMimic_Deploy.git
 cd RoboMimic_Deploy
 ```
 
@@ -32,7 +32,7 @@ cd RoboMimic_Deploy
 
 ```bash
 git fetch origin --prune
-git switch lyd-deploy
+git switch lyd-php-parkour
 git pull --ff-only
 ```
 
@@ -40,21 +40,20 @@ git pull --ff-only
 
 ### 1.2 工作站环境
 
-已有 `robomimic` 环境可直接激活。新建环境可按仓库原有依赖组合安装：
+本分支的官方 MuJoCo 3.10.0 使用独立 Python 3.10 环境，保留旧 `robomimic` 环境。完整的资源配置、验证和回退步骤见[迁移说明](docs/native_depth_overlay.md)。
 
 ```bash
-conda create -n robomimic python=3.8.20 -y
-conda activate robomimic
-conda install pytorch==2.3.1 torchvision==0.18.1 torchaudio==2.3.1 \
-  pytorch-cuda=12.1 -c pytorch -c nvidia
-pip install -r requirements.txt
+conda create -n robomimic-mj310 python=3.10 pip -y
+conda activate robomimic-mj310
+python -m pip install 'torch==2.3.1+cu121' --index-url https://download.pytorch.org/whl/cu121
+python -m pip install -r environment/mujoco-official-requirements.txt
 ```
 
-- `numpy==1.24.4` 与仓库现有接口匹配。
-- ONNX 模型要求支持 opset 18 的运行时；Python 3.8 可使用 `onnxruntime==1.19.2`。
+- 新环境固定 `numpy==1.26.4`；旧 Python 3.8 环境保留 `numpy==1.24.4`。
+- ONNX 模型要求支持 opset 18 的运行时；新环境固定 `onnxruntime==1.19.2`。
 - 交互仿真需要图形桌面及 pygame 可识别的手柄；无需手柄的检查见第 8 节。
 - `requirements.txt` 包含 Python DDS 依赖。CycloneDDS 系统库、SDK 和机载安装按 [安装指南](onboard/docs/INSTALL_AGENT_GUIDE.md) 配置。
-- [环境清单](environment/smp_recovery_mujoco.yml) 记录了 SMP/MuJoCo 依赖；ScaleBFM 另需第 6 节的外部源码、权重和可选依赖。
+- [旧环境清单](environment/smp_recovery_mujoco.yml) 仅记录 Python 3.8 / MuJoCo 3.2.3 组合；本分支使用上面的新环境清单。ScaleBFM 另需第 6 节的外部源码、权重和可选依赖。
 
 机载 Jetson 的 PyTorch/CUDA 必须匹配其 JetPack，不要直接照搬工作站的 CUDA 安装命令。当前 ScaleBFM 集成在 Python 3.8 / PyTorch 2.3.1 / RTX 4070 Ti SUPER 上验证过；机载环境需分别检查。
 
@@ -436,7 +435,8 @@ python deploy_mujoco/deploy_mujoco.py --config-name mujoco_table \
 ### 8.2 无手柄、无电机通信的检查
 
 ```bash
-OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 python -m unittest discover -s tests -v
+python -m pip install --only-binary=cyclonedds 'cyclonedds==0.10.2'
+MUJOCO_GL=egl OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 python -m unittest discover -s tests -v
 python tools/test_scalebfm_real.py
 
 # 下列两项需要外部 ScaleBFM 已安装且共享配置 enabled=true
@@ -482,6 +482,7 @@ python tools/smoke_scalebfm_fsm.py
 PHP 与其他策略并列放在 `policy/php_parkour/`，使用统一 MuJoCo / FSM，配置在 `config/deploy.yaml` 的 `php` 节。外部模型保留在 `~/.cache/php-parkour/student/`。详见 [PHP 部署与按键说明](docs/php_deployment_zh.md)。
 
 ```bash
+conda activate robomimic-mj310
 python deploy_mujoco/deploy_mujoco.py --config-name mujoco_php
 # 平地
 python deploy_mujoco/deploy_mujoco.py --config-name mujoco_php scene.name=none
@@ -491,6 +492,6 @@ python deploy_mujoco/deploy_mujoco.py --config-name mujoco_php scene.name=none
 
 默认恢复自由视角，可继续用鼠标旋转和缩放；`camera.follow=true` 可主动开启跟随。Backspace 不调用控制器的 exit/enter；PHP 速度档位、动作历史、参考轨迹进度均保留，复位前的深度图则会重新采集。
 
-PHP 启用时默认在 MuJoCo 三维视窗右上角显示模型实际使用的深度图，深度图标题显示当前策略。原生参数侧栏和 Track 模式始终保留；`php_depth_preview=false` 仅关闭预览。MuJoCo 3.2.3 首次需执行 `python tools/install_native_depth_overlay.py`，详见[安装与迁移](docs/native_depth_overlay.md)。
+PHP 启用时默认在 MuJoCo 三维视窗右上角显示模型实际使用的深度图，深度图标题显示当前策略。原生参数侧栏和 Track 模式始终保留；`php_depth_preview=false` 仅关闭预览。使用官方 MuJoCo 3.10.0 的公开接口，无需源码补丁和编译器，详见[安装与迁移](docs/native_depth_overlay.md)。
 
 PHP 默认场景现直接复用外部 `php.root` 中的 Holosoma `terrain.obj`；深度图集成在同一窗口右上角，显示模型输入和采集延迟。详见 [PHP 场景配置](docs/php_deployment_zh.md)。

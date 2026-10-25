@@ -1,4 +1,4 @@
-# RoboMimic Deploy · lyd-deploy
+# RoboMimic Deploy · lyd-php-parkour
 
 English | [中文完整使用手册](README_zh.md)
 
@@ -19,20 +19,19 @@ Multi-policy deployment for the Unitree G1 with 29 body joints. This branch comb
 ## Installation and updates
 
 ```bash
-git clone --branch lyd-deploy git@github.com:lu-yidan/RoboMimic_Deploy.git
+git clone --branch lyd-php-parkour git@github.com:lu-yidan/RoboMimic_Deploy.git
 cd RoboMimic_Deploy
-conda create -n robomimic python=3.8.20 -y
-conda activate robomimic
-conda install pytorch==2.3.1 torchvision==0.18.1 torchaudio==2.3.1 \
-  pytorch-cuda=12.1 -c pytorch -c nvidia
-pip install -r requirements.txt
+conda create -n robomimic-mj310 python=3.10 pip -y
+conda activate robomimic-mj310
+python -m pip install 'torch==2.3.1+cu121' --index-url https://download.pytorch.org/whl/cu121
+python -m pip install -r environment/mujoco-official-requirements.txt
 ```
 
-Run commands from the repository root. Existing installations can reuse their environment. The clone command tracks all remote branches; add `--single-branch --depth 1` only if you want a smaller deployment copy. Switching an existing clone does not remove old Git objects.
+Run commands from the repository root. Use this separate environment for official MuJoCo 3.10.0; keep existing Python 3.8 environments intact. See [migration, assets, validation and rollback](docs/native_depth_overlay.md). The clone command tracks all remote branches; add `--single-branch --depth 1` only if you want a smaller deployment copy. Switching an existing clone does not remove old Git objects.
 
 ```bash
 git fetch origin --prune
-git switch lyd-deploy
+git switch lyd-php-parkour
 git pull --ff-only
 ```
 
@@ -211,7 +210,8 @@ python deploy_mujoco/deploy_mujoco.py --config-name mujoco_table \
   logging.enabled=true logging.tag=table_a6 \
   'logging.states=[SKILL_SMP_RECOVERY,SKILL_AMP]'
 
-OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 python -m unittest discover -s tests -v
+python -m pip install --only-binary=cyclonedds 'cyclonedds==0.10.2'
+MUJOCO_GL=egl OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 python -m unittest discover -s tests -v
 python tools/test_scalebfm_real.py
 ```
 
@@ -233,6 +233,7 @@ Based on [ccrpRepo/RoboMimic_Deploy](https://github.com/ccrpRepo/RoboMimic_Deplo
 PHP now lives alongside the other policies in `policy/php_parkour/` and uses the same MuJoCo process and FSM. Configure `php.enabled` and the external `php.model_dir` in `config/deploy.yaml`. No separate Holosoma launcher or depth shared-memory server is needed.
 
 ```bash
+conda activate robomimic-mj310
 python deploy_mujoco/deploy_mujoco.py --config-name mujoco_php
 # Flat ground:
 python deploy_mujoco/deploy_mujoco.py --config-name mujoco_php scene.name=none
@@ -240,4 +241,4 @@ python deploy_mujoco/deploy_mujoco.py --config-name mujoco_php scene.name=none
 
 Startup stays Passive. START explicitly selects FixedPose; L1+A or P explicitly selects PHP, including from Passive. The exact backbone input appears in the top-right of the MuJoCo viewport. Left stick selects direction, R3 toggles speed, A/B/START return to AMP/Loco/FixedPose, Y preempts with SMP and L2 enters damping. This integration is for MuJoCo; hardware depth input is not connected. See the [PHP guide](docs/php_deployment_zh.md).
 
-The PHP preset now reuses `terrain.obj` from the external PHP checkout (`php.root`). The depth inset shares the MuJoCo window and shows capture age. The native MuJoCo viewer retains its sidebars and Tracking camera mode with depth enabled. On MuJoCo 3.2.3, run `python tools/install_native_depth_overlay.py` once in the deployment environment; see [installation and migration](docs/native_depth_overlay.md). `php_depth_preview=false` only disables the inset.
+The PHP preset now reuses `terrain.obj` from the external PHP checkout (`php.root`). The depth inset shares the MuJoCo window and shows capture age. The native MuJoCo viewer retains its sidebars and Tracking camera mode with depth enabled. It uses official MuJoCo 3.10.0 public APIs, with no source patch or compiler; see [installation and migration](docs/native_depth_overlay.md). `php_depth_preview=false` only disables the inset.

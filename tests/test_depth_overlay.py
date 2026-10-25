@@ -10,9 +10,8 @@ import unittest
 class DepthOverlayTest(unittest.TestCase):
     @unittest.skipUnless(shutil.which('xvfb-run') and shutil.which('ffmpeg') and shutil.which('xwininfo'), 'requires Xvfb and ffmpeg')
     def test_native_inset_and_camera(self):
-        from mujoco import _simulate
-        if not hasattr(_simulate.Simulate, 'set_depth_overlay'):
-            self.skipTest('Install native depth backport to run GL integration test')
+        from deploy_mujoco.native_depth_overlay import require_native_overlay
+        require_native_overlay()
         script = r'''
 import ctypes, os, re, subprocess, tempfile, time
 import mujoco, mujoco.viewer
@@ -74,7 +73,7 @@ with mujoco.viewer.launch_passive(m,d) as viewer:
         viewer.cam.type=mujoco.mjtCamera.mjCAMERA_FREE
     update()
     assert viewer.cam.type==mujoco.mjtCamera.mjCAMERA_FREE
-    viewer._sim().clear_depth_overlay()
+    overlay.clear()
 sensor.close()
 time.sleep(.3)
 '''
@@ -85,3 +84,20 @@ time.sleep(.3)
                                 cwd=str(Path(__file__).resolve().parents[1]), env=env,
                                 capture_output=True, text=True, timeout=45)
         self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+
+    def test_debug_connectors_use_supported_mujoco_api(self):
+        import mujoco
+        import numpy as np
+        from deploy_mujoco.deploy_mujoco import _draw_viz_spheres
+        model = mujoco.MjModel.from_xml_string('<mujoco/>')
+        scene = mujoco.MjvScene(model, maxgeom=10)
+        _draw_viz_spheres(scene, [
+            {'geom': 'line', 'from': [0, 0, 0], 'to': [0, 0, 2]},
+            {'geom': 'arrow', 'from': [0, 0, 0], 'to': [2, 0, 0]},
+            {'pos': [1, 2, 3], 'radius': .1},
+        ])
+        self.assertEqual(scene.ngeom, 3)
+        self.assertEqual(scene.geoms[0].type, mujoco.mjtGeom.mjGEOM_CAPSULE)
+        self.assertEqual(scene.geoms[1].type, mujoco.mjtGeom.mjGEOM_ARROW)
+        np.testing.assert_allclose(scene.geoms[0].pos, [0, 0, 1])
+        np.testing.assert_allclose(scene.geoms[2].pos, [1, 2, 3])

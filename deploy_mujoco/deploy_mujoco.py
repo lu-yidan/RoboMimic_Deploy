@@ -48,11 +48,14 @@ def _draw_viz_spheres(scn, viz_spheres):
                 geom_type = getattr(
                     mujoco.mjtGeom, "mjGEOM_ARROW", mujoco.mjtGeom.mjGEOM_CAPSULE
                 )
-            mujoco.mjv_makeConnector(
-                g, geom_type, r,
-                *item["from"], *item["to"],
+            mujoco.mjv_initGeom(
+                g, geom_type, np.zeros(3), np.zeros(3), np.eye(3).ravel(), rgba,
             )
-            g.rgba[:] = rgba
+            mujoco.mjv_connector(
+                g, geom_type, r,
+                np.asarray(item["from"], dtype=np.float64),
+                np.asarray(item["to"], dtype=np.float64),
+            )
         else:
             pos = item.get("pos", None)
             if pos is None:

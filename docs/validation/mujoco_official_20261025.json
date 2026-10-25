@@ -1,0 +1,140 @@
+{
+  "date": "2026-10-25",
+  "branch": "lyd-php-parkour",
+  "environment": {
+    "name": "robomimic-mj310",
+    "python": "3.10.22",
+    "platform": "Linux-6.8.0-147-generic-x86_64-with-glibc2.39",
+    "gpu": "NVIDIA GeForce RTX 4070 Ti SUPER",
+    "packages": {
+      "mujoco": "3.10.0",
+      "numpy": "1.26.4",
+      "torch": "2.3.1+cu121",
+      "onnx": "1.17.0",
+      "onnxruntime": "1.19.2",
+      "hydra-core": "1.3.2",
+      "omegaconf": "2.3.0",
+      "pygame": "2.6.1",
+      "scipy": "1.15.3",
+      "trimesh": "4.11.3",
+      "Pillow": "10.4.0",
+      "cyclonedds": "0.10.2"
+    }
+  },
+  "official_mujoco": {
+    "version": "3.10.0",
+    "wheel": "mujoco-3.10.0-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
+    "sha256": "47a89c371cc171a38eb6c03172aff2f905e54c1261d87b3575a9d77fe3a29a55",
+    "pypi_sha256_match": true,
+    "installed_package_matches_official_wheel": true,
+    "checked_files": 225
+  },
+  "old_robomimic_environment": {
+    "unchanged": true,
+    "package_versions_checked": 86,
+    "mujoco_files_checked": 64
+  },
+  "unit_tests": {
+    "command": "MUJOCO_GL=egl python -m unittest discover -s tests -v",
+    "passed": 49,
+    "failures": 0,
+    "skipped": 0,
+    "includes": "Native GLFW/Xvfb inset pixel orientation, sidebar-aware resize, Tracking/Free persistence, debug connectors, controller transitions and Backspace state retention"
+  },
+  "php_closed_loop": [
+    {
+      "scene": "none",
+      "sim_seconds": 10.000000000000009,
+      "position": [
+        5.52448025680219,
+        -1.2988792607294166,
+        0.7609424057566658
+      ],
+      "min_height": 0.7297827006046449,
+      "max_height": 0.7856990535296258,
+      "failed_or_fell": false,
+      "frames": 500,
+      "wall_seconds": 0.646803514999192
+    },
+    {
+      "scene": "php_terrain",
+      "sim_seconds": 10.000000000000009,
+      "position": [
+        7.205413475053374,
+        0.20987625765381301,
+        0.7443741198993323
+      ],
+      "min_height": 0.7059215184060837,
+      "max_height": 1.127974148439857,
+      "failed_or_fell": false,
+      "frames": 500,
+      "wall_seconds": 0.6635151789996598
+    }
+  ],
+  "passive_to_smp": [
+    {
+      "trigger_s": 0.02,
+      "elapsed_s": 30.0,
+      "final_height": 0.7124682139284733,
+      "min_height": 0.7116732323517937,
+      "peak_speed": 7.618144557140824,
+      "failure": null
+    },
+    {
+      "trigger_s": 1.0,
+      "elapsed_s": 30.0,
+      "final_height": 0.7161972971067271,
+      "min_height": 0.12270577161534582,
+      "peak_speed": 14.482662307071397,
+      "failure": null
+    },
+    {
+      "trigger_s": 3.0,
+      "elapsed_s": 30.0,
+      "final_height": 0.7129600393920437,
+      "min_height": 0.0830430133682657,
+      "peak_speed": 9.078289387140314,
+      "failure": null
+    },
+    {
+      "trigger_s": 5.0,
+      "elapsed_s": 30.0,
+      "final_height": 0.7135636090839143,
+      "min_height": 0.08661397006821848,
+      "peak_speed": 22.15745951452183,
+      "failure": null
+    },
+    {
+      "trigger_s": 10.0,
+      "elapsed_s": 30.0,
+      "final_height": 0.7167456646387933,
+      "min_height": 0.12323330917683507,
+      "peak_speed": 13.383932961894253,
+      "failure": null
+    },
+    {
+      "trigger_s": 11.0,
+      "elapsed_s": 30.0,
+      "final_height": 0.7147820692515099,
+      "min_height": 0.08696322956885216,
+      "peak_speed": 14.324993574968442,
+      "failure": null
+    }
+  ],
+  "scalebfm": {
+    "no_dds": true,
+    "motions": 1,
+    "samples": 100,
+    "torch": "2.3.1+cu121",
+    "gpu": "NVIDIA GeForce RTX 4070 Ti SUPER",
+    "step_ms_p50": 1.298757999393274,
+    "step_ms_p95": 1.7710168020130368,
+    "step_ms_max": 2.3276969986909535,
+    "entry_ms_max": 1.5645690000383183,
+    "budget_ms": 20.0,
+    "over_budget": 0,
+    "scope": "static state inference; excludes DDS, motor IO and closed-loop tracking",
+    "command": "LYD_DEPLOY_CONFIG=<isolated config: enabled=true, motion_globs=[]> python tools/check_scalebfm_onboard.py --steps 100"
+  },
+  "scope": "Bounded simulation and static-state inference only; no DDS or robot connection. No claim of all-scene or real-hardware validation."
+}

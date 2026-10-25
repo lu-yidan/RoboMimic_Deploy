@@ -21,14 +21,14 @@ cd ~/workspace/php_parkour
 python scripts/download_assets.py student
 ```
 
-仍使用本仓库 `robomimic` 环境，无需切换 `hsmujoco` / `hsinference`，也无需启动深度共享内存服务。`php.enabled: false` 可关闭 PHP 模型加载和相机创建，继续使用其他策略。支持 `LYD_DEPLOY_CONFIG` 指定完整配置。
+使用独立的 `robomimic-mj310` 环境（Python 3.10 / 官方 MuJoCo 3.10.0），安装见[迁移说明](native_depth_overlay.md)。无需切换 `hsmujoco` / `hsinference`，也无需启动深度共享内存服务。`php.enabled: false` 可关闭 PHP 模型加载和相机创建，继续使用其他策略。支持 `LYD_DEPLOY_CONFIG` 指定完整配置。
 
 `policy/php_parkour/config/php.yaml` 保存关节名称、默认姿态、增益和模型校验值。其增益与默认姿态对应 PHP 当前 Holosoma inference 的 distillation preset；观测按训练时的实际顺序排列，不使用 ONNX 元数据中具有误导性的声明顺序。
 
 ## 启动与场景
 
 ```bash
-conda activate robomimic
+conda activate robomimic-mj310
 cd ~/workspace/RoboMimic_Deploy
 git switch lyd-php-parkour
 
@@ -101,7 +101,7 @@ Backspace 保留当前策略及内部状态，只复位物理姿态/速度并刷
 
 窗口缩放后深度图仍固定在右上角；左键拖动旋转、右键拖动平移、滚轮缩放，Shift 可切换水平/垂直操作。P/R/Backspace 与手柄逻辑不变；关闭窗口退出仿真。
 
-始终使用原生 MuJoCo viewer，保留参数侧栏与 Rendering → Camera → Tracking。先双击机器人选中 body，再选择 Tracking。深度图通过原生 viewer 扩展绘制，不会重设相机；`php_depth_preview=false` 仅关闭深度图。MuJoCo 3.2.3 首次使用需执行 `python tools/install_native_depth_overlay.py`，详见[安装与迁移说明](native_depth_overlay.md)。
+始终使用原生 MuJoCo viewer，保留参数侧栏与 Rendering → Camera → Tracking。先双击机器人选中 body，再选择 Tracking。深度图通过原生 viewer 扩展绘制，不会重设相机；`php_depth_preview=false` 仅关闭深度图。使用官方 MuJoCo 3.10.0 的公开图像接口，不需要源码补丁，详见[安装与迁移说明](native_depth_overlay.md)。
 
 已删除输入层的 `[Input] CMD_*` 日志。Passive 下 A 不允许直接切 AMP，按 START 进入 FixedPose 后再按 A；没有实际切换时不打印命令。PHP 切换成功时仍显示 `[PHP] Entering from ...; depth ready.`，当前状态也随之更新。深度无效等真正错误仍保留具体诊断。
 

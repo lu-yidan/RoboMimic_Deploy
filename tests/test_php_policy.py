@@ -94,7 +94,7 @@ class PHPTest(unittest.TestCase):
         for policy,name in states:
             policy.name=name
             policy.checkChange.return_value=name
-        for source in (f.passive_mode,f.fixed_pose_1,f.loco_policy,f.amp_policy):
+        for source in (f.passive_mode,f.fixed_pose_1,f.loco_policy,f.amp_policy,f.smp_recovery_policy):
             f.cur_policy=source; f.FSMmode=FSMMode.NORMAL
             self.state.php_depth_time=time.monotonic()
             self.state.skill_cmd=FSMCommand.CMD_PHP_PARKOUR
@@ -110,6 +110,24 @@ class PHPTest(unittest.TestCase):
             self.state.skill_cmd=cmd
             f.run()
             self.assertIs(f.cur_policy,expected)
+        # Y -> SMP, then L1+A -> PHP, repeatedly without visiting FixedPose.
+        for _ in range(3):
+            self.state.skill_cmd = FSMCommand.CMD_SMP_RECOVERY
+            f.run()
+            self.assertIs(f.cur_policy, f.smp_recovery_policy)
+            self.state.php_depth_time = time.monotonic()
+            self.state.skill_cmd = FSMCommand.CMD_PHP_PARKOUR
+            f.run()
+            self.assertIs(f.cur_policy, f.php_policy)
+            self.assertFalse(f.php_policy.failed)
+            self.assertEqual(self.state.skill_cmd, FSMCommand.INVALID)
+        # A stale camera must leave SMP active when returning to PHP is rejected.
+        f.cur_policy = f.smp_recovery_policy
+        f.FSMmode = FSMMode.NORMAL
+        self.state.php_depth_time = time.monotonic() - 1
+        self.state.skill_cmd = FSMCommand.CMD_PHP_PARKOUR
+        f.run()
+        self.assertIs(f.cur_policy, f.smp_recovery_policy)
         # No depth: refuse entry rather than synthesizing zero features.
         f.cur_policy=f.fixed_pose_1;f.FSMmode=FSMMode.NORMAL
         self.state.php_depth=None;self.state.skill_cmd=FSMCommand.CMD_PHP_PARKOUR

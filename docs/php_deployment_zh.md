@@ -53,7 +53,7 @@ python deploy_mujoco/deploy_mujoco.py --config-name mujoco_php \
 
 | 操作 | 效果 |
 |---|---|
-| `L1+A`（两键先后顺序均可）或 MuJoCo 窗口 `P` | 从 Passive / FixedPose / Loco / AMP / ScaleBFM 显式进入 PHP |
+| `L1+A`（两键先后顺序均可）或 MuJoCo 窗口 `P` | 从 Passive / FixedPose / Loco / AMP / ScaleBFM / SMP 显式进入 PHP |
 | 左摇杆 | 前后、侧向和斜向离散方向命令；回中为 stand |
 | `R3` 释放 | PHP 高低速切换；每次进入默认低速 |
 | `A` 释放 | PHP → AMP |
@@ -104,3 +104,5 @@ Backspace 保留当前策略及内部状态，只复位物理姿态/速度并刷
 MuJoCo 3.2 的原生 Python viewer 没有图片叠加接口，因此启用深度图时使用同一 MuJoCo 渲染器的简化 GLFW 视窗，保留 ghost、调试球与相机交互，但不带原生参数侧栏。设置 `php_depth_preview=false` 可恢复原生 viewer（同时关闭右上角深度图）。
 
 已删除输入层的 `[Input] CMD_*` 日志。Passive 下 A 不允许直接切 AMP，按 START 进入 FixedPose 后再按 A；没有实际切换时不打印命令。PHP 切换成功时仍显示 `[PHP] Entering from ...; depth ready.`，当前状态也随之更新。深度无效等真正错误仍保留具体诊断。
+
+支持 **Y → SMP → L1+A → PHP** 双向切换，无需先经过 START/FixedPose；返回 PHP 时仍要求有效的新深度图。

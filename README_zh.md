@@ -311,9 +311,10 @@ ScaleBFM 关闭时 R1 不启动它。开启时允许从 FixedPose、Loco、AMP �
 |---|---|---|
 | 单独 START | 不修改根位置或速度，仅插值到默认关节目标；不保证倒地起身 | FixedPose |
 | 窗口键盘 R | 恢复场景 YAML 指定初态，并重置球/箱/盖子等模型状态 | Passive；按 Y 再恢复 |
-| Backspace 或 L1 + START | 仿真重置到站立姿态、清零速度，再运行默认姿态控制 | FixedPose，适合随后测试 ScaleBFM |
+| Backspace | 仿真重置站立姿态、清零速度，保留控制器历史和进度 | 保持当前策略 |
+| L1 + START | 仿真重置站立姿态并切换默认姿态控制 | FixedPose，适合随后测试 ScaleBFM |
 
-键盘操作要求 MuJoCo 窗口获得焦点。后两种是仿真便利操作，真机没有“瞬移复位”。普通场景测试 ScaleBFM 可依次使用 **Backspace → R1**；桌下/箱内恢复可使用 **R → Y**。
+键盘操作要求 MuJoCo 窗口获得焦点。后两种是仿真便利操作，真机没有“瞬移复位”。普通场景测试 ScaleBFM 可依次使用 **L1+START → R1**；桌下/箱内恢复可使用 **R → Y**。
 
 ### 5.3 手柄映射和感知偏置
 
@@ -487,3 +488,5 @@ python deploy_mujoco/deploy_mujoco.py --config-name mujoco_php scene.name=none
 ```
 
 等 FixedPose 稳定后，`L1+A` 或窗口 `P` 进入 PHP；左摇杆控制方向，`R3` 切换速度，`A/B/START` 返回 AMP/Loco/FixedPose，`Y` 进入 SMP，`L2` 阻尼。本次支持 MuJoCo，实机深度接入尚未完成。
+
+默认视角跟随 G1 躯干，可继续用鼠标旋转和缩放；`camera.follow=false` 可关闭跟随。Backspace 不调用控制器的 exit/enter；PHP 速度档位、动作历史、参考轨迹进度均保留，复位前的深度图则会重新采集。

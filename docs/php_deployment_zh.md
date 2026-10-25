@@ -60,9 +60,11 @@ python deploy_mujoco/deploy_mujoco.py --config-name mujoco_php \
 | `Y` 按下（不按 L1） | 立即抢占到 SMP recovery |
 | `L2` 释放 | 优先转阻尼 |
 | `R1` 释放 | 启用 ScaleBFM 时沿用原有切换流程 |
-| 窗口 `R` / `Backspace` | 原有仿真重置 / 站立重置 |
+| 窗口 `R` | 配置初态重置并切到 Passive |
+| 窗口 `Backspace` | 站立物理复位，保留当前控制器及历史/进度/速度档位 |
+| `L1+START` | 站立物理复位并切到 FixedPose |
 
-L1+A 的 A 释放不会误触 AMP，即使先松开 L1。L3 仍是 ghost 开关。被动状态不能直接进入 PHP：先 START 或 Backspace 回到站立状态。缺失、非有限或超过 150 ms 的深度输入会拒绝进入 PHP，运行中发生则输出阻尼并退出。
+L1+A 的 A 释放不会误触 AMP，即使先松开 L1。L3 仍是 ghost 开关。被动状态不能直接进入 PHP：先 START 进入 FixedPose，或 L1+START 复位到站立 FixedPose。缺失、非有限或超过 150 ms 的深度输入会拒绝进入 PHP，运行中发生则输出阻尼并退出。
 
 ## 实现与验证范围
 
@@ -78,3 +80,15 @@ MUJOCO_GL=egl python tools/smoke_php_mujoco.py
 ```
 
 旧启动器报错原因：重复传入 terrain 子命令导致 Holosoma 仿真未启动，继而无法创建深度共享内存。现已移除该启动链路，`lyd-deploy` 分支保留原有统一部署，PHP 开发独立在本分支。
+
+## 跟随视角与进入提示
+
+默认视角跟随 G1 的 torso_link，鼠标仍可旋转、缩放；关闭跟随：
+
+```bash
+python deploy_mujoco/deploy_mujoco.py --config-name mujoco_php camera.follow=false
+```
+
+`[PHP] Cannot enter: ...` 表示切换被拒绝，不是 PHP 已经运行。提示会明确说明未启用、当前 FSM 状态不允许、深度缺失、形状/数值异常或深度超时。若当前为 Passive，按 START 后再按 L1+A/P；若为深度错误，查看前面的 `[PHP camera]` 日志。
+
+Backspace 保留当前策略及内部状态，只复位物理姿态/速度并刷新观测。轨迹策略会从原进度继续；需要重新初始化控制器时使用 L1+START 后重新选择策略。

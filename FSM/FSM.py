@@ -88,7 +88,13 @@ class FSM:
                 self.cur_policy.enter()
                 self.FSMmode = FSMMode.NORMAL
             else:
-                print("[PHP] Requires enabled PHP, live depth, and FixedPose/Loco/AMP/ScaleBFM.")
+                if self.php_policy is None:
+                    reason = "PHP is disabled in this runtime; set php.enabled: true for MuJoCo"
+                elif self.cur_policy.name not in allowed:
+                    reason = f"current state is {self.cur_policy.name.name}; press START to select FixedPose before PHP"
+                else:
+                    reason = self.php_policy.depth_error()
+                print(f"[PHP] Cannot enter: {reason}.")
         start_time = time.time()
         # Recovery is globally preemptive so Y works from every FSM state.
         # The input layer gives the damping command higher priority.

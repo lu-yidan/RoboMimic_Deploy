@@ -77,10 +77,19 @@ class PHPParkour(FSMState):
         self.last_action = np.zeros(29, np.float32)
         self.failed = False
 
-    def depth_ready(self):
+    def depth_error(self):
         frame = self.state_cmd.php_depth
-        return (frame is not None and frame.shape == (58, 87) and np.isfinite(frame).all()
-                and 0 <= time.monotonic() - self.state_cmd.php_depth_time <= .15)
+        if frame is None:
+            return 'depth frame missing (check the preceding [PHP camera] error)'
+        if frame.shape != (58, 87) or not np.isfinite(frame).all():
+            return 'depth frame has invalid shape or non-finite values'
+        age = time.monotonic() - self.state_cmd.php_depth_time
+        if not 0 <= age <= .15:
+            return f'depth frame stale: {age * 1000:.0f} ms (limit 150 ms)'
+        return None
+
+    def depth_ready(self):
+        return self.depth_error() is None
 
     def enter(self):
         self.last_action.fill(0)

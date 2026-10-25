@@ -1,12 +1,15 @@
 """Explicit user-triggered simulation reset; no persistent external support."""
 import mujoco
 import numpy as np
-from common.utils import FSMCommand
+from common.utils import FSMCommand, get_gravity_orientation
 
 
-def reset_to_fixed_pose(model, data, fsm, state, output):
+def reset_to_fixed_pose(model, data, fsm, state, output, preserve_controller=False):
+    """Reset standing physics; optionally keep FSM, history, phase and outputs intact."""
     from FSM.FSM import FSMMode
-    fsm.cur_policy.exit()
+    old_time = data.time
+    if not preserve_controller:
+        fsm.cur_policy.exit()
     mujoco.mj_resetData(model, data)
     data.qpos[7:7+state.num_joints] = fsm.fixed_pose_1._default_out
     mujoco.mj_forward(model, data)
@@ -34,6 +37,19 @@ def reset_to_fixed_pose(model, data, fsm, state, output):
     state.pelvis_pos_w = data.qpos[:3].astype(np.float32)
     state.pelvis_quat_w = data.qpos[3:7].astype(np.float32)
     state.root_ang_vel_b = np.zeros(3, np.float32)
+    state.root_lin_vel_b = np.zeros(3, np.float32)
+    state.ang_vel = np.zeros(3, np.float32)
+    state.gravity_ori = get_gravity_orientation(state.pelvis_quat_w)
+    torso = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, 'torso_link')
+    if torso >= 0:
+        state.torso_pos_w = data.xpos[torso].astype(np.float32)
+        state.torso_quat_w = data.xquat[torso].astype(np.float32)
+    # A camera frame from before teleportation is no longer a valid observation.
+    state.php_depth = None
+    state.php_depth_time = 0.0
+    if preserve_controller:
+        data.time = old_time
+        return
     state.skill_cmd = FSMCommand.INVALID
     output.ghost_qpos = None
     output.viz_spheres = None

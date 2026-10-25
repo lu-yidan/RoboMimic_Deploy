@@ -26,3 +26,12 @@ logging:
 # Optional scene-specific motion; other ScaleBFM options are in config/deploy.yaml.
 scalebfm:
   motion: null
+
+# Orbit/zoom remain interactive while the camera tracks the robot.
+camera:
+  follow: true
+  body: torso_link
+  distance: 3.2
+  azimuth: 45
+  elevation: -25
+  lookat: [0, 0, 0.8]  # used when follow=false

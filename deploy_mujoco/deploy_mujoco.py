@@ -245,12 +245,8 @@ def main(cfg: DictConfig):
         elif key == 259:
             standing_reset_requested.set()
     with mujoco.viewer.launch_passive(m, d, key_callback=key_callback) as viewer:
-        camera = cfg.get("camera")
-        if camera:
-            viewer.cam.lookat[:] = camera.get("lookat", [0, 0, .4])
-            viewer.cam.distance = float(camera.get("distance", 3.2))
-            viewer.cam.azimuth = float(camera.get("azimuth", 45))
-            viewer.cam.elevation = float(camera.get("elevation", -35))
+        from deploy_mujoco.viewer_camera import configure_camera
+        configure_camera(viewer.cam, m, cfg.get("camera", {}))
         deadline = time.perf_counter()
         next_render = deadline
         while viewer.is_running() and Running:
@@ -288,12 +284,17 @@ def main(cfg: DictConfig):
                 if (standing_reset_requested.is_set() or
                         (joystick.is_button_pressed(JoystickButton.L1) and
                          joystick.is_button_released(JoystickButton.START))):
-                    reset_to_fixed_pose(m, d, FSM_controller, state_cmd, policy_output)
+                    keep_controller = standing_reset_requested.is_set()
+                    reset_to_fixed_pose(m, d, FSM_controller, state_cmd, policy_output,
+                                        preserve_controller=keep_controller)
                     policy_output_action = policy_output.actions.copy()
                     kps, kds = policy_output.kps.copy(), policy_output.kds.copy()
                     standing_reset_requested.clear()
                     deadline = time.perf_counter()
-                    print("[Simulation] Reset to standing FixedPose; R1 starts ScaleBFM.")
+                    if keep_controller:
+                        print(f"[Simulation] Standing reset; preserved {FSM_controller.cur_policy.name_str} controller state.")
+                    else:
+                        print("[Simulation] Reset to standing FixedPose; R1 starts ScaleBFM.")
                     continue
                 hat = joystick.get_hat_direction()
                 hat_just_pressed = lambda hx, hy: (hat == (hx, hy) and prev_hat != (hx, hy))

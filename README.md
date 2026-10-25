@@ -157,7 +157,9 @@ AMP exports share the deployment interface and embed normalization, joint remapp
 
 ScaleBFM must be enabled; enter it from FixedPose, Loco, AMP or ScaleBFM itself. FreeKick is disabled in the current entries, so R1 is not a kick command. Y preempts other policies; damping takes priority.
 
-**Resets differ:** START changes joint targets without resetting physical position/velocity. Keyboard R restores the configured scene initial state and selects Passive. Backspace or L1+START resets the simulation to standing FixedPose and clears velocity. The latter two operations do not exist on the robot. Use **R → Y** for recovery experiments and **Backspace → R1** for standing ScaleBFM tests.
+**Resets differ:** START changes joint targets without resetting physical position/velocity. Keyboard R restores the configured scene initial state and selects Passive. Backspace restores standing physics and clears velocity while preserving the current controller, its history and phase. L1+START resets standing physics and selects FixedPose. These simulation resets do not exist on the robot. Use **R → Y** for recovery experiments and **L1+START → R1** for standing ScaleBFM tests.
+
+The viewer follows G1 by default; mouse orbit/zoom remain available. Set `camera.follow=false` for a fixed view.
 
 Gamepad inspection: `python tools/joystick_test.py`. Button indices can be overridden with environment variables such as `JOYSTICK_START=7`. L1+left/right adjusts target Y bias by ±0.05 m; the robot bridge also supports L2+left/right for ball Y bias, bounded to ±1.5 m.
 

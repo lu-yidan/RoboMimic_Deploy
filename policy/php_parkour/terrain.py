@@ -19,6 +19,22 @@ def terrain_path(config):
     return path
 
 
+def exact_box(component):
+    """Recognize cuboids within the source OBJ's micrometre rounding error."""
+    import mujoco
+    if len(component.vertices) != 8:
+        return None
+    import trimesh
+    to_origin, extents = trimesh.bounds.oriented_bounds(component)
+    local = trimesh.transform_points(component.vertices, to_origin)
+    if not np.allclose(np.abs(local), extents / 2, atol=2e-6, rtol=0):
+        return None
+    pose = np.linalg.inv(to_origin)
+    quat = np.empty(4)
+    mujoco.mju_mat2Quat(quat, np.ascontiguousarray(pose[:3,:3]).ravel())
+    return extents / 2, pose[:3,3], quat
+
+
 def add_training_terrain(root, worldbody, config):
     import trimesh
     path = terrain_path(config)
@@ -36,11 +52,19 @@ def add_training_terrain(root, worldbody, config):
             worldbody.remove(geom)
     for i, part in enumerate(components):
         name = f'php_terrain_{i}'
-        ET.SubElement(assets, 'mesh', name=name,
-                      vertex=' '.join(f'{v:.9g}' for v in np.asarray(part.vertices).ravel()),
-                      face=' '.join(str(int(v)) for v in np.asarray(part.faces).ravel()),
-                      smoothnormal='false')
-        ET.SubElement(worldbody, 'geom', name=name, type='mesh', mesh=name,
+        box = exact_box(part)
+        if box is not None:
+            size, position, quat = box
+            geometry = dict(type='box', size=' '.join(f'{v:.12g}' for v in size),
+                            pos=' '.join(f'{v:.12g}' for v in position),
+                            quat=' '.join(f'{v:.12g}' for v in quat))
+        else:
+            ET.SubElement(assets, 'mesh', name=name,
+                          vertex=' '.join(f'{v:.9g}' for v in np.asarray(part.vertices).ravel()),
+                          face=' '.join(str(int(v)) for v in np.asarray(part.faces).ravel()),
+                          smoothnormal='false')
+            geometry = dict(type='mesh', mesh=name)
+        ET.SubElement(worldbody, 'geom', name=name, **geometry,
                       rgba='0.55 0.57 0.6 1', friction='0.7 0.005 0.001',
                       solimp='0.99 0.99 0.01 0.5 2', solref='0.001 1',
                       contype='2', conaffinity='1')

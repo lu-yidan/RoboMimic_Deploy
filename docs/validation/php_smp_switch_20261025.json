@@ -1,0 +1,50 @@
+[
+  {
+    "trigger_s": 0.02,
+    "elapsed_s": 30.0,
+    "final_height": 0.7121188338543835,
+    "min_height": 0.7121188338543835,
+    "peak_speed": 7.618144557140822,
+    "failure": null
+  },
+  {
+    "trigger_s": 1.0,
+    "elapsed_s": 30.0,
+    "final_height": 0.7142628874403993,
+    "min_height": 0.12106155820876734,
+    "peak_speed": 12.396304908766922,
+    "failure": null
+  },
+  {
+    "trigger_s": 3.0,
+    "elapsed_s": 30.0,
+    "final_height": 0.7127233323585725,
+    "min_height": 0.08804493976073137,
+    "peak_speed": 10.573747057198274,
+    "failure": null
+  },
+  {
+    "trigger_s": 5.0,
+    "elapsed_s": 30.0,
+    "final_height": 0.7151946297788415,
+    "min_height": 0.08112953116735722,
+    "peak_speed": 11.70086601026697,
+    "failure": null
+  },
+  {
+    "trigger_s": 10.0,
+    "elapsed_s": 30.0,
+    "final_height": 0.7164339694862446,
+    "min_height": 0.10696329040507895,
+    "peak_speed": 13.114622294982167,
+    "failure": null
+  },
+  {
+    "trigger_s": 11.0,
+    "elapsed_s": 30.0,
+    "final_height": 0.7152406982328342,
+    "min_height": 0.09444912548885452,
+    "peak_speed": 13.772340452947605,
+    "failure": null
+  }
+]

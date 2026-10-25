@@ -45,7 +45,7 @@ python deploy_mujoco/deploy_mujoco.py --config-name mujoco_php \
 
 默认资源直接来自 `php.root/thirdparty/holosoma/src/holosoma/holosoma/data/terrains/terrain.obj`，对应外部部署脚本的 `terrain-load-step`，包含地板和 12 个独立障碍块。它是训练仓库所带的部署/评估障碍场，不是对全部随机训练地形的重建。资源保持外置，无需复制到本仓库。
 
-加载器按连通组件分别生成碰撞几何，使用原始顶点、面、位置和朝向；移除原场景重叠的平面，避免地面闪烁及重复接触。自定义 OBJ 需由闭合凸组件组成；遇到凹组件会报错，不能将整个凹场景用一个凸包代替。依赖 `trimesh==4.11.3`（已写入 requirements.txt，当前环境已安装）。
+加载器按连通组件分别生成碰撞几何；长方体按原 OBJ 的位置、朝向和尺寸转换为 MuJoCo box（允许 OBJ 坐标舍入带来的 2 微米误差），其他闭合凸组件保留网格。这样避免 MuJoCo 3.2 在大网格地板上倒地恢复时出现穿透和接触失稳；移除原场景重叠的平面，避免地面闪烁及重复接触。自定义 OBJ 需由闭合凸组件组成；遇到凹组件会报错，不能将整个凹场景用一个凸包代替。依赖 `trimesh==4.11.3`（已写入 requirements.txt，当前环境已安装）。
 
 ## 按键切换
 
@@ -106,3 +106,13 @@ MuJoCo 3.2 的原生 Python viewer 没有图片叠加接口，因此启用深度
 已删除输入层的 `[Input] CMD_*` 日志。Passive 下 A 不允许直接切 AMP，按 START 进入 FixedPose 后再按 A；没有实际切换时不打印命令。PHP 切换成功时仍显示 `[PHP] Entering from ...; depth ready.`，当前状态也随之更新。深度无效等真正错误仍保留具体诊断。
 
 支持 **Y → SMP → L1+A → PHP** 双向切换，无需先经过 START/FixedPose；返回 PHP 时仍要求有效的新深度图。
+
+## Passive 倒地后按 Y 的稳定性修复
+
+曾复现三角网格地面在 SMP 起身时产生巨大速度、QACC 警告或穿地。修改接触软硬参数不足以解决问题；源资源中的长方体改用等形 box 碰撞后，6 个切换时刻（0.02/1/3/5/10/11 秒）各完成 30 秒仿真，未出现警告、自动复位或穿地。仍保持 Passive 启动和显式 Y 切换。
+
+```bash
+python tools/validate_php_recovery.py --out /tmp/php_smp_switch.json
+```
+
+该检查调用实际 FSM、Passive 和 SMP 模型。没有用 MuJoCo 自动复位来掩盖失败，也不等价于真机验证。

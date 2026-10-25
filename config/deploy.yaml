@@ -17,10 +17,3 @@ amp:
 smp:
   profile: v34_balanced4_hard19000
   # path_a6_9999 | a6_no_alpha_9999 | v34_balanced4_hard19000
-
-# External PHP/Holosoma deployment; invoked with deploy_php/deploy_php.py.
-# It uses its own depth-capable simulation/runtime, not the AMP/SMP FSM.
-php:
-  root: ~/workspace/php_parkour
-  model_dir: ~/.cache/php-parkour/student
-  scene: steps  # steps | flat

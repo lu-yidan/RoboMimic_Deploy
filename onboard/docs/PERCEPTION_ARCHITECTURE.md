@@ -53,7 +53,7 @@ near-range detections share the same smoothed output used by policy.
 Recommended full-system bring-up:
 
 ```bash
-bash tools/start_tmux_layout.sh
+bash tools/deploy/start_tmux_layout.sh
 ```
 
 The tmux layout keeps camera, lidar, policy, dashboard, and the single final
@@ -85,7 +85,7 @@ manual `run_ball_fuser.sh`.
 Monitor the final policy-facing topic:
 
 ```bash
-python tools/check_ball_state.py
+python tools/diagnostics/check_ball_state.py
 ```
 
 Profiling example:

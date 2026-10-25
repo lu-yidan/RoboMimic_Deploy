@@ -318,7 +318,7 @@ ScaleBFM 关闭时 R1 不启动它。开启时允许从 FixedPose、Loco、AMP �
 ### 5.3 手柄映射和感知偏置
 
 ```bash
-python tools/joystick_test.py
+python tools/diagnostics/joystick_test.py
 # 例：覆盖 START 的物理按钮索引
 JOYSTICK_START=7 python deploy_mujoco/deploy_mujoco.py
 ```
@@ -337,7 +337,7 @@ JOYSTICK_START=7 python deploy_mujoco/deploy_mujoco.py
 ### 6.1 下载与开关
 
 ```bash
-python tools/setup_scalebfm.py
+python tools/motion/setup_scalebfm.py
 pip install -r environment/scalebfm-requirements.txt
 ```
 
@@ -404,12 +404,12 @@ C++ 独占 LowState/LowCmd；Python 经 bridge DDS 收发状态、关节目标�
 
 `deploy_real/config/real.yaml` 中配置 `net`、`control_dt=0.02`、`num_joints=29` 和日志。网卡选择优先级为 `BRIDGE_NETWORK_INTERFACE` → `ROBOT_IFACE` → YAML `net`。bridge 默认状态过期门限 200 ms、命令超时 100 ms；实际通信配置与验证步骤见 [bridge 说明](bridge/README_zh.md) 和 [验证指南](bridge/VALIDATION.md)。
 
-ScaleBFM 启用时，先执行 `python tools/check_scalebfm_onboard.py --steps 100` 做无 DDS 检查，再按机载流程验证；这项检查不会发送电机命令。
+ScaleBFM 启用时，先执行 `python tools/diagnostics/check_scalebfm_onboard.py --steps 100` 做无 DDS 检查，再按机载流程验证；这项检查不会发送电机命令。
 
 ### 7.2 tmux、直连入口与感知
 
 ```bash
-bash tools/start_tmux_layout.sh
+bash tools/deploy/start_tmux_layout.sh
 ```
 
 六窗格预填 C++ bridge、Python 策略、Dashboard、相机、雷达、融合服务命令；逐个确认后按 Enter 启动。`Ctrl-b` 加方向键切换窗格，`Ctrl-b d` 分离，分离不停止进程。`sr`/`rb` 仅在已配置相应 shell 别名时可用。
@@ -430,18 +430,18 @@ python deploy_mujoco/deploy_mujoco.py --config-name mujoco_table \
 
 `logging.log_dir` 默认 `logs`；`states` 按 FSM 状态过滤，`tag` 只是文件标签，不选择策略。真机修改 `deploy_real/config/real.yaml` 的 `logging` 段。SMP 日志包含实际 profile、模型哈希、93 维观测、原始/限幅动作、关节目标及力矩限制等。
 
-参见 [日志字段与审计](docs/logging.md)。`tools/playback_log.py`、`tools/audit_recovery_log.py`、`tools/render_recovery_trace.py` 提供回放/审计功能，具体输入参数用各脚本 `--help` 查看。
+参见 [日志字段与审计](docs/logging.md)。`tools/analysis/playback_log.py`、`tools/analysis/audit_recovery_log.py`、`tools/export/render_recovery_trace.py` 提供回放/审计功能，具体输入参数用各脚本 `--help` 查看。
 
 ### 8.2 无手柄、无电机通信的检查
 
 ```bash
 python -m pip install --only-binary=cyclonedds 'cyclonedds==0.10.2'
 MUJOCO_GL=egl OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 python -m unittest discover -s tests -v
-python tools/test_scalebfm_real.py
+python tools/validation/test_scalebfm_real.py
 
 # 下列两项需要外部 ScaleBFM 已安装且共享配置 enabled=true
-python tools/check_scalebfm_onboard.py --steps 100
-python tools/smoke_scalebfm_fsm.py
+python tools/diagnostics/check_scalebfm_onboard.py --steps 100
+python tools/validation/smoke_scalebfm_fsm.py
 ```
 
 测试覆盖 AMP 训练轨迹一致性、SMP 力矩限制、场景几何、配置选择、日志及状态切换。ScaleBFM smoke 使用实际 MuJoCo/PD/FSM 验证 squat、重置、重入和 AMP/Loco 往返切换。测试结果及限制见 [整合验证记录](docs/validation/lyd_deploy_20261025.json)。这些结果不等于真机验证，也不保证所有策略都能完成桌下或箱内任务。
@@ -459,7 +459,7 @@ python tools/smoke_scalebfm_fsm.py
 | 键盘 R 后又躺回原位 | 正常：R 恢复配置初态；它与 Backspace 的站立复位不同 |
 | 场景显示慢 | 降低 `render_hz`；保持 50 Hz 策略周期；检查 GPU/CPU 推理耗时 |
 | `ghost_enabled=false` 后还有彩色点 | ghost 模型与策略的调试标记是不同显示，开关只控制 ghost |
-| 手柄按钮错位或无响应 | 先运行 `tools/joystick_test.py`，核对按钮索引、扳机轴和方向帽 |
+| 手柄按钮错位或无响应 | 先运行 `tools/diagnostics/joystick_test.py`，核对按钮索引、扳机轴和方向帽 |
 | 含球场景不能用 R1 踢球 | 当前入口禁用 FreeKick，R1 是 ScaleBFM |
 
 ## 10. 文档索引与来源
@@ -488,10 +488,14 @@ python deploy_mujoco/deploy_mujoco.py --config-name mujoco_php
 python deploy_mujoco/deploy_mujoco.py --config-name mujoco_php scene.name=none
 ```
 
-启动保持 Passive，只有按 START 才进入 FixedPose；`L1+A` 或窗口 `P` 显式进入 PHP（允许从 Passive 进入）；左摇杆控制方向，`R3` 切换速度，`A/B/START` 返回 AMP/Loco/FixedPose，`Y` 进入 SMP，`L2` 阻尼。本次支持 MuJoCo，实机深度接入尚未完成。
+启动保持 Passive，只有按 START 才进入 FixedPose；`L1+A` 或窗口 `P` 显式进入 PHP（允许从 Passive 进入）；左摇杆控制方向，`R3` 切换速度，`A/B/START` 返回 AMP/Loco/FixedPose，`Y` 进入 SMP，`L2` 阻尼。以上为 MuJoCo 按键；实机已接入 C++ bridge，默认关闭且只经过离线验证，实机速度键为 F2。参见 [本体部署、tmux 与断流处理](docs/php_real_bridge_zh.md)。
 
 默认恢复自由视角，可继续用鼠标旋转和缩放；`camera.follow=true` 可主动开启跟随。Backspace 不调用控制器的 exit/enter；PHP 速度档位、动作历史、参考轨迹进度均保留，复位前的深度图则会重新采集。
 
 PHP 启用时默认在 MuJoCo 三维视窗右上角显示模型实际使用的深度图，深度图标题显示当前策略。原生参数侧栏和 Track 模式始终保留；`php_depth_preview=false` 仅关闭预览。使用官方 MuJoCo 3.10.0 的公开接口，无需源码补丁和编译器，详见[安装与迁移](docs/native_depth_overlay.md)。
 
 PHP 默认场景现直接复用外部 `php.root` 中的 Holosoma `terrain.obj`；深度图集成在同一窗口右上角，显示模型输入和采集延迟。详见 [PHP 场景配置](docs/php_deployment_zh.md)。
+
+工具已按用途移入 `tools/` 的子目录，索引见 [工具说明](tools/README.md)。唯一 tmux 入口为 `tools/deploy/start_tmux_layout.sh`，保持六屏布局；PHP 通过配置启用，深度图显示在原 Sensor Dashboard。
+
+六屏右上角通过 `camera.mode: gray | php_depth` 选择相机，独立于左中策略进程启动。灰度网页为 8080，PHP 深度在 Dashboard 的 8091 查看；只看 PHP 图像不需要启动策略或 C++ bridge。

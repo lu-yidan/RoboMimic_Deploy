@@ -74,11 +74,11 @@ L1+A 的 A 释放不会误触 AMP，即使先松开 L1。L3 仍是 ghost 开关�
 - 处理：裁剪 `[2:,4:-4]`，0.3–3 m 截断，带抗锯齿 bicubic resize 到 `58×87`，按官方远端/空像素规则归一化。MuJoCo 深度已经是从上到下，无须上下翻转。
 - student 输入：`actions(29), base_ang_vel(3), dof_pos(29), dof_vel(29), torso gravity(3), direction(15), depth latent(32)`，共 140 维；输出按名称映射回 29 关节。
 - 已验证实际 EGL 深度渲染、ONNX 推理、关节映射、FSM 切换、深度超时、组合键释放；平地和外部 PHP 障碍场分别完成 10 秒闭环（前 2 秒 stand，后 8 秒前进），未触发跌倒判据（pelvis 高度 <0.3 m）。这只是有限时长的仿真验证。
-- 本次接入范围是 MuJoCo。实机和 C++ bridge 尚未接入 PHP 深度传感器，因此不启用 PHP；没有将仿真验证描述成实机验证。
+- 实机深度与 C++ bridge 接入已实现，默认关闭，目前只完成离线验证。安装、本体 tmux 启动、外参和断流处理见 [实机部署](php_real_bridge_zh.md)。
 
 ```bash
 MUJOCO_GL=egl python -m unittest discover -s tests -p test_php_policy.py
-MUJOCO_GL=egl python tools/smoke_php_mujoco.py
+MUJOCO_GL=egl python tools/validation/smoke_php_mujoco.py
 ```
 
 旧启动器报错原因：重复传入 terrain 子命令导致 Holosoma 仿真未启动，继而无法创建深度共享内存。现已移除该启动链路，`lyd-deploy` 分支保留原有统一部署，PHP 开发独立在本分支。
@@ -112,7 +112,7 @@ Backspace 保留当前策略及内部状态，只复位物理姿态/速度并刷
 曾复现三角网格地面在 SMP 起身时产生巨大速度、QACC 警告或穿地。修改接触软硬参数不足以解决问题；源资源中的长方体改用等形 box 碰撞后，6 个切换时刻（0.02/1/3/5/10/11 秒）各完成 30 秒仿真，未出现警告、自动复位或穿地。仍保持 Passive 启动和显式 Y 切换。
 
 ```bash
-python tools/validate_php_recovery.py --out /tmp/php_smp_switch.json
+python tools/validation/validate_php_recovery.py --out /tmp/php_smp_switch.json
 ```
 
 该检查调用实际 FSM、Passive 和 SMP 模型。没有用 MuJoCo 自动复位来掩盖失败，也不等价于真机验证。

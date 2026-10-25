@@ -1,4 +1,5 @@
 import time
+import struct
 from dataclasses import dataclass
 
 import numpy as np
@@ -34,10 +35,25 @@ class PolicyCommandFrame:
 class PolicyRuntime:
     """Policy/FSM runner that consumes bridge-state DDS instead of Unitree SDK."""
 
-    def __init__(self, config):
+    def __init__(self, config, *, connect=True, depth_source=None):
         self.config = config
         self.num_joints = config.num_joints
         self.control_dt = config.control_dt
+        self.connect = connect
+        self.php_config = getattr(config, 'php', {'enabled': False})
+        self.php_enabled = self.php_config.get('enabled', False)
+        self.depth_source = depth_source
+        self._php_error = None
+        self._php_last_tick = None
+        self._php_tick_time = time.monotonic()
+        if self.php_enabled:
+            from policy.php_parkour.real_depth import DepthBuffer
+            from policy.php_parkour.depth_ipc import DepthReader
+            if depth_source is None:
+                factory = DepthReader if connect else DepthBuffer
+                self.depth_source = factory(self.php_config['camera'])
+            if self.num_joints != 29 or abs(self.control_dt-.02) > 1e-9:
+                raise ValueError('PHP bridge requires 29 joints and 50 Hz control')
         self.remote_controller = RemoteController()
 
         self.state_cmd = StateAndCmd(self.num_joints)
@@ -45,37 +61,46 @@ class PolicyRuntime:
         import torch
         torch.set_num_threads(config.torch_threads)
         self.FSM_controller = FSM(self.state_cmd, self.policy_output,
-                                  config.scalebfm, config.joint_names, enable_freekick=False)
+                                  config.scalebfm, config.joint_names, enable_freekick=False,
+                                  php_config=self.php_config)
+        if self.php_enabled:
+            self.FSM_controller.php_policy.warmup()
+            order = self.FSM_controller.php_policy.runtime_to_canonical
+            self._php_effort_limits = np.asarray(self.php_config['camera']['effort_limits'])[order]
         self.catalog = None
         if config.scalebfm.enabled:
             tracker = self.FSM_controller.scalebfm_policy
             self.catalog = MotionCatalog(tracker.motion_path, config.scalebfm.motion_globs, PROJECT_ROOT)
             tracker.preload_motions(self.catalog.paths)
             print(self.catalog.describe())
-        self.policy_input = RealPolicyInput(self.catalog)
+        self.policy_input = RealPolicyInput(self.catalog, php_enabled=self.php_enabled)
         # All model/reference loading finishes before bridge subscriptions start.
 
-        self.bridge_state_sub = BridgeStateSubscriber(
-            domain_id=config.bridge_domain_id,
-            topic_name=config.bridge_state_topic,
-            stale_ms=config.bridge_state_stale_ms,
-        )
-        self.bridge_state_sub.start()
-        self.diagnostics_sub = DiagnosticsSubscriber(self.bridge_state_sub._dp, config.bridge_state_topic)
+        self.bridge_state_sub = self.diagnostics_sub = None
+        self.ball_sub = self.target_sub = None
+        self._corrected_target_pub = self._corrected_ball_pub = self._bias_pub = None
         self._previous_step_time = None
         self._was_stale = False
+        if connect:
+            self.bridge_state_sub = BridgeStateSubscriber(
+                domain_id=config.bridge_domain_id,
+                topic_name=config.bridge_state_topic,
+                stale_ms=config.bridge_state_stale_ms,
+            )
+            self.bridge_state_sub.start()
+            self.diagnostics_sub = DiagnosticsSubscriber(self.bridge_state_sub._dp, config.bridge_state_topic)
 
-        self.ball_sub = BallStateSubscriber(domain_id=0)
-        self.ball_sub.start()
-        self.target_sub = TargetStateSubscriber(domain_id=0)
-        self.target_sub.start()
-        self._corrected_target_pub = TargetStatePublisher(
-            topic_name="rt/target_state_corrected"
-        )
-        self._corrected_ball_pub = BallStatePublisher(
-            topic_name="rt/ball_state_corrected"
-        )
-        self._bias_pub = TargetStatePublisher(topic_name="rt/bias_values")
+            self.ball_sub = BallStateSubscriber(domain_id=0)
+            self.ball_sub.start()
+            self.target_sub = TargetStateSubscriber(domain_id=0)
+            self.target_sub.start()
+            self._corrected_target_pub = TargetStatePublisher(
+                topic_name="rt/target_state_corrected"
+            )
+            self._corrected_ball_pub = BallStatePublisher(
+                topic_name="rt/ball_state_corrected"
+            )
+            self._bias_pub = TargetStatePublisher(topic_name="rt/bias_values")
 
         self._prev_right_pressed    = False
         self._prev_left_pressed     = False
@@ -92,6 +117,7 @@ class PolicyRuntime:
                 extra_meta={"robot_type": "real_policy_bridge", "control_dt": config.control_dt,
                     "logged_fsm_states": sorted(config.log_states),
                     "time_clock": "monotonic elapsed", "torque_source": "optional tick-matched motor firmware estimate",
+                    "php": self.php_config,
                     "unavailable_on_real": ["base_position", "base_linear_velocity", "foot_contact_force", "external_force"]},
             )
             if config.log_enabled
@@ -101,7 +127,14 @@ class PolicyRuntime:
         self._cmd_seq = 0
         self.exit_requested = False
 
-        self.wait_for_bridge_state()
+        try:
+            if self.depth_source is not None:
+                self.depth_source.start()
+            if connect:
+                self.wait_for_bridge_state()
+        except BaseException:
+            self.close()
+            raise
 
     def wait_for_bridge_state(self):
         while self.bridge_state_sub.latest().tick == 0:
@@ -109,9 +142,11 @@ class PolicyRuntime:
         print("Successfully connected to bridge state.")
 
     def close(self):
-        self.bridge_state_sub.stop()
-        self.ball_sub.stop()
-        self.target_sub.stop()
+        if self.depth_source is not None:
+            self.depth_source.close()
+        for subscriber in (self.bridge_state_sub, self.ball_sub, self.target_sub):
+            if subscriber is not None:
+                subscriber.stop()
         if self._logger is not None:
             self._logger.close()
 
@@ -219,12 +254,98 @@ class PolicyRuntime:
             valid=True,
         )
 
-    def step(self) -> PolicyCommandFrame:
+    def _apply_php_depth(self):
+        if not self.php_enabled:
+            return
+        sample = self.depth_source.latest()
+        self.state_cmd.php_depth = sample.image
+        self.state_cmd.php_depth_time = sample.captured_at
+        self.state_cmd.telemetry.update(php_depth_age_ms=(time.monotonic()-sample.captured_at)*1000
+                                       if sample.image is not None else float('nan'),
+                                       php_depth_sequence=sample.sequence,
+                                       php_depth_valid_fraction=sample.valid_fraction)
+        if sample.error != self._php_error:
+            if self._logger is not None:
+                self._logger.event('php_depth_status', error=sample.error, sequence=sample.sequence)
+            if sample.error:
+                print('[PHP camera] '+sample.error, flush=True)
+            self._php_error = sample.error
+
+    def _damp_php(self, reason):
+        # Exit clears policy history. Fresh depth alone cannot re-enter PHP.
+        self.state_cmd.skill_cmd = FSMCommand.PASSIVE
+        self.FSM_controller.run()
+        if self._logger is not None:
+            self._logger.event('php_damping', reason=reason, seq=self._cmd_seq)
+        return True
+
+    def _guard_php_output(self):
+        policy = self.FSM_controller.php_policy
+        active = self.FSM_controller.cur_policy.name == FSMStateName.SKILL_PHP_PARKOUR
+        executed = getattr(self.policy_output, 'executed_fsm_state', -1) == FSMStateName.SKILL_PHP_PARKOUR.value
+        if not (active or executed):
+            return False
+        age = time.monotonic()-self.state_cmd.php_depth_time
+        if not 0 <= age <= self.php_config['camera']['max_age_s']:
+            return self._damp_php('Depth expired during policy inference')
+        if policy.failed or policy.depth_error():
+            return self._damp_php(policy.depth_error() or 'PHP inference failed')
+        q, dq = self.state_cmd.q, self.state_cmd.dq
+        target, kp, kd = self.policy_output.actions, self.policy_output.kps, self.policy_output.kds
+        if not all(np.isfinite(a).all() for a in (target,kp,kd)) or np.any(kp <= 0) or np.any(kd < 0):
+            return self._damp_php('Invalid PHP PD output')
+        # Equivalent to clipping PD torque in simulation, using the same limits.
+        self.policy_output.actions = np.clip(target,
+            q+(kd*dq-self._php_effort_limits)/kp,
+            q+(kd*dq+self._php_effort_limits)/kp)
+        if not np.isfinite(self.policy_output.actions).all():
+            return self._damp_php('Non-finite bounded PHP target')
+        return False
+
+    def _php_state_error(self, state):
+        try:
+            for name, length in (('q',29),('dq',29),('imu_quat_wxyz',4),('imu_gyro',3)):
+                value = np.asarray(getattr(state,name))
+                if value.shape != (length,) or not np.isfinite(value).all():
+                    return 'Invalid robot '+name
+            if abs(np.linalg.norm(state.imu_quat_wxyz)-1) > .05:
+                return 'Invalid IMU quaternion norm'
+            raw = bytes(state.remote_raw)
+            if len(raw) != 24 or not np.isfinite(struct.unpack('<5f',raw[4:24])).all():
+                return 'Invalid remote packet'
+            now = time.monotonic()
+            received = getattr(state, '_local_received_monotonic', None)
+            if self.connect and received is None:
+                return 'Bridge state has no local receipt timestamp'
+            if received is not None and not 0 <= now-received <= self.php_config['camera']['max_age_s']:
+                return 'Bridge state too old for PHP runtime'
+            if state.tick != self._php_last_tick:
+                self._php_last_tick, self._php_tick_time = state.tick, now
+            elif now-self._php_tick_time > self.php_config['camera']['max_age_s']:
+                return 'Bridge state tick stalled'
+        except (TypeError,ValueError,AttributeError):
+            return 'Malformed bridge state'
+        return None
+
+    def step(self, bridge_state=None) -> PolicyCommandFrame:
         started = time.monotonic()
         period_ms = float("nan") if self._previous_step_time is None else (started-self._previous_step_time)*1000
         self._previous_step_time = started
-        bridge_state = self.bridge_state_sub.latest()
+        if bridge_state is None:
+            if not self.connect:
+                raise ValueError('Offline runtime requires an injected bridge state')
+            bridge_state = self.bridge_state_sub.latest()
+        if self.php_enabled and bridge_state.tick != 0:
+            error = self._php_state_error(bridge_state)
+            if error:
+                self._damp_php(error)
+                frame = PolicyCommandFrame(self._cmd_seq, np.zeros(29,np.float32),
+                    np.zeros(29,np.float32),np.full(29,8.,np.float32),request_damping=True)
+                self._cmd_seq += 1
+                return frame
         if bridge_state.tick == 0:
+            if self.php_enabled and self.FSM_controller.cur_policy.name == FSMStateName.SKILL_PHP_PARKOUR:
+                self._damp_php('Bridge state stale')
             if self._logger is not None and not self._was_stale:
                 self._logger.event("state_stale_damping", time_s=started-self._log_start, seq=self._cmd_seq)
             self._was_stale = True
@@ -242,17 +363,19 @@ class PolicyRuntime:
         self._was_stale = False
         self._set_remote_from_bridge(bridge_state)
         self._apply_robot_state(bridge_state)
-        self._apply_remote_commands()
         self.state_cmd.telemetry = {
             "state_tick_words": [int(bridge_state.tick) & 65535, (int(bridge_state.tick) >> 16) & 65535],
             "command_seq_words": [self._cmd_seq & 65535, (self._cmd_seq >> 16) & 65535],
             "state_age_ms": (time.monotonic()-getattr(bridge_state, "_local_received_monotonic", float("nan")))*1000,
             "loop_period_ms": period_ms, "remote_raw": list(bridge_state.remote_raw[:24]),
         }
-        apply_diagnostics(self.state_cmd, self.diagnostics_sub.matching(bridge_state.tick))
-        self._apply_perception_state()
-
+        if self.connect:
+            apply_diagnostics(self.state_cmd, self.diagnostics_sub.matching(bridge_state.tick))
+            self._apply_perception_state()
+        self._apply_php_depth()
+        self._apply_remote_commands()
         self.FSM_controller.run()
+        php_damping = self._guard_php_output() if self.php_enabled else False
 
         self.state_cmd.telemetry["runtime_compute_ms"] = (time.monotonic()-started)*1000
         if self._logger is not None and (self.FSM_controller.cur_policy.name in self._log_states or
@@ -266,7 +389,7 @@ class PolicyRuntime:
             q_des=self.policy_output.actions.copy(),
             kp=self.policy_output.kps.copy(),
             kd=self.policy_output.kds.copy(),
-            request_damping=self.exit_requested,
+            request_damping=self.exit_requested or php_damping,
             exit_requested=self.exit_requested,
         )
         self._cmd_seq += 1

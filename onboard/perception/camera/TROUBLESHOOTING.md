@@ -33,7 +33,7 @@ pkill -f "onboard/perception/camera/target_ball_detector.py" 2>/dev/null || true
 ./onboard/perception/camera/run_gray.sh --with-fuser
 ```
 
-全系统运行时不要用这个参数；`tools/start_tmux_layout.sh` 已经在独立 pane 中启动
+全系统运行时不要用这个参数；`tools/deploy/start_tmux_layout.sh` 已经在独立 pane 中启动
 唯一 `run_ball_fuser.sh`。
 
 如需定位低于 20Hz 的瓶颈：
@@ -767,7 +767,7 @@ joint_age_s < 0.05
 
 ```bash
 ip -o link show
-python tools/check_dds_connection.py <网卡名>
+python tools/diagnostics/check_dds_connection.py <网卡名>
 ```
 
 注意：Score 的 `anchor_pos_b` / `anchor_ori_6d` 按训练设置是 torso-link 相关；

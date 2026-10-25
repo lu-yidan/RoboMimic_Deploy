@@ -42,6 +42,8 @@ from common.target_state_dds import (  # noqa: E402
     TargetState, TargetStateSubscriber,
 )
 
+from common.php_depth_preview import preview_path, read_preview
+
 BALL_STALE_MS = 400
 
 
@@ -112,6 +114,7 @@ HTML = r"""<!doctype html>
       gap: 14px; padding: 8px 24px 24px;
     }
     .card {
+      min-width: 0;
       background: color-mix(in srgb, var(--panel) 92%, transparent);
       border: 1px solid #334155; border-radius: 16px;
       box-shadow: 0 16px 40px rgba(0,0,0,.24); overflow: hidden;
@@ -166,6 +169,12 @@ HTML = r"""<!doctype html>
 <main class="layout">
   <section class="card canvasWrap"><canvas id="c"></canvas></section>
   <aside class="card side">
+    <div class="sbox" id="php-depth-box">
+      <div class="title">PHP depth <span class="badge stale" id="php-depth-badge">wait</span></div>
+      <img id="php-depth-image" alt="PHP model depth input" hidden style="width:100%;image-rendering:pixelated;aspect-ratio:87/58">
+      <div class="sub" id="php-depth-status">Waiting for depth</div>
+      <div class="sub">Near: yellow · Far: blue · 87 × 58</div>
+    </div>
     <div class="legend">
       <div class="legendRow"><span class="dot" style="background:var(--target)"></span>target (raw)</div>
       <div class="legendRow"><span class="dot" style="background:var(--corrected)"></span>target (corrected)</div>
@@ -559,6 +568,30 @@ function updatePanel(s) {
   );
 }
 
+// The browser also expires the image if the HTTP/SSE connection stalls.
+let phpDeadline = 0;
+function updateDepth(d) {
+  const img = document.getElementById('php-depth-image');
+  const badge = document.getElementById('php-depth-badge');
+  const status = document.getElementById('php-depth-status');
+  const valid = d && d.valid && d.image;
+  img.hidden = !valid;
+  badge.textContent = valid ? 'valid' : 'unavailable';
+  badge.className = 'badge ' + (valid ? 'valid' : 'stale');
+  if (valid) {
+    img.src = 'data:image/png;base64,' + d.image;
+    status.textContent = `Age ${d.age_ms.toFixed(0)} ms · Coverage ${(d.coverage*100).toFixed(1)}% · Frame ${d.sequence}`;
+    phpDeadline = performance.now() + Math.max(0, d.max_age_s*1000-d.age_ms);
+  } else {
+    img.removeAttribute('src');
+    status.textContent = (d && d.error) || 'Dashboard connection lost';
+    phpDeadline = 0;
+  }
+}
+setInterval(() => {
+  if (phpDeadline && performance.now() > phpDeadline) updateDepth({error:'Depth stream stalled/stale'});
+}, 50);
+
 // ── SSE ──────────────────────────────────────────────────────────────────────
 
 window.addEventListener("resize", resize);
@@ -570,6 +603,7 @@ es.onerror = () => { document.getElementById("conn").textContent = "reconnecting
 es.onmessage = (e) => {
   latest = JSON.parse(e.data);
   updatePanel(latest);
+  updateDepth(latest.phpDepth);
 };
 
 // ── Column layout toggle ──────────────────────────────────────────────────────
@@ -670,7 +704,8 @@ def _target_snapshot(last, received_at, stale_ms, hz: float = 0.0) -> dict:
 
 
 class SensorStore:
-    def __init__(self, stale_ms_ball: float, stale_ms_target: float):
+    def __init__(self, stale_ms_ball: float, stale_ms_target: float, php_depth_path=None):
+        self.php_depth_path = php_depth_path or preview_path()
         self._lock = threading.Lock()
         self._stale_ball   = stale_ms_ball
         self._stale_target = stale_ms_target
@@ -738,7 +773,7 @@ class SensorStore:
                                 self._stale_ball, self._rate_ball_corrected.hz)
             bias = self._bias.copy() if self._bias is not None else {"target_y": 0.0, "ball_y": 0.0}
         return {"target": t, "corrected": tc, "cam": c, "lidar": l, "fused": f,
-                "ballCorrected": bc, "biasValues": bias}
+                "ballCorrected": bc, "biasValues": bias, "phpDepth": read_preview(self.php_depth_path)}
 
 
 # ── HTTP ──────────────────────────────────────────────────────────────────────
@@ -822,43 +857,49 @@ def main():
     parser.add_argument("--rate-hz",     type=float, default=20.0)
     parser.add_argument("--range-m",     type=float, default=4.0,
                         help="Canvas half-width in metres (default 4.0)")
+    parser.add_argument('--offline', action='store_true', help='No DDS subscriptions; preview file and HTTP only')
+    parser.add_argument('--php-depth-file', type=Path, help='Override local preview file for offline checks')
     args = parser.parse_args()
 
     store = SensorStore(
         stale_ms_ball=args.stale_ms,
         stale_ms_target=float(TARGET_STALE_MS),
+        php_depth_path=args.php_depth_file,
     )
 
-    target_sub = TargetStateSubscriber(
-        domain_id=args.domain_id, callback=store.update_target,
-        topic_name=args.target_topic,
-    )
-    corrected_sub = TargetStateSubscriber(
-        domain_id=args.domain_id, callback=store.update_corrected_target,
-        topic_name=args.corrected_topic,
-    )
-    ball_corrected_sub = BallStateSubscriber(
-        domain_id=args.domain_id, callback=store.update_ball_corrected,
-        topic_name=args.ball_corrected_topic,
-    )
-    bias_sub = TargetStateSubscriber(
-        domain_id=args.domain_id, callback=store.update_bias,
-        topic_name=args.bias_topic,
-    )
-    cam_sub = BallStateSubscriber(
-        domain_id=args.domain_id, callback=store.update_cam,
-        topic_name=args.cam_topic,
-    )
-    lidar_sub = BallStateSubscriber(
-        domain_id=args.domain_id, callback=store.update_lidar,
-        topic_name=args.lidar_topic,
-    )
-    fused_sub = BallStateSubscriber(
-        domain_id=args.domain_id, callback=store.update_fused,
-        topic_name=args.fused_topic,
-    )
-    for sub in (target_sub, corrected_sub, cam_sub, lidar_sub, fused_sub, ball_corrected_sub, bias_sub):
-        sub.start()
+    subscribers = []
+    if not args.offline:
+        target_sub = TargetStateSubscriber(
+            domain_id=args.domain_id, callback=store.update_target,
+            topic_name=args.target_topic,
+        )
+        corrected_sub = TargetStateSubscriber(
+            domain_id=args.domain_id, callback=store.update_corrected_target,
+            topic_name=args.corrected_topic,
+        )
+        ball_corrected_sub = BallStateSubscriber(
+            domain_id=args.domain_id, callback=store.update_ball_corrected,
+            topic_name=args.ball_corrected_topic,
+        )
+        bias_sub = TargetStateSubscriber(
+            domain_id=args.domain_id, callback=store.update_bias,
+            topic_name=args.bias_topic,
+        )
+        cam_sub = BallStateSubscriber(
+            domain_id=args.domain_id, callback=store.update_cam,
+            topic_name=args.cam_topic,
+        )
+        lidar_sub = BallStateSubscriber(
+            domain_id=args.domain_id, callback=store.update_lidar,
+            topic_name=args.lidar_topic,
+        )
+        fused_sub = BallStateSubscriber(
+            domain_id=args.domain_id, callback=store.update_fused,
+            topic_name=args.fused_topic,
+        )
+        subscribers = (target_sub, corrected_sub, cam_sub, lidar_sub, fused_sub, ball_corrected_sub, bias_sub)
+        for sub in subscribers:
+            sub.start()
 
     html = HTML.replace("__RANGE_M__", str(float(args.range_m))).encode("utf-8")
     interval_s = 1.0 / max(1.0, args.rate_hz)
@@ -883,8 +924,7 @@ def main():
     except KeyboardInterrupt:
         print("\n[dashboard] Stopped.")
     finally:
-        for sub in (target_sub, corrected_sub, cam_sub, lidar_sub, fused_sub,
-                    ball_corrected_sub, bias_sub):
+        for sub in subscribers:
             sub.stop()
         httpd.shutdown()
         httpd.server_close()

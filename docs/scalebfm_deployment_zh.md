@@ -6,7 +6,7 @@
 
 ## 1. 外部目录与来源
 
-运行 `python tools/setup_scalebfm.py`，默认在部署仓库旁创建：
+运行 `python tools/motion/setup_scalebfm.py`，默认在部署仓库旁创建：
 
 ```text
 ScaleBFM/
@@ -83,19 +83,19 @@ MuJoCo 场景 YAML/命令行仅能覆盖 `scalebfm.motion`，其余选项仍在�
 
 ```bash
 pip install -r environment/scalebfm-requirements.txt
-python tools/check_scalebfm_onboard.py --steps 100
-python tools/smoke_scalebfm_fsm.py
+python tools/diagnostics/check_scalebfm_onboard.py --steps 100
+python tools/validation/smoke_scalebfm_fsm.py
 ```
 
 第一项不创建 DDS，检查真实 FSM 模型初始化、动作预加载、CUDA Graph/普通 PyTorch 输出一致性及静态状态推理时延。第二项运行实际 MuJoCo/PD/FSM，包括 10 秒 squat、倒地仿真重置、动作重入、AMP/Loco 往返切换、无效文件保护和 Passive 退出。
 
 | 工具 | 用途与前提 |
 |---|---|
-| `tools/evaluate_scalebfm_motion.py` | 单个兼容 NPZ 的 MuJoCo 评估；`--motion`、`--out` 必填，`--no-video` 关闭录像 |
-| `tools/prepare_duobox_scalebfm.py` | 单段 DuoBox/GMR 预处理；需要原始 pair、actor、外部 GMR 和 ScaleBFM 路径 |
-| `tools/batch_duobox_scalebfm.py` | 批量数据准备；需自行提供数据根目录、GMR 和 ScaleBFM 路径 |
-| `tools/reactive_stream_tracker.py` / `reactive_realtime.py` | 实验用增量参考管线；依赖外部生成器/GMR 和工作目录，不是普通部署启动入口 |
-| `tools/validate_scalebfm.py` | 保留的独立上游 ScaleBridge 验证脚本；直接实例化上游 agent，不走本分支的 PyTorch 适配器，需要另行匹配上游后端 |
+| `tools/evaluation/evaluate_scalebfm_motion.py` | 单个兼容 NPZ 的 MuJoCo 评估；`--motion`、`--out` 必填，`--no-video` 关闭录像 |
+| `tools/motion/prepare_duobox_scalebfm.py` | 单段 DuoBox/GMR 预处理；需要原始 pair、actor、外部 GMR 和 ScaleBFM 路径 |
+| `tools/evaluation/batch_duobox_scalebfm.py` | 批量数据准备；需自行提供数据根目录、GMR 和 ScaleBFM 路径 |
+| `tools/motion/reactive_stream_tracker.py` / `reactive_realtime.py` | 实验用增量参考管线；依赖外部生成器/GMR 和工作目录，不是普通部署启动入口 |
+| `tools/validation/validate_scalebfm.py` | 保留的独立上游 ScaleBridge 验证脚本；直接实例化上游 agent，不走本分支的 PyTorch 适配器，需要另行匹配上游后端 |
 
 使用进阶工具前查看 `--help`，显式提供本机路径；部分实验脚本仍保留旧工作站路径默认值。普通部署应优先使用已验证的 `deploy_mujoco.py`、`check_scalebfm_onboard.py` 和 `smoke_scalebfm_fsm.py`。
 

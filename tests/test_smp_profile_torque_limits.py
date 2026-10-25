@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 import numpy as np
 import yaml
-from tools.validate_smp_sim import build_policy
+from tools.validation.validate_smp_sim import build_policy
 
 ROOT = Path(__file__).resolve().parents[1]
 

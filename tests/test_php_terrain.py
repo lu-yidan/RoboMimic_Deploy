@@ -48,7 +48,7 @@ class PHPTerrainTest(unittest.TestCase):
         self.assertIsNone(exact_box(skew))
 
     def test_passive_fall_then_y_remains_stable(self):
-        from tools.validate_php_recovery import run_case
+        from tools.validation.validate_php_recovery import run_case
         try:
             terrain_path({})
         except FileNotFoundError as exc:

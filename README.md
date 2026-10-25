@@ -160,12 +160,12 @@ ScaleBFM must be enabled; enter it from FixedPose, Loco, AMP or ScaleBFM itself.
 
 The default viewer uses a free camera; set `camera.follow=true` to track G1.
 
-Gamepad inspection: `python tools/joystick_test.py`. Button indices can be overridden with environment variables such as `JOYSTICK_START=7`. L1+left/right adjusts target Y bias by ±0.05 m; the robot bridge also supports L2+left/right for ball Y bias, bounded to ±1.5 m.
+Gamepad inspection: `python tools/diagnostics/joystick_test.py`. Button indices can be overridden with environment variables such as `JOYSTICK_START=7`. L1+left/right adjusts target Y bias by ±0.05 m; the robot bridge also supports L2+left/right for ball Y bias, bounded to ±1.5 m.
 
 ## ScaleBFM
 
 ```bash
-python tools/setup_scalebfm.py
+python tools/motion/setup_scalebfm.py
 pip install -r environment/scalebfm-requirements.txt
 ```
 
@@ -176,8 +176,8 @@ The setup script downloads pinned official source and checksum-verified M weight
 ```bash
 python deploy_mujoco/deploy_mujoco.py \
   scalebfm.motion=/absolute/path/to/motion.npz
-python tools/check_scalebfm_onboard.py --steps 100
-python tools/smoke_scalebfm_fsm.py
+python tools/diagnostics/check_scalebfm_onboard.py --steps 100
+python tools/validation/smoke_scalebfm_fsm.py
 ```
 
 Motion paths are resolved relative to the repository root. `motion_globs` builds the selectable library at startup. DuoBox presets point to generated files under `outputs/duobox_scalebfm/motions/`; those files are not included in Git. See the [ScaleBFM guide](docs/scalebfm_deployment_zh.md) for array shapes and data preparation.
@@ -201,7 +201,7 @@ C++ owns LowState/LowCmd; Python sends joint targets over bridge DDS. Do not run
 
 `deploy_real/config/real.yaml` controls network/timing/logging. The interface preference is `BRIDGE_NETWORK_INTERFACE`, then `ROBOT_IFACE`, then YAML `net`. Keep 29 joints and 0.02 s control timing for ScaleBFM.
 
-`bash tools/start_tmux_layout.sh` opens the bridge, policy, dashboard and perception panes with commands prefilled. Press Enter in each pane to start; detaching tmux does not stop processes. See the [bridge guide](bridge/README_zh.md), [validation procedure](bridge/VALIDATION.md) and [perception guide](onboard/docs/README.md).
+`bash tools/deploy/start_tmux_layout.sh` opens the bridge, policy, dashboard and perception panes with commands prefilled. Press Enter in each pane to start; detaching tmux does not stop processes. See the [bridge guide](bridge/README_zh.md), [validation procedure](bridge/VALIDATION.md) and [perception guide](onboard/docs/README.md).
 
 ## Logging and validation
 
@@ -212,7 +212,7 @@ python deploy_mujoco/deploy_mujoco.py --config-name mujoco_table \
 
 python -m pip install --only-binary=cyclonedds 'cyclonedds==0.10.2'
 MUJOCO_GL=egl OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 python -m unittest discover -s tests -v
-python tools/test_scalebfm_real.py
+python tools/validation/test_scalebfm_real.py
 ```
 
 Robot logging is configured in `real.yaml`. `logging.tag` names the log; it does not select a policy. See [log schema and audit](docs/logging.md).

@@ -16,7 +16,7 @@ import torch
 
 def _export_definitions(path):
     if hashlib.sha256(path.read_bytes()).hexdigest() != 'df14138699427ab602a83286efdd80277ed0e7ae81a70e26221375e1600eebe6':
-        raise ValueError('ScaleBFM exporter differs from validated source; run tools/setup_scalebfm.py with a fresh external directory')
+        raise ValueError('ScaleBFM exporter differs from validated source; run tools/motion/setup_scalebfm.py with a fresh external directory')
     name = '_lyd_scalebfm_export_' + str(abs(hash(str(path))))
     if name in sys.modules:
         return sys.modules[name]

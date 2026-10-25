@@ -13,7 +13,7 @@ logging:
   enabled: true      # set true to record a freekick log
   log_dir: "logs"
   tag:     "real_policies"
-  states:  ["SKILL_FREEKICK", "LOCOMODE", "SKILL_BEYONDMIMIC", "SKILL_BEYONDMIMIC_MJ", "SKILL_STANDUP_MJ", "SKILL_PINOCCHIO_1_6_MJ", "SKILL_AMP", "SKILL_SMP_RECOVERY", "SKILL_SCALEBFM"]  # FSM states to record
+  states:  ["SKILL_FREEKICK", "LOCOMODE", "SKILL_BEYONDMIMIC", "SKILL_BEYONDMIMIC_MJ", "SKILL_STANDUP_MJ", "SKILL_PINOCCHIO_1_6_MJ", "SKILL_AMP", "SKILL_SMP_RECOVERY", "SKILL_SCALEBFM", "SKILL_PHP_PARKOUR"]  # FSM states to record
 
 # Unitree G1 LowState motor index order (29 body joints; hands are separate).
 joint_names:

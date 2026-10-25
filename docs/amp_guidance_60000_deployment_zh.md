@@ -95,7 +95,7 @@ amp:
 
 ```bash
 python -m unittest discover -s tests -p test_amp_guidance_deployment.py -v
-python tools/evaluate_amp_deployment.py --output outputs/amp_guidance_60000/scene_report.json
+python tools/evaluation/evaluate_amp_deployment.py --output outputs/amp_guidance_60000/scene_report.json
 ```
 
 独立测试旧模型可使用 `--model amp_0309_1.onnx`；这个测试参数不会改写 AMP 配置。
@@ -103,7 +103,7 @@ python tools/evaluate_amp_deployment.py --output outputs/amp_guidance_60000/scen
 在拥有训练 checkpoint 和验证 bank 的 AMP 训练仓库及其 Python 环境中重新导出：
 
 ```bash
-PYTHONPATH=runtime:. python /path/to/RoboMimic_Deploy/tools/export_amp_guidance.py \
+PYTHONPATH=runtime:. python /path/to/RoboMimic_Deploy/tools/export/export_amp_guidance.py \
   --deploy-root /path/to/RoboMimic_Deploy \
   --checkpoint logs/rsl_rl/g1_multi_amp_stratified_guidance/2026-10-17_12-54-34_stratified-dual-guidance-4096x24-100k/model_60000.pt \
   --bank records/eval60k/validation.npz \
@@ -129,7 +129,7 @@ PYTHONPATH=runtime:. python /path/to/RoboMimic_Deploy/tools/export_amp_guidance.
 原始数据：`docs/validation/amp_guidance_60000_commands.json`。复现：
 
 ```bash
-python tools/evaluate_amp_command_tracking.py --output outputs/amp_guidance_60000/commands.json
+python tools/evaluation/evaluate_amp_command_tracking.py --output outputs/amp_guidance_60000/commands.json
 ```
 
 训练仓库还对五组 60k 模型进行了统一原生接口测试（每种命令 8 个相同初态扰动）：

@@ -9,7 +9,7 @@ LiDAR 模块发布 raw topic `rt/lidar_ball_state`。最终策略读取的
 
 - 总览：`onboard/docs/README.md`
 - 安装：`onboard/docs/INSTALL_AGENT_GUIDE.md`
-- 真机 tmux 拓扑：`tools/start_tmux_layout.sh`
+- 真机 tmux 拓扑：`tools/deploy/start_tmux_layout.sh`
 
 ---
 
@@ -50,7 +50,7 @@ bash onboard/perception/lidar/run.sh --show --base-y-bias 0.00 --dds-topic rt/li
 bash onboard/perception/run_ball_fuser.sh
 ```
 
-全系统真机运行推荐直接使用 `tools/start_tmux_layout.sh`，其中右中 pane 是 LiDAR raw
+全系统真机运行推荐直接使用 `tools/deploy/start_tmux_layout.sh`，其中右中 pane 是 LiDAR raw
 检测，右下 pane 是唯一 fuser。
 
 启动成功后终端会持续打印状态信息，Sensor Dashboard 可查看 raw/fused 球位置。

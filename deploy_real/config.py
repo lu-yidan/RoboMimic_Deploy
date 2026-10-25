@@ -10,12 +10,15 @@ class Config:
         mujoco_yaml_path = os.path.join(current_dir, "config", "real.yaml")
         with open(mujoco_yaml_path, "r") as f:
             config = yaml.load(f, Loader=yaml.FullLoader)
-            from common.deployment_config import load_scalebfm_config
+            from common.deployment_config import load_scalebfm_config, load_php_real_config
             self.scalebfm = load_scalebfm_config()
+            self.php = load_php_real_config()
             self.joint_names = config.get("joint_names", [])
             self.torch_threads = int(config.get("torch_threads", 1))
             if self.torch_threads < 1:
                 raise ValueError("torch_threads must be positive")
+            if self.php["enabled"] and (config["num_joints"] != 29 or abs(config["control_dt"]-.02) > 1e-9):
+                raise ValueError("PHP requires 29 named joints and 50 Hz control")
             if self.scalebfm.enabled:
                 if config["num_joints"] != 29 or abs(config["control_dt"] - .02) > 1e-9:
                     raise ValueError("ScaleBFM requires 29 joints and 50 Hz control")

@@ -12,9 +12,9 @@
 
 1. 先读本文件，理解运行时拓扑：`camera/lidar raw topic -> ball_fuser -> rt/ball_state`。
 2. 再按 `onboard/docs/INSTALL_AGENT_GUIDE.md` 配新机器环境。安装指南是环境配置的唯一权威入口。
-3. 环境装好后，看 `tools/start_tmux_layout.sh`。它是真机 bring-up 的可执行拓扑，里面每个 pane 对应一个运行组件。
-4. 启动 `bash tools/start_tmux_layout.sh`，按 pane 逐个回车启动服务。
-5. 用 `monitor` 窗口里的 `tools/check_ball_state.py` 和 Sensor Dashboard 验证最终 `rt/ball_state`。
+3. 环境装好后，看 `tools/deploy/start_tmux_layout.sh`。它是真机 bring-up 的可执行拓扑，里面每个 pane 对应一个运行组件。
+4. 启动 `bash tools/deploy/start_tmux_layout.sh`，按 pane 逐个回车启动服务。
+5. 用 `monitor` 窗口里的 `tools/diagnostics/check_ball_state.py` 和 Sensor Dashboard 验证最终 `rt/ball_state`。
 
 常见排障文档：
 
@@ -91,20 +91,22 @@ onboard/
 在仓库根目录运行：
 
 ```bash
-bash tools/start_tmux_layout.sh
+bash tools/deploy/start_tmux_layout.sh
 ```
 
-`tools/start_tmux_layout.sh` 是当前真机运行拓扑的参考实现。文档里的手动命令应与它保持一致。
+`tools/deploy/start_tmux_layout.sh` 是当前真机运行拓扑的参考实现。文档里的手动命令应与它保持一致。
 
 该脚本会预填一套真机 bring-up 窗格：
 
 - C++ bridge：机器人低层状态/控制桥接。
 - `deploy_policy.py`：策略推理与 FSM。
-- Camera raw perception：发布 `rt/target_state` 和 `rt/cam_ball_state`。
+- 右上 Camera：`camera.mode=gray` 发布 target/camera ball（网页 8080）；`php_depth` 独立采集深度供策略和 Dashboard（网页 8091）。
 - LiDAR raw perception：发布 `rt/lidar_ball_state`。
 - Ball fuser：唯一最终球位置发布者，发布 `rt/ball_state`。
-- Sensor Dashboard：浏览器查看传感器与偏置。
-- Monitor：运行 `tools/check_ball_state.py` 观察最终 `rt/ball_state`。
+- Sensor Dashboard：浏览器查看传感器、偏置及 PHP 深度图。
+- Monitor：运行 `tools/diagnostics/check_ball_state.py` 观察最终 `rt/ball_state`。
+
+PHP 通过部署配置启用，无独立 tmux 入口；相机不可用不影响其他策略，具体见 [PHP 本体部署](../../docs/php_real_bridge_zh.md)。工具分类见 [tools 索引](../../tools/README.md)。
 
 ### 手动分进程启动
 
@@ -139,7 +141,7 @@ Kalman 平滑后发布策略真正读取的 `rt/ball_state`。
 本地电脑通过网线连接 G1 后，在仓库根目录运行：
 
 ```bash
-python tools/check_ball_state.py
+python tools/diagnostics/check_ball_state.py
 ```
 
 正常输出示例：

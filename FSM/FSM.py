@@ -91,7 +91,7 @@ class FSM:
                 self.FSMmode = FSMMode.NORMAL
             else:
                 if self.php_policy is None:
-                    reason = "PHP is disabled in this runtime; set php.enabled: true for MuJoCo"
+                    reason = "PHP is disabled in this runtime; enable php.enabled (and php.real.enabled for bridge)"
                 elif self.cur_policy.name not in allowed:
                     reason = f"current state is {self.cur_policy.name.name}; select Passive/FixedPose/Loco/AMP/ScaleBFM/SMP before PHP"
                 else:

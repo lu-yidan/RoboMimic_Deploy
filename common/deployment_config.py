@@ -69,3 +69,21 @@ def load_php_config():
     path = Path(cfg.get("model_dir", "~/.cache/php-parkour/student")).expanduser()
     cfg["model_dir"] = str(path if path.is_absolute() else ROOT / path)
     return cfg
+
+
+def load_php_real_config():
+    """Real hardware is separately opt-in; sim php.enabled never arms hardware."""
+    php = load_php_config()
+    real = dict(php.get('real', {}))
+    enabled = real.get('enabled', False)
+    if type(enabled) is not bool:
+        raise ValueError('php.real.enabled must be true or false')
+    if enabled and not php['enabled']:
+        raise ValueError('php.real.enabled requires php.enabled')
+    php['enabled'] = enabled
+    path = Path(real.get('camera_config', 'policy/php_parkour/config/real_depth.yaml')).expanduser()
+    php['camera_config'] = str(path if path.is_absolute() else ROOT/path)
+    if enabled:
+        from policy.php_parkour.real_depth import load_camera_config
+        php['camera'] = load_camera_config(php['camera_config'])
+    return php

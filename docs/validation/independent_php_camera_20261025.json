@@ -1,0 +1,36 @@
+{
+  "date": "2026-10-25",
+  "offline_only": true,
+  "physical_camera_opened": false,
+  "motor_commands_sent": 0,
+  "full_suite": {
+    "passed": 70,
+    "command": "MUJOCO_GL=egl python -m unittest discover -s tests"
+  },
+  "additional_runtime_suite_after_adding_restart_regression": {
+    "passed": 14,
+    "command": "python -m unittest discover -s tests -p test_php_real.py"
+  },
+  "verified": [
+    "Atomic NPZ transport across separate processes with synthetic data",
+    "Capture timestamps preserved on repeat reads",
+    "Missing, stale, corrupt, reordered and config-mismatched packets rejected",
+    "Camera producer restart accepted without restarting policy",
+    "PHP loss requests damping; new button chord required after recovery",
+    "Camera selection gray/php_depth and invalid selection rejection via read-only --check",
+    "Six-pane tmux only prefills commands and forwards config to camera, policy and Dashboard",
+    "Existing Dashboard HTTP tests continue passing"
+  ],
+  "ports": {
+    "gray": 8080,
+    "php_dashboard": 8091
+  },
+  "limitations": [
+    "No real USB, DDS transport, robot control, or onboard performance verification"
+  ],
+  "final_tmux_checks": [
+    "bash syntax passed",
+    "seven pane labels and literal-prefill commands checked with fake tmux",
+    "pane-local Chinese label verified on isolated real tmux server; no robot process launched"
+  ]
+}

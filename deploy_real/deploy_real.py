@@ -57,6 +57,8 @@ def _repository_provenance() -> dict:
 
 class Controller:
     def __init__(self, config: Config):
+        if getattr(config, 'php', {}).get('enabled', False):
+            raise ValueError('PHP hardware requires bridge/python/deploy_policy.py')
         self.config = config
         self.remote_controller = RemoteController()
         self.num_joints = config.num_joints
@@ -287,6 +289,8 @@ class Controller:
         
 if __name__ == "__main__":
     config = Config()
+    if config.php.get('enabled', False):
+        raise ValueError('PHP hardware requires bridge/python/deploy_policy.py')
     # Initialize DDS communication
     ChannelFactoryInitialize(0, config.net)
     

@@ -87,14 +87,14 @@ sudo apt-get install xvfb xauth x11-utils ffmpeg
 ```bash
 python -m pip install --only-binary=cyclonedds 'cyclonedds==0.10.2'
 MUJOCO_GL=egl python -m unittest discover -s tests -v
-MUJOCO_GL=egl python tools/smoke_php_mujoco.py
-MUJOCO_GL=egl python tools/validate_php_recovery.py --out /tmp/php-smp-mj310.json
+MUJOCO_GL=egl python tools/validation/smoke_php_mujoco.py
+MUJOCO_GL=egl python tools/validation/validate_php_recovery.py --out /tmp/php-smp-mj310.json
 ```
 
 `MUJOCO_GL=egl` 用于无窗口深度渲染测试；图形部署不需要设置它。无法使用 EGL 的机器可在 Xvfb 下使用 GLFW，例如：
 
 ```bash
-xvfb-run -a env MUJOCO_GL=glfw python tools/smoke_php_mujoco.py
+xvfb-run -a env MUJOCO_GL=glfw python tools/validation/smoke_php_mujoco.py
 ```
 
 本次 49 项测试全部通过；平地和外部障碍场各完成 10 秒 PHP 闭环，6 组不同倒地时长的 Passive→SMP 测试各运行满 30 秒，无状态警告或自动重置。ScaleBFM 额外完成 squat 参考动作的 100 次 CUDA 静态状态推理及 CUDA graph 一致性检查，未超过 20 ms 预算；这项检查不包含闭环跟踪。结果见 [迁移验证记录](validation/mujoco_official_20261025.json)。验证覆盖原生侧栏、Track/Free 保持、深度图方向及窗口缩放、策略输入与切换、Backspace 状态保持、两种场景 PHP 闭环和六组 Passive→SMP 恢复。它不等于所有场景或实机行为均已验证。

@@ -1,0 +1,15 @@
+# Actual DEPTH optical-center mount relative to torso_link, metres/degrees.
+# Camera body axes: +X forward, +Y left, +Z up. R = Rz(yaw) Ry(pitch) Rx(roll).
+# These are measured physical extrinsics, not a command to move the head.
+mount:
+  position_m: [0.01, 0.01, 0.44]
+  rpy_deg: [1.0, 27.0, 1.0]
+serial: ""                 # Empty: accept exactly one connected RealSense device.
+width: 848
+height: 480
+fps: 30
+max_age_s: 0.15            # Includes camera/USB/processing latency; cannot exceed policy limit.
+min_valid_fraction: 0.90  # Coverage in training crop after projection; no hole inpainting.
+# PD target projection, same canonical joint order/effort bounds as MuJoCo.
+effort_limits: [88, 139, 88, 139, 50, 50, 88, 139, 88, 139, 50, 50,
+                88, 50, 50, 25, 25, 25, 25, 25, 5, 5, 25, 25, 25, 25, 25, 5, 5]

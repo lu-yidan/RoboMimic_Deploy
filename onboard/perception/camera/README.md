@@ -10,7 +10,7 @@
 
 - 总览：`onboard/docs/README.md`
 - 安装：`onboard/docs/INSTALL_AGENT_GUIDE.md`
-- 真机 tmux 拓扑：`tools/start_tmux_layout.sh`
+- 真机 tmux 拓扑：`tools/deploy/start_tmux_layout.sh`
 
 ---
 
@@ -78,7 +78,7 @@ bash onboard/perception/camera/run_gray.sh --show
 bash onboard/perception/camera/run_gray.sh --with-fuser --show
 ```
 
-但在 `tools/start_tmux_layout.sh` 或手动已经启动
+但在 `tools/deploy/start_tmux_layout.sh` 或手动已经启动
 `bash onboard/perception/run_ball_fuser.sh` 时，不要使用 `--with-fuser`，避免多个
 fuser 同时发布最终 `rt/ball_state`。
 

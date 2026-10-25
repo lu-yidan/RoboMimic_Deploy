@@ -1,0 +1,102 @@
+{
+  "date": "2026-10-25",
+  "offline_only": true,
+  "dds_participants": 0,
+  "camera_opened": false,
+  "motor_commands_sent": 0,
+  "tests": {
+    "command": "MUJOCO_GL=egl python -m unittest discover -s tests",
+    "passed": 65
+  },
+  "tmux": {
+    "entry": "tools/deploy/start_tmux_layout.sh",
+    "main_panes": 6,
+    "extra_windows": [
+      "monitor"
+    ],
+    "verification": "mock tmux; seven literal command prefills, five splits, no Enter; config forwarded to policy and Dashboard"
+  },
+  "dashboard": {
+    "http_test": "loopback only; actual handler with synthetic depth",
+    "browser_verified": [
+      "87x58 depth PNG",
+      "age and coverage",
+      "existing map and sensor cards",
+      "image hidden when producer/HTTP stops",
+      "no horizontal overflow"
+    ],
+    "control_independent": true
+  },
+  "no_camera": "FixedPose, AMP and SMP continue; PHP entry rejected without requesting damping",
+  "tools": "Python syntax parsed; repository references updated; duplicate launchers removed",
+  "php_runtime": {
+    "offline": true,
+    "dds_participants": 0,
+    "motor_commands_sent": 0,
+    "hardware_capture_verified": false,
+    "input": "synthetic plane depth",
+    "camera_config": {
+      "mount": {
+        "position_m": [
+          0.01,
+          0.01,
+          0.44
+        ],
+        "rpy_deg": [
+          1.0,
+          27.0,
+          1.0
+        ]
+      },
+      "serial": "",
+      "width": 848,
+      "height": 480,
+      "fps": 30,
+      "max_age_s": 0.15,
+      "min_valid_fraction": 0.9,
+      "effort_limits": [
+        88,
+        139,
+        88,
+        139,
+        50,
+        50,
+        88,
+        139,
+        88,
+        139,
+        50,
+        50,
+        88,
+        50,
+        50,
+        25,
+        25,
+        25,
+        25,
+        25,
+        5,
+        5,
+        25,
+        25,
+        25,
+        25,
+        25,
+        5,
+        5
+      ]
+    },
+    "policy_steps": 100,
+    "wire_roundtrip": true,
+    "pd_effort_bounds": true,
+    "loss_damps_same_tick": true,
+    "no_auto_reentry": true,
+    "y_preempts_php": true,
+    "runtime_ms_p50": 0.3060870003537275,
+    "runtime_ms_p95": 0.4004254988103638,
+    "scope": "Static synthetic robot state; no physical robot or camera validation"
+  },
+  "limitations": [
+    "No physical camera, robot, Jetson performance or actual DDS/C++ hardware validation"
+  ]
+}

@@ -47,6 +47,7 @@ class PHPParkour(FSMState):
         if joint_names is None or len(joint_names) != 29 or set(joint_names) != set(cfg['joint_names']):
             raise ValueError('PHP requires the 29 named G1 body joints')
         canonical_to_runtime = [cfg['joint_names'].index(n) for n in joint_names]
+        self.runtime_to_canonical = np.asarray(canonical_to_runtime)
         self.default = np.array(cfg['default_joint_pos'], np.float32)[canonical_to_runtime]
         self.kps = np.array(cfg['kps'], np.float32)[canonical_to_runtime]
         self.kds = np.array(cfg['kds'], np.float32)[canonical_to_runtime]
@@ -76,6 +77,13 @@ class PHPParkour(FSMState):
             raise ValueError('PHP requires the released D435i depth/student contract')
         self.last_action = np.zeros(29, np.float32)
         self.failed = False
+
+    def warmup(self):
+        latent = self.backbone.run(None, {'depth_image': np.zeros((1,58,87),np.float32)})[0]
+        action = self.student.run(['actions'], {'obs': np.zeros((1,140),np.float32),
+                                  'time_step': np.zeros((1,1),np.float32)})[0]
+        if not np.isfinite(latent).all() or not np.isfinite(action).all():
+            raise ValueError('PHP warmup produced nonfinite output')
 
     def depth_error(self):
         frame = self.state_cmd.php_depth

@@ -7,11 +7,11 @@ the JetPack 6 / Orin install in this repo.
 Read this guide together with:
 
 - `onboard/docs/README.md` for the runtime architecture and topic ownership.
-- `tools/start_tmux_layout.sh` for the executable real-robot bring-up layout.
+- `tools/deploy/start_tmux_layout.sh` for the executable real-robot bring-up layout.
 
 After installation, the acceptance test is not just importing packages. Start
 the tmux layout, bring up camera, LiDAR, the single fuser, dashboard, and
-`tools/check_ball_state.py`, then confirm the final `rt/ball_state` stream is
+`tools/diagnostics/check_ball_state.py`, then confirm the final `rt/ball_state` stream is
 fresh and stable.
 
 ## Target Machine

@@ -57,10 +57,10 @@ amp:
 
 ```bash
 python -m unittest discover -s tests -p test_amp_guidance_deployment.py -v
-python tools/evaluate_amp_deployment.py --profile stratified_single_60000 \
+python tools/evaluation/evaluate_amp_deployment.py --profile stratified_single_60000 \
   --output outputs/amp_stratified_single_60000/scene_report.json
 ```
 
-在 AMP 训练仓库及其运行环境中导出时，使用 `tools/export_amp_guidance.py`，指定
+在 AMP 训练仓库及其运行环境中导出时，使用 `tools/export/export_amp_guidance.py`，指定
 `--task Unitree-G1-AMP-Stratified-Flat`，以及上面的 checkpoint、验证 bank 和新 ONNX 输出路径。
 默认 task 仍是双判别器＋引导奖励；单判别器必须显式选择正确 task。

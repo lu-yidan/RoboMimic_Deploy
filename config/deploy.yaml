@@ -18,8 +18,20 @@ smp:
   profile: v34_balanced4_hard19000
   # path_a6_9999 | a6_no_alpha_9999 | v34_balanced4_hard19000
 
+# Right-top tmux camera; starting the policy never opens USB.
+camera:
+  mode: gray  # gray | php_depth (independent of php.real.enabled)
+
 # PHP FSM policy (MuJoCo depth camera). Weights remain outside this repository.
 php:
   enabled: true
   root: ~/workspace/php_parkour
   model_dir: ~/.cache/php-parkour/student
+  # Bridge PHP is opt-in independently of simulation. No hardware is opened by default.
+  real:
+    enabled: false
+    camera_config: policy/php_parkour/config/real_depth.yaml
+    # Optional control IPC path; default /dev/shm/robomimic-<uid>/php-depth.npz
+    # depth_file: /dev/shm/robomimic/php-depth.npz
+    # Optional shared preview path; default /dev/shm/robomimic-<uid>/php-depth.json
+    # dashboard_file: /dev/shm/robomimic/php-depth.json

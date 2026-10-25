@@ -29,7 +29,7 @@ cmake --build bridge/build -j4
 ### 审计
 
 ```bash
-python tools/audit_recovery_log.py logs/xxx.json --out outputs/log_audit.json
+python tools/analysis/audit_recovery_log.py logs/xxx.json --out outputs/log_audit.json
 ```
 
 老 bridge schema 2 的 tau_est 全零是未接通的占位值，不能补回历史反馈。实际字段数以 JSON 为准。每帧 flush 到操作系统，不保证断电时完整落盘。
@@ -114,10 +114,10 @@ logs/
 
 ```bash
 # 基本用法
-python tools/playback_log.py logs/20260318_153012_freekick.bin
+python tools/analysis/playback_log.py logs/20260318_153012_freekick.bin
 
 # 指定 xml 和初始速度
-python tools/playback_log.py logs/xxx.bin --xml g1_description/scene.xml --speed 0.5
+python tools/analysis/playback_log.py logs/xxx.bin --xml g1_description/scene.xml --speed 0.5
 ```
 
 **键盘控制：**

@@ -1,0 +1,151 @@
+{
+  "offline": true,
+  "dds_participants": 0,
+  "motor_commands_sent": 0,
+  "hardware_capture_verified": false,
+  "input": "synthetic plane depth",
+  "camera_config": {
+    "mount": {
+      "position_m": [
+        0.01,
+        0.01,
+        0.44
+      ],
+      "rpy_deg": [
+        1.0,
+        27.0,
+        1.0
+      ]
+    },
+    "serial": "",
+    "width": 848,
+    "height": 480,
+    "fps": 30,
+    "max_age_s": 0.15,
+    "min_valid_fraction": 0.9,
+    "effort_limits": [
+      88,
+      139,
+      88,
+      139,
+      50,
+      50,
+      88,
+      139,
+      88,
+      139,
+      50,
+      50,
+      88,
+      50,
+      50,
+      25,
+      25,
+      25,
+      25,
+      25,
+      5,
+      5,
+      25,
+      25,
+      25,
+      25,
+      25,
+      5,
+      5
+    ]
+  },
+  "policy_steps": 100,
+  "wire_roundtrip": true,
+  "pd_effort_bounds": true,
+  "loss_damps_same_tick": true,
+  "no_auto_reentry": true,
+  "y_preempts_php": true,
+  "runtime_ms_p50": 0.3312539993203245,
+  "runtime_ms_p95": 0.5278630007524042,
+  "scope": "Static synthetic robot state; no physical robot or camera validation",
+  "validation_date": "2026-10-25",
+  "test_suite": {
+    "tests": 61,
+    "result": "passed",
+    "environment": "robomimic-mj310; MUJOCO_GL=egl"
+  },
+  "synthetic_848x480_replay": {
+    "offline": true,
+    "dds_participants": 0,
+    "motor_commands_sent": 0,
+    "hardware_capture_verified": false,
+    "input": "recorded depth",
+    "camera_config": {
+      "mount": {
+        "position_m": [
+          0.01,
+          0.01,
+          0.44
+        ],
+        "rpy_deg": [
+          1.0,
+          27.0,
+          1.0
+        ]
+      },
+      "serial": "",
+      "width": 848,
+      "height": 480,
+      "fps": 30,
+      "max_age_s": 0.15,
+      "min_valid_fraction": 0.9,
+      "effort_limits": [
+        88,
+        139,
+        88,
+        139,
+        50,
+        50,
+        88,
+        139,
+        88,
+        139,
+        50,
+        50,
+        88,
+        50,
+        50,
+        25,
+        25,
+        25,
+        25,
+        25,
+        5,
+        5,
+        25,
+        25,
+        25,
+        25,
+        25,
+        5,
+        5
+      ]
+    },
+    "policy_steps": 100,
+    "wire_roundtrip": true,
+    "pd_effort_bounds": true,
+    "loss_damps_same_tick": true,
+    "no_auto_reentry": true,
+    "y_preempts_php": true,
+    "runtime_ms_p50": 0.9210559983330313,
+    "runtime_ms_p95": 0.9742646994709503,
+    "scope": "Static synthetic robot state; no physical robot or camera validation"
+  },
+  "projection_benchmark": {
+    "resolution": [
+      848,
+      480
+    ],
+    "frames": 15,
+    "p50_ms": 25.056572,
+    "p95_ms": 30.2945545,
+    "platform": "development workstation, not robot"
+  },
+  "tmux_verified": "Fake tmux executable; commands only prefilled, no real sessions or controllers started"
+}

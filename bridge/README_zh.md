@@ -65,3 +65,5 @@ python bridge/python/deploy_policy.py
 - `deploy_real/` 只保留原始真机部署逻辑和共享配置
 - bridge 专属逻辑统一放进 `bridge/`
 - `common/` 不再放 bridge 专用消息定义，避免“公共模块”不断膨胀
+
+PHP 的机载 RealSense 深度、外参、tmux 启动与断流处理见 [PHP 实机部署](../docs/php_real_bridge_zh.md)。默认关闭，仅离线验证，复用现有 C++ bridge 协议。

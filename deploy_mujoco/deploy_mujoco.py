@@ -246,11 +246,10 @@ def main(cfg: DictConfig):
         elif key == 259:
             standing_reset_requested.set()
     if show_depth:
-        from deploy_mujoco.overlay_viewer import OverlayViewer
-        viewer_context = OverlayViewer(m, d, key_callback=key_callback)
-    else:
-        viewer_context = mujoco.viewer.launch_passive(m, d, key_callback=key_callback)
-    with viewer_context as viewer:
+        from deploy_mujoco.native_depth_overlay import NativeDepthOverlay, require_native_overlay
+        require_native_overlay()
+    with mujoco.viewer.launch_passive(m, d, key_callback=key_callback) as viewer:
+        depth_overlay = NativeDepthOverlay(viewer) if show_depth else None
         from deploy_mujoco.viewer_camera import configure_camera
         configure_camera(viewer.cam, m, cfg.get("camera", {}))
         deadline = time.perf_counter()
@@ -450,8 +449,9 @@ def main(cfg: DictConfig):
                 now = time.perf_counter()
                 if now >= next_render:
                     if show_depth:
-                        viewer.set_depth(state_cmd.php_depth, state_cmd.php_depth_time,
-                                         FSM_controller.cur_policy.name.name)
+                        depth_overlay.set_depth(
+                            state_cmd.php_depth, state_cmd.php_depth_time,
+                            FSM_controller.cur_policy.name.name)
                     # ---- Ghost visualization ----
                     if ghost_flags[0] and policy_output.ghost_qpos is not None:
                         ghost_d.qpos[:7 + num_joints] = policy_output.ghost_qpos

@@ -97,11 +97,11 @@ Backspace 保留当前策略及内部状态，只复位物理姿态/速度并刷
 
 ## MuJoCo 右上角深度图
 
-参考 `wmp_deploy` 的同窗布局，在 MuJoCo 三维视窗右上角显示实际输入 backbone 的 87×58 图像，近黄远蓝，并显示采集延迟；左上角显示当前 FSM 状态。Passive 下也更新图像。没有额外的深度窗口或显示进程，模型输入本身不受着色影响。
+参考 `wmp_deploy` 的同窗布局，在 MuJoCo 三维视窗右上角显示实际输入 backbone 的 87×58 图像，近黄远蓝，并显示采集延迟；深度图标题显示当前 FSM 状态。Passive 下也更新图像。没有额外的深度窗口或显示进程，模型输入本身不受着色影响。
 
-窗口缩放后深度图仍固定在右上角；左键拖动旋转、右键拖动平移、滚轮缩放，Shift 可切换水平/垂直操作。P/R/Backspace 与手柄逻辑不变，Esc 关闭仿真窗口。
+窗口缩放后深度图仍固定在右上角；左键拖动旋转、右键拖动平移、滚轮缩放，Shift 可切换水平/垂直操作。P/R/Backspace 与手柄逻辑不变；关闭窗口退出仿真。
 
-MuJoCo 3.2 的原生 Python viewer 没有图片叠加接口，因此启用深度图时使用同一 MuJoCo 渲染器的简化 GLFW 视窗，保留 ghost、调试球与相机交互，但不带原生参数侧栏。设置 `php_depth_preview=false` 可恢复原生 viewer（同时关闭右上角深度图）。
+始终使用原生 MuJoCo viewer，保留参数侧栏与 Rendering → Camera → Tracking。先双击机器人选中 body，再选择 Tracking。深度图通过原生 viewer 扩展绘制，不会重设相机；`php_depth_preview=false` 仅关闭深度图。MuJoCo 3.2.3 首次使用需执行 `python tools/install_native_depth_overlay.py`，详见[安装与迁移说明](native_depth_overlay.md)。
 
 已删除输入层的 `[Input] CMD_*` 日志。Passive 下 A 不允许直接切 AMP，按 START 进入 FixedPose 后再按 A；没有实际切换时不打印命令。PHP 切换成功时仍显示 `[PHP] Entering from ...; depth ready.`，当前状态也随之更新。深度无效等真正错误仍保留具体诊断。
 

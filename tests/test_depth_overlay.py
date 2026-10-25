@@ -1,4 +1,4 @@
-"""Check actual GL inset placement, orientation, resize and reference-geometry copy."""
+"""Native sidebar, Tracking and actual inset pixels in an Xvfb window."""
 import os
 from pathlib import Path
 import shutil
@@ -8,54 +8,80 @@ import unittest
 
 
 class DepthOverlayTest(unittest.TestCase):
-    @unittest.skipUnless(shutil.which('xvfb-run'), 'requires Xvfb')
-    def test_live_inset_pixels_and_resize(self):
+    @unittest.skipUnless(shutil.which('xvfb-run') and shutil.which('ffmpeg') and shutil.which('xwininfo'), 'requires Xvfb and ffmpeg')
+    def test_native_inset_and_camera(self):
+        from mujoco import _simulate
+        if not hasattr(_simulate.Simulate, 'set_depth_overlay'):
+            self.skipTest('Install native depth backport to run GL integration test')
         script = r'''
-import time
-import glfw
-import mujoco
+import ctypes, os, re, subprocess, tempfile, time
+import mujoco, mujoco.viewer
 import numpy as np
-from deploy_mujoco.overlay_viewer import OverlayViewer
-m=mujoco.MjModel.from_xml_string('<mujoco><worldbody><geom type="plane" size="2 2 .1"/></worldbody></mujoco>')
+from PIL import Image
+from deploy_mujoco.native_depth_overlay import NativeDepthOverlay
+m=mujoco.MjModel.from_xml_string('<mujoco><worldbody><geom type="plane" size="2 2 .1"/><body pos="0 0 .5"><freejoint/><geom type="sphere" size=".1"/></body></worldbody></mujoco>')
 d=mujoco.MjData(m)
 mujoco.mj_forward(m,d)
+# Ensure the offscreen renderer's GLFW hints do not hide the native window.
 sensor=mujoco.Renderer(m,height=60,width=106)
-with OverlayViewer(m,d) as viewer:
-    assert glfw.get_window_attrib(viewer.window,glfw.VISIBLE)
-    sensor.update_scene(d)
-    sensor.render()
-    image=np.full((58,87),.5,dtype=np.float32)
-    image[:29]=-.5
-    original=viewer._draw_depth
-    checked=[]
-    def check(width,height):
-        original(width,height)
-        pixels=np.zeros((height,width,3),np.uint8)
-        mujoco.mjr_readPixels(pixels.ravel(),None,mujoco.MjrRect(0,0,width,height),viewer.context)
-        # Top of inset is near/yellow, bottom is far/blue; no upside-down image.
-        scale=min(3,(width-32)//87,(height-80)//58)
-        y=height-58*scale-56
-        np.testing.assert_allclose(pixels[height-65,width-30],[255,220,0],atol=1)
-        np.testing.assert_allclose(pixels[y+5,width-30],[0,60,200],atol=1)
-        checked.append((width,height))
-    viewer._draw_depth=check
-    viewer.set_depth(image,time.monotonic(),'PASSIVE')
-    mujoco.mjv_initGeom(viewer.user_scn.geoms[0],mujoco.mjtGeom.mjGEOM_SPHERE,
-                       np.ones(3)*.1,np.array([0.,0.,1.]),np.eye(3).ravel(),np.ones(4,dtype=np.float32))
-    viewer.user_scn.ngeom=1
-    viewer.sync()
-    assert viewer.scene.ngeom >= 2
-    glfw.set_window_size(viewer.window,640,480)
-    for _ in range(5):
-        glfw.poll_events()
-        time.sleep(.01)
-    viewer.sync()
-    assert checked[-1] == (640,480), checked
+sensor.update_scene(d);sensor.render()
+with mujoco.viewer.launch_passive(m,d) as viewer:
+    overlay=NativeDepthOverlay(viewer)
+    assert viewer._sim().ui0_enable and viewer._sim().ui1_enable
+    image=np.full((58,87),.5,dtype=np.float32);image[:29]=-.5
+    with viewer.lock():
+        viewer.cam.type=mujoco.mjtCamera.mjCAMERA_TRACKING
+        viewer.cam.trackbodyid=1
+        viewer.cam.azimuth=123
+    def update():
+        for _ in range(20):
+            overlay.set_depth(image,time.monotonic(),'PASSIVE')
+            viewer.sync();time.sleep(.025)
+    def capture():
+        with tempfile.TemporaryDirectory() as directory:
+            path=directory+'/screen.png'
+            subprocess.run(['ffmpeg','-y','-loglevel','error','-f','x11grab',
+                            '-video_size','1280x1024','-i',os.environ['DISPLAY'],
+                            '-frames:v','1',path],check=True)
+            pixels=np.asarray(Image.open(path))[:,:,:3]
+        near=np.argwhere(np.all(pixels==[255,220,0],axis=2))
+        far=np.argwhere(np.all(pixels==[0,60,200],axis=2))
+        assert len(near)>1000 and len(far)>1000, (len(near),len(far))
+        assert near[:,0].max()<far[:,0].min() # sensor image is not upside down
+        assert near[:,0].min()<150
+        assert near[:,1].min()>250
+        return near[:,1].max()
+    update()
+    assert viewer.cam.type==mujoco.mjtCamera.mjCAMERA_TRACKING
+    assert viewer.cam.trackbodyid==1 and viewer.cam.azimuth==123
+    first_right=capture()
+    # Native sidebar toggle changes the viewport; inset must move with it.
+    viewer._sim().ui1_enable=False
+    # A resize event asks native MuJoCo to recalculate panel/scene rectangles.
+    tree=subprocess.check_output(['xwininfo','-root','-tree'],text=True)
+    window=int(re.search(r'(0x[0-9a-f]+) "MuJoCo[^"\n]*"',tree).group(1),16)
+    x11=ctypes.CDLL('libX11.so.6')
+    x11.XOpenDisplay.restype=ctypes.c_void_p
+    x11.XResizeWindow.argtypes=[ctypes.c_void_p,ctypes.c_ulong,ctypes.c_uint,ctypes.c_uint]
+    x11.XFlush.argtypes=[ctypes.c_void_p]
+    x11.XCloseDisplay.argtypes=[ctypes.c_void_p]
+    display=x11.XOpenDisplay(None)
+    x11.XResizeWindow(display,window,1000,750);x11.XFlush(display)
+    update()
+    x11.XCloseDisplay(display)
+    assert capture()>first_right
+    with viewer.lock():
+        viewer.cam.type=mujoco.mjtCamera.mjCAMERA_FREE
+    update()
+    assert viewer.cam.type==mujoco.mjtCamera.mjCAMERA_FREE
+    viewer._sim().clear_depth_overlay()
 sensor.close()
+time.sleep(.3)
 '''
         env = dict(os.environ)
-        env.pop('MUJOCO_GL',None)
-        result=subprocess.run(['xvfb-run','-a',sys.executable,'-c',script],
-                              cwd=str(Path(__file__).resolve().parents[1]),env=env,
-                              capture_output=True,text=True,timeout=30)
-        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        env.pop('MUJOCO_GL', None)
+        result = subprocess.run(['xvfb-run', '-a', '-s', '-screen 0 1280x1024x24',
+                                 sys.executable, '-c', script],
+                                cwd=str(Path(__file__).resolve().parents[1]), env=env,
+                                capture_output=True, text=True, timeout=45)
+        self.assertEqual(result.returncode, 0, result.stdout+result.stderr)

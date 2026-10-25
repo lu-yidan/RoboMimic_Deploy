@@ -1,0 +1,82 @@
+--- a/mujoco/simulate/simulate.h
++++ b/mujoco/simulate/simulate.h
+@@ -160,6 +160,10 @@
+     bool ui_remake_ctrl;
+   } pending_ = {};
+ 
++  // Independent mutex: Render runs outside the simulation lock.
++  std::mutex depth_mutex;
++  std::vector<unsigned char> depth_rgb;
++  std::string depth_label;
+   SimulateMutex mtx;
+   std::condition_variable_any cond_loadrequest;
+ 
+--- a/mujoco/simulate.cc
++++ b/mujoco/simulate.cc
+@@ -25,6 +25,7 @@
+ #include <simulate.h>
+ #include "errors.h"
+ #include "structs.h"
++#include <pybind11/numpy.h>
+ #include <pybind11/gil.h>
+ #include <pybind11/pybind11.h>
+ #include <pybind11/pytypes.h>
+--- a/mujoco/simulate.cc
++++ b/mujoco/simulate.cc
+@@ -217,6 +217,23 @@
+       .def("load_message_clear",
+            CallIfNotNull(&mujoco::Simulate::LoadMessageClear),
+            py::call_guard<py::gil_scoped_release>())
++      .def("set_depth_overlay", [](SimulateWrapper& wrapper,
++           py::array_t<unsigned char, py::array::c_style> image,
++           const std::string& label) {
++        if (image.ndim() != 3 || image.shape(0) != 58 ||
++            image.shape(1) != 87 || image.shape(2) != 3) {
++          throw py::value_error("Expected contiguous uint8 RGB image (58, 87, 3)");
++        }
++        auto& sim = SimulateRefOrThrow(wrapper);
++        std::lock_guard<std::mutex> lock(sim.depth_mutex);
++        sim.depth_rgb.assign(image.data(), image.data() + image.size());
++        sim.depth_label = label;
++      })
++      .def("clear_depth_overlay", [](SimulateWrapper& wrapper) {
++        auto& sim = SimulateRefOrThrow(wrapper);
++        std::lock_guard<std::mutex> lock(sim.depth_mutex);
++        sim.depth_rgb.clear();
++      })
+       .def("sync", CallIfNotNull(&mujoco::Simulate::Sync),
+            py::call_guard<py::gil_scoped_release>())
+       .def("add_to_history", CallIfNotNull(&mujoco::Simulate::AddToHistory),
+--- a/mujoco/simulate/simulate.cc
++++ b/mujoco/simulate/simulate.cc
+@@ -2556,6 +2556,30 @@
+     ShowSensor(this, smallrect);
+   }
+ 
++  // Screen-space sensor inset, within the native 3D viewport (excludes sidebars).
++  {
++    std::lock_guard<std::mutex> lock(depth_mutex);
++    int scale = std::min({3, (rect.width - 32) / 87, (rect.height - 80) / 58});
++    if (!depth_rgb.empty() && scale > 0) {
++      int w = 87*scale, h = 58*scale;
++      mjrRect inset = {rect.left + rect.width - w - 16,
++                       rect.bottom + rect.height - h - 56, w, h};
++      std::vector<unsigned char> pixels(3*w*h);
++      for (int y = 0; y < h; ++y) {
++        for (int x = 0; x < w; ++x) {
++          for (int c = 0; c < 3; ++c) {
++            pixels[3*(y*w+x)+c] = depth_rgb[3*((57-y/scale)*87+x/scale)+c];
++          }
++        }
++      }
++      mjr_rectangle({inset.left-8, inset.bottom-8, w+16, h+48}, .06,.06,.06,1);
++      mjr_drawPixels(pixels.data(), nullptr, inset, &platform_ui->mjr_context());
++      mjr_overlay(mjFONT_NORMAL, mjGRID_TOPRIGHT,
++                  {inset.left-8, inset.bottom+h+2, w+16, 36},
++                  depth_label.c_str(), nullptr, &platform_ui->mjr_context());
++    }
++  }
++
+   // take screenshot, save to file
+   if (this->screenshotrequest.exchange(false)) {
+     const unsigned int h = uistate.rect[0].height;

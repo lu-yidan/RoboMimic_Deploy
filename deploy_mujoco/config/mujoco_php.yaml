@@ -3,7 +3,7 @@ defaults:
   - _self_
 
 # Same robot/FSM as other policies, with a configurable static staircase.
-startup_policy: fixed_pose
+startup_policy: passive
 ghost_enabled: false
 scene:
   name: php_steps  # none = flat ground

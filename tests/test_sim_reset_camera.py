@@ -60,9 +60,15 @@ class SimResetCameraTest(unittest.TestCase):
         np.testing.assert_allclose(state.torso_quat_w,self.data.body('torso_link').xquat)
         self.assertNotEqual(self.data.qpos[0],9)
 
-    def test_camera_tracks_named_g1_body_by_default_and_can_be_fixed(self):
+    def test_camera_defaults_to_free_and_tracking_is_opt_in(self):
         camera = mujoco.MjvCamera()
+        camera.distance = 7
+        camera.azimuth = -140
         configure_camera(camera,self.model,{})
+        self.assertEqual(camera.distance,7)
+        self.assertEqual(camera.azimuth,-140)
+        self.assertEqual(camera.type,mujoco.mjtCamera.mjCAMERA_FREE)
+        configure_camera(camera,self.model,{"follow":True})
         self.assertEqual(camera.type,mujoco.mjtCamera.mjCAMERA_TRACKING)
         self.assertEqual(camera.trackbodyid,self.model.body('torso_link').id)
         configure_camera(camera,self.model,{'follow':False,'lookat':[1,2,3],'distance':4})
@@ -70,4 +76,12 @@ class SimResetCameraTest(unittest.TestCase):
         np.testing.assert_array_equal(camera.lookat,[1,2,3])
         self.assertEqual(camera.distance,4)
         with self.assertRaisesRegex(ValueError,'not found'):
-            configure_camera(camera,self.model,{'body':'missing'})
+            configure_camera(camera,self.model,{'follow':True,'body':'missing'})
+
+    def test_php_preset_starts_passive(self):
+        from hydra import compose, initialize_config_dir
+        with initialize_config_dir(config_dir=str(ROOT/'deploy_mujoco/config'), version_base=None):
+            cfg = compose(config_name='mujoco_php')
+        self.assertEqual(cfg.startup_policy, 'passive')
+        self.assertFalse(cfg.camera.follow)
+        self.assertTrue(cfg.php_depth_preview)

@@ -159,7 +159,7 @@ ScaleBFM must be enabled; enter it from FixedPose, Loco, AMP or ScaleBFM itself.
 
 **Resets differ:** START changes joint targets without resetting physical position/velocity. Keyboard R restores the configured scene initial state and selects Passive. Backspace restores standing physics and clears velocity while preserving the current controller, its history and phase. L1+START resets standing physics and selects FixedPose. These simulation resets do not exist on the robot. Use **R → Y** for recovery experiments and **L1+START → R1** for standing ScaleBFM tests.
 
-The viewer follows G1 by default; mouse orbit/zoom remain available. Set `camera.follow=false` for a fixed view.
+The default viewer uses a free camera; set `camera.follow=true` to track G1.
 
 Gamepad inspection: `python tools/joystick_test.py`. Button indices can be overridden with environment variables such as `JOYSTICK_START=7`. L1+left/right adjusts target Y bias by ±0.05 m; the robot bridge also supports L2+left/right for ball Y bias, bounded to ±1.5 m.
 
@@ -238,4 +238,4 @@ python deploy_mujoco/deploy_mujoco.py --config-name mujoco_php
 python deploy_mujoco/deploy_mujoco.py --config-name mujoco_php scene.name=none
 ```
 
-Once FixedPose is stable, press L1+A or P in the viewer to enter PHP. Left stick selects direction, R3 toggles speed, A/B/START return to AMP/Loco/FixedPose, Y preempts with SMP and L2 enters damping. This integration is for MuJoCo; hardware depth input is not connected. See the [PHP guide](docs/php_deployment_zh.md).
+Startup stays Passive. START explicitly selects FixedPose; L1+A or P explicitly selects PHP, including from Passive. The depth preview displays raw and backbone-input images. Left stick selects direction, R3 toggles speed, A/B/START return to AMP/Loco/FixedPose, Y preempts with SMP and L2 enters damping. This integration is for MuJoCo; hardware depth input is not connected. See the [PHP guide](docs/php_deployment_zh.md).

@@ -93,7 +93,7 @@ class PHPTest(unittest.TestCase):
         for policy,name in states:
             policy.name=name
             policy.checkChange.return_value=name
-        for source in (f.fixed_pose_1,f.loco_policy,f.amp_policy):
+        for source in (f.passive_mode,f.fixed_pose_1,f.loco_policy,f.amp_policy):
             f.cur_policy=source; f.FSMmode=FSMMode.NORMAL
             self.state.php_depth_time=time.monotonic()
             self.state.skill_cmd=FSMCommand.CMD_PHP_PARKOUR
@@ -121,7 +121,7 @@ class PHPTest(unittest.TestCase):
         from policy.php_parkour.input import PHPButtons
         buttons, joy = PHPButtons(), MagicMock()
         joy.is_button_just_pressed.side_effect = lambda b: b == JoystickButton.A
-        joy.is_button_pressed.side_effect = lambda b: b == JoystickButton.L1
+        joy.is_button_pressed.side_effect = lambda b: b in (JoystickButton.A, JoystickButton.L1)
         joy.is_button_released.return_value = False
         self.assertEqual(buttons.update(joy), FSMCommand.CMD_PHP_PARKOUR)
         joy.is_button_just_pressed.return_value = False
@@ -131,3 +131,19 @@ class PHPTest(unittest.TestCase):
         joy.is_button_released.side_effect = lambda b: b == JoystickButton.A
         self.assertIsNone(buttons.update(joy))
         self.assertEqual(buttons.update(joy), FSMCommand.CMD_AMP)
+
+    def test_chord_accepts_a_first_and_does_not_repeat_while_held(self):
+        from unittest.mock import Mock
+        from common.joystick import JoystickButton
+        from policy.php_parkour.input import PHPButtons
+        buttons, joy = PHPButtons(), Mock()
+        held = {JoystickButton.A}
+        joy.is_button_pressed.side_effect = lambda b: b in held
+        joy.is_button_released.return_value = False
+        self.assertIsNone(buttons.update(joy))
+        held.add(JoystickButton.L1)
+        self.assertEqual(buttons.update(joy), FSMCommand.CMD_PHP_PARKOUR)
+        self.assertIsNone(buttons.update(joy))
+        held.clear()
+        joy.is_button_released.side_effect = lambda b: b == JoystickButton.A
+        self.assertIsNone(buttons.update(joy))

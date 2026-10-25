@@ -31,7 +31,7 @@ conda activate robomimic
 cd ~/workspace/RoboMimic_Deploy
 git switch lyd-php-parkour
 
-# 台阶场景（启动后为 FixedPose，等姿态稳定再切 PHP）
+# 台阶场景（启动保持 Passive；按 START 才进入 FixedPose，按 L1+A/P 才进入 PHP）
 python deploy_mujoco/deploy_mujoco.py --config-name mujoco_php
 
 # 同一套控制器，切换为平地
@@ -51,7 +51,7 @@ python deploy_mujoco/deploy_mujoco.py --config-name mujoco_php \
 
 | 操作 | 效果 |
 |---|---|
-| `L1+A`（按住 L1 再按 A）或 MuJoCo 窗口 `P` | 从 FixedPose / Loco / AMP / ScaleBFM 进入 PHP |
+| `L1+A`（两键先后顺序均可）或 MuJoCo 窗口 `P` | 从 Passive / FixedPose / Loco / AMP / ScaleBFM 显式进入 PHP |
 | 左摇杆 | 前后、侧向和斜向离散方向命令；回中为 stand |
 | `R3` 释放 | PHP 高低速切换；每次进入默认低速 |
 | `A` 释放 | PHP → AMP |
@@ -64,7 +64,7 @@ python deploy_mujoco/deploy_mujoco.py --config-name mujoco_php \
 | 窗口 `Backspace` | 站立物理复位，保留当前控制器及历史/进度/速度档位 |
 | `L1+START` | 站立物理复位并切到 FixedPose |
 
-L1+A 的 A 释放不会误触 AMP，即使先松开 L1。L3 仍是 ghost 开关。被动状态不能直接进入 PHP：先 START 进入 FixedPose，或 L1+START 复位到站立 FixedPose。缺失、非有限或超过 150 ms 的深度输入会拒绝进入 PHP，运行中发生则输出阻尼并退出。
+L1+A 的 A 释放不会误触 AMP，即使先松开 L1。L3 仍是 ghost 开关。Passive 可以通过 L1+A/P 显式进入 PHP，不会自动进入 FixedPose。缺失、非有限或超过 150 ms 的深度输入会拒绝进入 PHP，运行中发生则输出阻尼并退出。
 
 ## 实现与验证范围
 
@@ -83,12 +83,18 @@ MUJOCO_GL=egl python tools/smoke_php_mujoco.py
 
 ## 跟随视角与进入提示
 
-默认视角跟随 G1 的 torso_link，鼠标仍可旋转、缩放；关闭跟随：
+默认恢复自由视角，不跟随 G1；鼠标仍可旋转、缩放。需要跟随时显式启用：
 
 ```bash
-python deploy_mujoco/deploy_mujoco.py --config-name mujoco_php camera.follow=false
+python deploy_mujoco/deploy_mujoco.py --config-name mujoco_php camera.follow=true
 ```
 
-`[PHP] Cannot enter: ...` 表示切换被拒绝，不是 PHP 已经运行。提示会明确说明未启用、当前 FSM 状态不允许、深度缺失、形状/数值异常或深度超时。若当前为 Passive，按 START 后再按 L1+A/P；若为深度错误，查看前面的 `[PHP camera]` 日志。
+`[PHP] Cannot enter: ...` 表示切换被拒绝，不是 PHP 已经运行。提示会明确说明未启用、当前 FSM 状态不允许、深度缺失、形状/数值异常或深度超时。Passive 可直接按 L1+A/P；若为深度错误，查看前面的 `[PHP camera]` 日志。
 
 Backspace 保留当前策略及内部状态，只复位物理姿态/速度并刷新观测。轨迹策略会从原进度继续；需要重新初始化控制器时使用 L1+START 后重新选择策略。
+
+## 实时深度窗口
+
+PHP 启用时默认打开 `PHP depth: raw camera / policy input` 窗口，即使当前是 Passive 也持续更新。上图是原始 106×60 米制深度，下图是实际输入 backbone 的 87×58 归一化图；近白远黑，上方显示当前策略。关闭该窗口只停止预览，不关闭 MuJoCo 或 PHP 推理。
+
+不需要窗口时加 `php_depth_preview=false`。成功切换会打印 `[Input] CMD_PHP_PARKOUR` 和 `[PHP] Entering from ...; depth ready.`，窗口状态同步变为 `SKILL_PHP_PARKOUR`。未出现 Input 日志时检查手柄按键编号，可用 `JOYSTICK_L1` / `JOYSTICK_A` 环境变量调整。

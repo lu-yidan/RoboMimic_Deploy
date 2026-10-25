@@ -228,6 +228,10 @@ def main(cfg: DictConfig):
     log_step = 0
 
     joystick = JoyStick()
+    depth_preview = None
+    if depth_camera is not None and cfg.get("php_depth_preview", True):
+        from policy.php_parkour.preview import DepthPreview
+        depth_preview = DepthPreview()
     prev_hat = (0, 0)
     prev_r2_pressed = False
     prev_l2_pressed = False
@@ -366,6 +370,7 @@ def main(cfg: DictConfig):
                     state_cmd.skill_cmd = FSMCommand.LOCO
                 elif php_button_command is not None:
                     state_cmd.skill_cmd = php_button_command
+                    print(f"[Input] {php_button_command.name}")
                 elif hat_just_pressed(0, -1):
                     state_cmd.skill_cmd = FSMCommand.CMD_BEYONDMIMIC_MJ
                 elif hat_just_pressed(0, 1):
@@ -421,7 +426,8 @@ def main(cfg: DictConfig):
 
                     if (depth_camera is not None
                             and state_cmd.skill_cmd not in (FSMCommand.PASSIVE, FSMCommand.CMD_SMP_RECOVERY)
-                            and (state_cmd.skill_cmd == FSMCommand.CMD_PHP_PARKOUR
+                            and ((depth_preview is not None and depth_preview.open)
+                                 or state_cmd.skill_cmd == FSMCommand.CMD_PHP_PARKOUR
                                  or FSM_controller.cur_policy.name == FSMStateName.SKILL_PHP_PARKOUR)):
                         try:
                             depth_camera.capture(d, state_cmd)
@@ -442,6 +448,9 @@ def main(cfg: DictConfig):
                 # Rendering is independent of the 500 Hz physics / 50 Hz policy loop.
                 now = time.perf_counter()
                 if now >= next_render:
+                    if depth_preview is not None:
+                        depth_preview.draw(depth_camera.raw_depth, state_cmd.php_depth,
+                                           FSM_controller.cur_policy.name.name)
                     # ---- Ghost visualization ----
                     if ghost_flags[0] and policy_output.ghost_qpos is not None:
                         ghost_d.qpos[:7 + num_joints] = policy_output.ghost_qpos
@@ -476,6 +485,8 @@ def main(cfg: DictConfig):
             except ValueError as e:
                 print(str(e))
 
+    if depth_preview is not None:
+        depth_preview.close()
     if depth_camera is not None:
         depth_camera.close()
     if logger is not None:

@@ -27,11 +27,8 @@ logging:
 scalebfm:
   motion: null
 
-# Orbit/zoom remain interactive while the camera tracks the robot.
+# Free viewer camera by default; following is opt-in.
 camera:
-  follow: true
+  follow: false
   body: torso_link
-  distance: 3.2
-  azimuth: 45
-  elevation: -25
-  lookat: [0, 0, 0.8]  # used when follow=false
+php_depth_preview: true

@@ -79,11 +79,12 @@ class FSM:
         # PHP entry is centralized like ScaleBFM; depth must already be available.
         if self.state_cmd.skill_cmd == FSMCommand.CMD_PHP_PARKOUR:
             self.state_cmd.skill_cmd = FSMCommand.INVALID
-            allowed = (FSMStateName.FIXEDPOSE, FSMStateName.LOCOMODE,
+            allowed = (FSMStateName.PASSIVE, FSMStateName.FIXEDPOSE, FSMStateName.LOCOMODE,
                        FSMStateName.SKILL_AMP, FSMStateName.SKILL_SCALEBFM,
                        FSMStateName.SKILL_PHP_PARKOUR)
             if self.php_policy is not None and self.cur_policy.name in allowed and self.php_policy.depth_ready():
                 self.cur_policy.exit()
+                print(f"[PHP] Entering from {self.cur_policy.name.name}; depth ready.")
                 self.cur_policy = self.php_policy
                 self.cur_policy.enter()
                 self.FSMmode = FSMMode.NORMAL
@@ -91,7 +92,7 @@ class FSM:
                 if self.php_policy is None:
                     reason = "PHP is disabled in this runtime; set php.enabled: true for MuJoCo"
                 elif self.cur_policy.name not in allowed:
-                    reason = f"current state is {self.cur_policy.name.name}; press START to select FixedPose before PHP"
+                    reason = f"current state is {self.cur_policy.name.name}; select Passive/FixedPose/Loco/AMP/ScaleBFM before PHP"
                 else:
                     reason = self.php_policy.depth_error()
                 print(f"[PHP] Cannot enter: {reason}.")

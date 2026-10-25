@@ -225,3 +225,14 @@ The [integration report](docs/validation/lyd_deploy_20261025.json) records model
 - [Camera](onboard/perception/camera/README.md), [LiDAR](onboard/perception/lidar/README.md), and [perception architecture](onboard/docs/PERCEPTION_ARCHITECTURE.md).
 
 Based on [ccrpRepo/RoboMimic_Deploy](https://github.com/ccrpRepo/RoboMimic_Deploy) and [OpenDriveLab/RoboNaldo_Deploy](https://github.com/OpenDriveLab/RoboNaldo_Deploy). Training: [RoboNaldo](https://github.com/opendrivelab/RoboNaldo). ScaleBFM: [official source](https://github.com/zengweishuai/ScaleBFM) and [weights](https://huggingface.co/WeishuaiZeng/ScaleBFM/tree/main). Upstream licenses and attribution are retained.
+
+## PHP Parkour
+
+The external `~/workspace/php_parkour` checkout is supported through `deploy_php/deploy_php.py` and the `php` section in `config/deploy.yaml`. Models remain outside this repository. PHP uses its own Holosoma depth simulation and inference runtimes; it is not an AMP/SMP FSM state. See the [PHP deployment guide](docs/php_deployment_zh.md) for setup, controls and validation scope.
+
+```bash
+python deploy_php/deploy_php.py check
+python deploy_php/deploy_php.py sim --scene steps  # or flat
+# In a second terminal, after the depth shared memory is ready:
+python deploy_php/deploy_php.py policy
+```

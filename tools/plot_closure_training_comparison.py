@@ -1,60 +1,45 @@
-"""Plot audited endpoint margins for known-case reward experiments."""
+"""Plot audited development margins for identical controller authority."""
 import argparse
 import hashlib
 import json
 from pathlib import Path
+import numpy as np
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 
-def sha(path):
-    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+def digest(path):return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--output', type=Path, required=True)
-    parser.add_argument('--include-smooth', action='store_true')
-    args = parser.parse_args()
-    experiments = [('support_reference_policy_transfer_v1', 'Parent'), ('closure_margin_control98304_v1', 'Zero-cost continuation'), ('closure_margin_penalty98304_v1', 'Capped-cost continuation')]
-    if args.include_smooth:
-        experiments.append(('closure_smooth_penalty98304_v1', 'Smooth-cost continuation'))
-    fig, axes = plt.subplots(1, 2, figsize=(10.7, 4.6))
-    sources, counts = {}, {}
-    for name, label in experiments:
-        path = Path('outputs')/name
-        audit = json.loads((path/'independent_training_audit.json').read_text())
-        manifest = json.loads((path/'manifest.json').read_text())
-        slack = json.loads((path/'endpoint_slack_diagnostic.json').read_text())
-        assert audit['passed'] and sha(path/'independent_training_audit.json') == slack['audit_sha256']
-        assert sha(path/'policy.zip') == audit['checkpoint_sha256']
-        rows = sorted([r for r in slack['rows'] if r['label']=='after'], key=lambda r: manifest['evaluation_cases'][r['case']]['rung_01'][2])
-        assert len(rows) == 5 and all(r['endpoint_available'] for r in rows)
-        heights = [1000*manifest['evaluation_cases'][r['case']]['rung_01'][2] for r in rows]
-        count = sum(r['accepted'] for r in rows)
-        counts[label] = count
-        axes[0].plot(heights, [1000*r['signed_slack']['joint_closure_rad'] for r in rows], 'o-', lw=1.7, markersize=4, label=f'{label} ({count}/5)')
-        axes[1].plot(heights, [1000*r['signed_slack']['root_rise_m'] for r in rows], 'o-', lw=1.7, markersize=4, label=label)
-        sources[str(path/'endpoint_slack_diagnostic.json')] = sha(path/'endpoint_slack_diagnostic.json')
-    for ax in axes:
-        ax.axhline(0., color='#a44238', ls='--', lw=1.2)
-        ax.set(xlabel='Known rod height offset (mm)', xticks=[5, 7.5, 10, 12.5, 15])
-        ax.grid(alpha=.2)
-        ax.spines[['top', 'right']].set_visible(False)
-    axes[0].set(ylabel='Joint-closure slack (mrad)', title='40 mrad minus observed maximum')
-    axes[1].set(ylabel='Root-rise slack (mm)', title='10 mm minus maximum absolute rise error')
-    axes[0].legend(fontsize=8, loc='lower left')
-    fig.suptitle('Known-case endpoint slack | positive is within this criterion', fontsize=13)
-    fig.text(.5, .025, 'Original acceptance also requires contact, tracking, speed and transient constraints. One seed and equal additional budget; no statistical claim.', ha='center', fontsize=8)
-    fig.tight_layout(rect=(0, .065, 1, .94))
+    parser=argparse.ArgumentParser();parser.add_argument('--output',type=Path,required=True);args=parser.parse_args()
+    paths=[Path('outputs/closure_fivecase_eightcase_comparison_20261024_v1/comparison.json'),Path('outputs/closure_five_vs_eight_training_20261024_v1/comparison.json')]
+    first,second=[json.loads(p.read_text()) for p in paths]
+    assert first['after']['checkpoint_sha256']==second['before']['checkpoint_sha256']
+    models=[('Initial search seed',first['before'],'#287a8b'),('PPO: 5 training cases',first['after'],'#bd6744'),('PPO: 8 training cases',second['after'],'#69874c')]
+    for _,run,_ in models:
+        folder=Path(run['directory']);assert digest(folder/'policy.zip')==run['checkpoint_sha256']
+        audit=folder/('independent_candidate_audit.json' if (folder/'independent_candidate_audit.json').exists() else 'independent_training_audit.json')
+        assert digest(audit)==run['audit_sha256']
+        assert sum(r['success'] for r in run['rows'].values())==5
+    cases=list(first['before']['cases']);labels=['z15','z12.5','z10','z5','z7.5','z15.1','x-0.1/z15','x+0.1/z15']
+    hard=['foot_z_plus15','z15.1','x-0.1_z15','x+0.1_z15']
+    fig,axes=plt.subplots(1,2,figsize=(12,4.8),layout='constrained')
+    for index,(label,run,color) in enumerate(models):
+        axes[0].scatter(np.arange(8)+(index-1)*.18,[40-run['rows'][c]['closure_mrad'] for c in cases],label=label,color=color,s=35)
+        axes[1].scatter(np.arange(4)+(index-1)*.18,[260-run['rows'][c]['rise_max_mm'] for c in hard],label=label,color=color,s=35)
+    axes[0].set_xticks(np.arange(8),labels,rotation=35,ha='right');axes[0].set_ylabel('Joint closure margin (mrad)')
+    axes[1].set_xticks(np.arange(4),['z15','z15.1','x-0.1/z15','x+0.1/z15'],rotation=20,ha='right');axes[1].set_ylabel('Upper root-rise margin (mm)')
+    axes[0].set_title('All eight cases');axes[1].set_title('Four difficult cases: very small height margins')
+    for axis in axes:
+        axis.axhline(0,color='#333333',ls='--',lw=1);axis.grid(axis='y',alpha=.2);axis.set_xlabel('Rod offsets (mm)')
+    axes[0].legend(fontsize=8)
+    fig.suptitle('Same controller, equal PPO budget: all three candidates remain 5/8\nSelected endpoint margins only; full acceptance requires every original task check',fontsize=11)
     args.output.mkdir(exist_ok=False)
-    for extension in ('png', 'pdf'):
-        fig.savefig(args.output/f'endpoint_slack.{extension}', dpi=180)
-    plt.close(fig)
-    (args.output/'provenance.json').write_text(json.dumps(dict(source_hashes=sources, counts=counts, source_sha256=sha(__file__)), indent=2))
-    (args.output/'figure_source.py').write_bytes(Path(__file__).read_bytes())
+    for suffix in ('png','pdf'):fig.savefig(args.output/f'training_comparison.{suffix}',dpi=180)
+    (args.output/'manifest.json').write_text(json.dumps(dict(inputs={str(p):digest(p) for p in paths},source_sha256=digest(__file__),scope='Deterministic development results, one training seed. No confidence interval or generalization claim.'),indent=2))
+    (args.output/'plot_source.py').write_bytes(Path(__file__).read_bytes())
 
 
-if __name__ == '__main__':
-    main()
+if __name__=='__main__':main()

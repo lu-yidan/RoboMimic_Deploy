@@ -1,0 +1,30 @@
+{
+  "origin": "Local G1Climbing results/g1_bar_perception_v2_20261007/source_snapshot",
+  "source_hashes": {
+    "g1_bar_perception.py": "28628a32bcd00c942b226781769921553b871a05c2b6b259c5641ba97819b392",
+    "g1_bar_perception_v2.py": "a4e64a6b7ab445ee2486192330024914dcf1e81ac88fdb0a826967a34710080e"
+  },
+  "ported_source_hashes": {
+    "orange_bar.py": "28628a32bcd00c942b226781769921553b871a05c2b6b259c5641ba97819b392",
+    "visible_targets.py": "bc45d70dc8a39180b11756c9525957f3dba987e46e650def880535c1746a6ce7",
+    "__init__.py": "ce9e597e8d82618c96e9de5ec612f1ad2e32bda8e33fd4f7ce0e6885084f33be"
+  },
+  "transformation": "Module rename and one import changed to package-relative; algorithm unchanged.",
+  "fixture_files": {
+    "clean_initial/calibration.json": "08b8cef6d488adf557621c2bdd801d11a19f451a4b4beba0c43a093b0da1b51c",
+    "clean_initial/expected_prediction.json": "691f73a3b5da3adc74993994061779c22cf46396d02b49c381fb0664508b76b7",
+    "clean_initial/measurement.npz": "91ca887b528bc0724d3e4306c02e07770640a57ee89f90013a3a4b5b617c26e7",
+    "heavy_occlusion/calibration.json": "08b8cef6d488adf557621c2bdd801d11a19f451a4b4beba0c43a093b0da1b51c",
+    "heavy_occlusion/expected_prediction.json": "7b05c88046f815b45f77f9fcfacfbad56f34f42f22bd53d91ea72a09c4c679d1",
+    "heavy_occlusion/measurement.npz": "dc6b6bc57411c124460e8a4cc0019fe76fee74e5eca09adb1ca5c302ff30aba2",
+    "high_bar_plus80/calibration.json": "08b8cef6d488adf557621c2bdd801d11a19f451a4b4beba0c43a093b0da1b51c",
+    "high_bar_plus80/expected_prediction.json": "c0f7e281f295834f7f9422a097a7628e434775f6321c1a187703fbcdeabb7e32",
+    "high_bar_plus80/measurement.npz": "43a8bc68f9320a7fb351deb811f6c6274001bffa269bddcdcf4884049963de59",
+    "orange_planar_distractor/calibration.json": "08b8cef6d488adf557621c2bdd801d11a19f451a4b4beba0c43a093b0da1b51c",
+    "orange_planar_distractor/expected_prediction.json": "a7cfaadff914341b5fb64e5052362b679c6fadbaaf0cb2b663cee33ce38f5711",
+    "orange_planar_distractor/measurement.npz": "5034f7ed9c931f4415f07e01c67955c3482c4e95b701910af1601050215786d8",
+    "partial_bar_occlusion/calibration.json": "08b8cef6d488adf557621c2bdd801d11a19f451a4b4beba0c43a093b0da1b51c",
+    "partial_bar_occlusion/expected_prediction.json": "b356b0a84a4d940c8f0ccaad00682dc59b75e70b0e1a5adf455101b6655647df",
+    "partial_bar_occlusion/measurement.npz": "4630a872047dc107c573f8b5bc8b7bbf74a146bc642ea05fb71a0f88f1e44648"
+  }
+}

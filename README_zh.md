@@ -1,4 +1,20 @@
-> `liuze-climb` 开发分支：已接通50 Hz、100维观测、29维位置动作的攀爬接口、MuJoCo环境和首轮4096步PPO训练，并完成ONNX导出与适配器仿真验证。当前仅训练初始支撑姿态保持，尚未达到通过标准，未训练换杆或部署真机。说明见 [policy/climb/README.md](policy/climb/README.md) 和 [训练记录](training/README.md)。原QP力矩控制的成功结论不能直接继承。
+> **当前研究基线（2026-10-29）**：已采用 v2 物理/姿态验收及摆动阶段 8 mm 抬升参考。24 个开发工况的单周期、独立前缀、连续双周期和连续八周期全部通过；八周期共 192 次末段验收通过。每条八周期记录运行 909.28 s，实际累计升高 1.998528–1.998536 m，仅开始重置一次。冻结 PPO，本轮未重训；不代表随机墙面、视觉闭环或真机能力。依据为 [research_baseline.json](research_baseline.json)，详见[正式参考链](docs/baselines/swing_reference_20261029.md)及[连续周期记录](docs/baselines/v2_multicycle_20261029.md)。
+>
+> **打开当前 v2 在线仿真**：在仓库根目录运行 `.\tools\run_adopted_climb.ps1`。它核对已采用参考、策略及已完成的搬迁复现证据，然后在独立包内运行 T12 八周期的新动力学；加 `-Headless` 无窗口运行，加 `-VerifyOnly` 只检查资产。需要本地仿真包，普通源码克隆不包含全部 `outputs/` 文件。
+>
+> **只看已经记录的动作**：`.venv\Scripts\python.exe -m deploy_mujoco.replay_verified_climb --run outputs/v2_swing_eight_suite_20261029_v2/training_12 --speed 8`。这是姿态回放，不做在线策略推理。
+>
+> 当前攀爬实验使用 Python 3.12、MuJoCo 3.3.7，精确依赖以冻结仿真包为准；下方上游安装步骤适用于原部署框架。新增的接触确认加载仍是独立开发候选，尚未替换正式基线。
+>
+> 可分享在线仿真包：`outputs/portable_v2_live_T12_eight_verified_20261029_v1.zip`。已在本机另一个目录完整重跑 T12 八周期，12 组记录数组逐元素一致。解压后先读外层 `README_先读.txt`；尚未验证全新机器安装或 Linux。该包是本地产出，未声称已经上传到 GitHub。
+
+> **输入通路限制**：当前冻结 PPO 的两组手杆几何输入权重均为零，手杆位置特征尚不能直接改变策略动作。已有物理验证仍有效，但不能视作感知驱动的手杆适应。已取消没有区分能力的“仅遮掉手杆输入”双周期实验；详见[输入通路审计](outputs/rung06_geometry_input_path_20261029_v1/summary.json)。
+
+> 以下为 **2026-10-24 历史阶段和旧入口**：当时使用 148 维观测、26 维残差动作与 QP 控制器组合，单周期约抬升 0.25 m。固定参考修正候选通过原五工况和旧十二项网格；两轮 PPO 未增加通过项；随后固定前后/腰部参考调整已将完整八工况从 5/8 提升到 7/8，旧十二项网格完整回归 12/12，四项审计通过。当时尚未验证连续两米攀爬或真机部署。早期 100 维观测、29 维位置动作的站立接口是另一阶段，不代表当前组合策略。详见[历史实验记录](docs/baselines/closure_waist_body_20261024.md)。
+>
+> 新 7/8 实验候选可执行 `.\tools\run_reference_closure_sim.ps1`；加 `-Headless` 可无窗口验证。新入口已在最高杆完整复现十组数组，原发布包未替换。
+>
+> 在仓库根目录执行 `.\tools\run_closure_sim.ps1` 打开当前已验证候选的 MuJoCo 演示；加 `-Headless` 可无窗口记录并核对复现。依赖本地 `.venv` 和 `outputs/` 实验资产，普通源码克隆不包含全部实验文件。该入口只运行仿真。
 
 <div align="center">
   <h1 align="center">RoboNaldo Deploy</h1>

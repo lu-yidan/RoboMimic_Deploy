@@ -1,3 +1,13 @@
+> **Climbing research baseline (2026-10-29):** the adopted v2 swing-lift reference and frozen composite PPO pass all 24 development cases through single-cycle, two-cycle and eight-cycle validation. Each eight-cycle run completes 909.28 simulated seconds and 1.998528–1.998536 m of root rise, with one initial reset; all 192 endpoint checks pass. No new training, vision-based control, random-wall generalization, or hardware result is claimed. See [baseline metadata](research_baseline.json), [formal reference chain](docs/baselines/swing_reference_20261029.md), and [continuous validation](docs/baselines/v2_multicycle_20261029.md).
+>
+> These climbing experiments use Python 3.12 and MuJoCo 3.3.7. Exact dependencies belong to the frozen simulation package; the upstream setup below describes the broader deployment framework. A source-only clone does not include all research assets under `outputs/`. The new contact-confirmed loading controller is a separate development candidate and has not replaced the adopted baseline.
+>
+> A local shareable simulator archive, `outputs/portable_v2_live_T12_eight_verified_20261029_v1.zip`, includes the completed relocated T12 eight-cycle reproduction: all 12 recorded arrays match exactly. Read its outer instructions first. Fresh-machine installation and Linux reproduction remain unverified; this archive has not been uploaded to GitHub.
+>
+> With local research assets installed, launch the current adopted T12 eight-cycle simulator using `.\tools\run_adopted_climb.ps1`. It verifies the adopted-policy/reference binding and completed package evidence before running fresh dynamics. Use `-Headless` without a viewer, or `-VerifyOnly` for asset checks only. Historical launchers below remain historical experiments.
+>
+> Input-path limitation: both frozen actors have exactly zero projection weights for the current/future hand-rod geometry slots. Existing physical rollouts remain valid, but they do not establish perception-driven hand-target adaptation. The planned input-only two-cycle ablation was abandoned without execution because it cannot distinguish these actors. See the [input-path audit](outputs/rung06_geometry_input_path_20261029_v1/summary.json).
+
 <div align="center">
   <h1 align="center">RoboNaldo Deploy</h1>
   <p align="center">
@@ -26,6 +36,14 @@
 </table>
 
 <p align="center"><em>Free-kick demo — RoboNaldo policy on a Unitree G1</em></p>
+
+## Local climbing experiment
+
+From this repository root in PowerShell, use `.\tools\run_closure_sim.ps1` to open the verified single-cycle climbing simulation, or append `-Headless` to record and check reproduction without a viewer. This entry only runs MuJoCo; it does not connect to robot hardware.
+
+The newer fixed-reference candidate passed seven of eight complete cases; its twelve-case regression passed all twelve cases with all four audits complete. Use `.\tools\run_reference_closure_sim.ps1` for this candidate. Its highest-case runner reproduced all ten recorded arrays; the original release remains unchanged.
+
+The local experiment assets under `outputs/` and the project virtual environment are required. The current candidate passed the five original cases and twelve original grid cases, but only five of eight expanded cases. One cycle rises approximately 0.25 m; continuous 2 m climbing is not yet validated. See [experiment results and commands](docs/baselines/closure_waist_body_20261024.md).
 
 ## Preface
 

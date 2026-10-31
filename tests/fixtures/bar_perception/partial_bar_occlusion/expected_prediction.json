@@ -1,0 +1,349 @@
+{
+  "targets": [
+    {
+      "candidate_index": 0,
+      "target_world_m": [
+        0.3693970964683082,
+        -0.2730210902960971,
+        1.3217694218214324
+      ],
+      "axis_world": [
+        0.007646245732145078,
+        0.9999668993806594,
+        0.002781199243849397
+      ],
+      "visible_endpoints_world_m": [
+        [
+          0.3691447703591474,
+          -0.3060199979756589,
+          1.3216776422463854
+        ],
+        [
+          0.36964942257746897,
+          -0.24002218261653535,
+          1.3218612013964794
+        ]
+      ],
+      "visible_length_m": 0.066,
+      "endpoint_status": "measured_visible_limits_not_physical_rod_ends",
+      "end_margin_m": 0.025,
+      "local_visible_segment_supported": true,
+      "target_identity_confirmed": false,
+      "load_permission": false
+    },
+    {
+      "candidate_index": 0,
+      "target_world_m": [
+        0.3703834621677549,
+        -0.14402536027599205,
+        1.322128196523889
+      ],
+      "axis_world": [
+        0.007646245732145078,
+        0.9999668993806594,
+        0.002781199243849397
+      ],
+      "visible_endpoints_world_m": [
+        [
+          0.3699552724067548,
+          -0.20002350664130897,
+          1.3219724493662335
+        ],
+        [
+          0.37081165192875504,
+          -0.08802721391067513,
+          1.3222839436815446
+        ]
+      ],
+      "visible_length_m": 0.112,
+      "endpoint_status": "measured_visible_limits_not_physical_rod_ends",
+      "end_margin_m": 0.025,
+      "local_visible_segment_supported": true,
+      "target_identity_confirmed": false,
+      "load_permission": false
+    },
+    {
+      "candidate_index": 1,
+      "target_world_m": [
+        0.3700603877650395,
+        0.2727750590498206,
+        1.3220407312614526
+      ],
+      "axis_world": [
+        0.016408122086845778,
+        0.9997285031497343,
+        -0.016543685187266677
+      ],
+      "visible_endpoints_world_m": [
+        [
+          0.36950251161408676,
+          0.2387842899427296,
+          1.3226032165578196
+        ],
+        [
+          0.3706182639159923,
+          0.30676582815691156,
+          1.3214782459650856
+        ]
+      ],
+      "visible_length_m": 0.068,
+      "endpoint_status": "measured_visible_limits_not_physical_rod_ends",
+      "end_margin_m": 0.025,
+      "local_visible_segment_supported": true,
+      "target_identity_confirmed": false,
+      "load_permission": false
+    }
+  ],
+  "candidate_diagnostics": [
+    {
+      "candidate_index": 0,
+      "v1_local_geometry_valid": true,
+      "measured_samples": 3143,
+      "target_identity_confirmed": false,
+      "load_permission": false,
+      "visible_intervals": [
+        {
+          "visible_endpoints_world_m": [
+            [
+              0.3691447703591474,
+              -0.3060199979756589,
+              1.3216776422463854
+            ],
+            [
+              0.36964942257746897,
+              -0.24002218261653535,
+              1.3218612013964794
+            ]
+          ],
+          "visible_length_m": 0.066,
+          "endpoint_status": "measured_visible_limits_not_physical_rod_ends"
+        },
+        {
+          "visible_endpoints_world_m": [
+            [
+              0.3699552724067548,
+              -0.20002350664130897,
+              1.3219724493662335
+            ],
+            [
+              0.37081165192875504,
+              -0.08802721391067513,
+              1.3222839436815446
+            ]
+          ],
+          "visible_length_m": 0.112,
+          "endpoint_status": "measured_visible_limits_not_physical_rod_ends"
+        }
+      ],
+      "plane_rmse_m": 0.002079624362295922,
+      "cylinder_rmse_m": 0.00043444919658595466,
+      "cylinder_improvement_m": 0.0016451751657099673,
+      "cylinder_model_preferred": true
+    },
+    {
+      "candidate_index": 1,
+      "v1_local_geometry_valid": true,
+      "measured_samples": 1133,
+      "target_identity_confirmed": false,
+      "load_permission": false,
+      "visible_intervals": [
+        {
+          "visible_endpoints_world_m": [
+            [
+              0.36950251161408676,
+              0.2387842899427296,
+              1.3226032165578196
+            ],
+            [
+              0.3706182639159923,
+              0.30676582815691156,
+              1.3214782459650856
+            ]
+          ],
+          "visible_length_m": 0.068,
+          "endpoint_status": "measured_visible_limits_not_physical_rod_ends"
+        }
+      ],
+      "plane_rmse_m": 0.0017335965309232264,
+      "cylinder_rmse_m": 0.00018787687264252398,
+      "cylinder_improvement_m": 0.0015457196582807024,
+      "cylinder_model_preferred": true
+    },
+    {
+      "candidate_index": 2,
+      "v1_local_geometry_valid": false,
+      "measured_samples": 909,
+      "target_identity_confirmed": false,
+      "load_permission": false,
+      "visible_intervals": [],
+      "plane_rmse_m": 0.0022376288864970036,
+      "cylinder_rmse_m": 0.0011082067343959443,
+      "cylinder_improvement_m": 0.0011294221521010593,
+      "cylinder_model_preferred": true,
+      "rejection": "v1 local geometry rejected"
+    }
+  ],
+  "v1_prediction": {
+    "candidates": [
+      {
+        "center_world_m": [
+          0.36998585738968337,
+          -0.19602363904378634,
+          1.3219835741632089
+        ],
+        "axis_world": [
+          0.007646245732145078,
+          0.9999668993806594,
+          0.002781199243849397
+        ],
+        "endpoints_world_m": [
+          [
+            0.36925347775681683,
+            -0.2918033741323714,
+            1.321717182818686
+          ],
+          [
+            0.37071823702254986,
+            -0.10024390395520126,
+            1.322249965507732
+          ]
+        ],
+        "visible_surface_endpoints_world_m": [
+          [
+            0.3691387840708346,
+            -0.3068028776230813,
+            1.3216754648300284
+          ],
+          [
+            0.370832930708532,
+            -0.08524440046449136,
+            1.3222916834963898
+          ]
+        ],
+        "visible_span_m": 0.22156581112416285,
+        "radial_rmse_m": 0.00043473167124775963,
+        "elongation": 103.10872971412181,
+        "pixel_count": 3195,
+        "image_clipped": false,
+        "valid": true,
+        "quality_score": 0.8550894429174134,
+        "endpoint_status": "visible_span_only_not_occlusion_certified"
+      },
+      {
+        "center_world_m": [
+          0.3700603877650395,
+          0.2727750590498206,
+          1.3220407312614526
+        ],
+        "axis_world": [
+          0.016408122086845778,
+          0.9997285031497343,
+          -0.016543685187266677
+        ],
+        "endpoints_world_m": [
+          [
+            0.3697356389171418,
+            0.2529884754365326,
+            1.3223681631684139
+          ],
+          [
+            0.37038513661293726,
+            0.2925616426631086,
+            1.3217132993544916
+          ]
+        ],
+        "visible_surface_endpoints_world_m": [
+          [
+            0.3694895170858391,
+            0.2379925478892866,
+            1.322616318446223
+          ],
+          [
+            0.37063125844423994,
+            0.30755757021035457,
+            1.3214651440766825
+          ]
+        ],
+        "visible_span_m": 0.0695839141345847,
+        "radial_rmse_m": 0.00018787687264252848,
+        "elongation": 8.118413576633218,
+        "pixel_count": 1133,
+        "image_clipped": false,
+        "valid": true,
+        "quality_score": 0.5435514839720058,
+        "endpoint_status": "visible_span_only_not_occlusion_certified"
+      },
+      {
+        "center_world_m": [
+          0.37038202387408925,
+          0.11335014554841205,
+          1.3216923499436148
+        ],
+        "axis_world": [
+          -0.07795824120704396,
+          0.9904698832815223,
+          -0.11354260407526362
+        ],
+        "endpoints_world_m": [
+          [
+            0.37139157417964574,
+            0.10052367386524841,
+            1.3231627136776225
+          ],
+          [
+            0.3693724735685327,
+            0.1261766172315757,
+            1.3202219862096072
+          ]
+        ],
+        "visible_surface_endpoints_world_m": [
+          [
+            0.3725609477977514,
+            0.08566662561602557,
+            1.3248658527387516
+          ],
+          [
+            0.36820309995042705,
+            0.14103366548079854,
+            1.3185188471484781
+          ]
+        ],
+        "visible_span_m": 0.05589977120893026,
+        "radial_rmse_m": 0.0012103426849102992,
+        "elongation": 5.114467851557081,
+        "pixel_count": 941,
+        "image_clipped": false,
+        "valid": false,
+        "quality_score": 0.27789287348861863,
+        "endpoint_status": "visible_span_only_not_occlusion_certified"
+      }
+    ],
+    "valid_candidate_count": 2,
+    "color_pixel_count": 5271,
+    "measured_color_pixel_count": 5271,
+    "assumptions": [
+      "controlled orange color",
+      "known capsule radius",
+      "calibrated pinhole",
+      "supplied camera pose"
+    ],
+    "calibration": {
+      "width": 640,
+      "height": 480,
+      "fx": 240.00000000000003,
+      "fy": 240.00000000000003,
+      "cx": 319.5,
+      "cy": 239.5
+    }
+  },
+  "load_permission": false,
+  "scope": "local visible geometric proposals, identity and load require independent validation",
+  "parameters": {
+    "radius_m": 0.015,
+    "end_margin_m": 0.025,
+    "min_visible_length_m": 0.06,
+    "bin_width_m": 0.002,
+    "min_samples_per_bin": 3,
+    "cylinder_rms_improvement_threshold_m": 0.00025
+  }
+}

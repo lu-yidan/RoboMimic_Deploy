@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Headless Stage 3 reach/turn/stop evaluation in the PHP deployment G1 model."""
 import argparse
+import hashlib
 import json
 from pathlib import Path
 import sys
@@ -72,9 +73,12 @@ def evaluate(config,target,heading,seconds):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--seconds',type=float,default=15.)
+    parser.add_argument('--bundle',type=Path,help='Evaluate this explicit bundle in simulation')
     parser.add_argument('--output',type=Path,default=ROOT/'outputs/acp/mujoco_eval.json')
     args = parser.parse_args()
     config = load_acp_config()
+    if args.bundle:
+        config = dict(config,enabled=True,model_dir=str(args.bundle.expanduser().resolve(strict=True)))
     if not config['enabled']: raise SystemExit('Set LYD_DEPLOY_CONFIG=config/deploy_acp.yaml')
     results,paths = [],{}
     for index,(target,heading) in enumerate((([1.,0.],0.),([0.,1.],np.pi/2),([0.,0.],0.))):
@@ -83,6 +87,10 @@ if __name__ == '__main__':
         paths[f'scenario_{index}'] = path
         print(json.dumps(result),flush=True)
     args.output.parent.mkdir(parents=True,exist_ok=True)
-    args.output.write_text(json.dumps(results,indent=2)+'\n')
+    passed = all(result['passed'] for result in results)
+    report = {'passed':passed,'scenarios':results,'bundle':config['model_dir'],
+        'policy_sha256':hashlib.sha256((Path(config['model_dir'])/'policy.onnx').read_bytes()).hexdigest(),
+        'criteria':{'distance':.2,'heading_error':.25,'speed_xy':.15,'hold_seconds':1.}}
+    args.output.write_text(json.dumps(report,indent=2)+'\n')
     np.savez_compressed(args.output.with_suffix('.npz'),**paths)
-    sys.exit(0 if all(result['passed'] for result in results) else 1)
+    sys.exit(0 if passed else 1)

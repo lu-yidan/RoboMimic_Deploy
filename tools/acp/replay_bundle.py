@@ -60,5 +60,10 @@ def replay(directory, atol=1e-5, rtol=1e-4):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('bundle',type=Path)
+    parser.add_argument('--output',type=Path,help='Write the validation receipt as JSON')
     args = parser.parse_args()
-    print(json.dumps(replay(args.bundle),indent=2))
+    result = replay(args.bundle)
+    if args.output:
+        args.output.parent.mkdir(parents=True,exist_ok=True)
+        args.output.write_text(json.dumps(result,indent=2)+'\n')
+    print(json.dumps(result,indent=2))

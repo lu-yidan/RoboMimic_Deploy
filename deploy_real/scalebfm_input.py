@@ -5,12 +5,14 @@ from policy.scalebfm.motion_catalog import play_selected
 
 
 class RealPolicyInput:
-    def __init__(self, catalog=None, php_enabled=False):
+    def __init__(self, catalog=None, php_enabled=False, acp_enabled=False):
         self.catalog = catalog
         self.previous = [False] * 16
         self.php_enabled = php_enabled
         self.php_a_latched = False
         self.php_chord = False
+        self.acp_enabled = acp_enabled
+        self.acp_chord = False
 
     def update(self, buttons, fsm, state, output):
         buttons = list(map(bool, buttons))
@@ -20,6 +22,9 @@ class RealPolicyInput:
         chord = self.php_enabled and buttons[KeyMap.L1] and buttons[KeyMap.A]
         php_edge = chord and not self.php_chord
         self.php_chord = chord
+        acp_chord = self.acp_enabled and buttons[KeyMap.L1] and buttons[KeyMap.X]
+        acp_edge = acp_chord and not self.acp_chord
+        self.acp_chord = acp_chord
         if chord:
             self.php_a_latched = True
         a_released = previous[KeyMap.A] and not buttons[KeyMap.A]
@@ -32,6 +37,9 @@ class RealPolicyInput:
         # Recovery and damping preempt PHP, including a simultaneous chord.
         if rising(KeyMap.Y) and not buttons[KeyMap.L1]:
             state.skill_cmd = FSMCommand.CMD_SMP_RECOVERY
+            return
+        if acp_edge:
+            state.skill_cmd = FSMCommand.CMD_ACP
             return
         if php_edge:
             state.skill_cmd = FSMCommand.CMD_PHP_PARKOUR

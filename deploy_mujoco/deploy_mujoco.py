@@ -182,21 +182,31 @@ def main(cfg: DictConfig):
 
     state_cmd = StateAndCmd(num_joints)
     policy_output = PolicyOutput(num_joints)
-    from common.deployment_config import load_mujoco_scalebfm_config, load_php_config
+    from common.deployment_config import load_mujoco_scalebfm_config, load_php_config, load_acp_config
     scalebfm_cfg = load_mujoco_scalebfm_config(cfg)
     php_cfg = load_php_config()
+    acp_cfg = load_acp_config()
+    if acp_cfg["enabled"] and not np.isclose(mj_per_step_duration, .02):
+        raise ValueError("ACP requires a 50 Hz control loop")
     if php_cfg["enabled"] and not np.isclose(mj_per_step_duration, .02):
         raise ValueError("PHP requires a 50 Hz control loop")
     if scalebfm_cfg and scalebfm_cfg.enabled and not np.isclose(mj_per_step_duration, .02):
         raise ValueError("ScaleBFM requires a 50 Hz control loop")
     joint_names = [mujoco.mj_id2name(m, mujoco.mjtObj.mjOBJ_JOINT, int(m.actuator_trnid[i, 0]))
                    for i in range(num_joints)]
-    if (scalebfm_cfg and scalebfm_cfg.enabled) or php_cfg["enabled"]:
+    if (scalebfm_cfg and scalebfm_cfg.enabled) or php_cfg["enabled"] or acp_cfg["enabled"]:
         actuator_joints = m.actuator_trnid[:, 0]
         if not (np.array_equal(m.jnt_qposadr[actuator_joints], np.arange(7, 7 + num_joints))
                 and np.array_equal(m.jnt_dofadr[actuator_joints], np.arange(6, 6 + num_joints))):
             raise ValueError("Deployment loop requires actuator order to match qpos/dof order")
-    FSM_controller = FSM(state_cmd, policy_output, scalebfm_cfg, joint_names, enable_freekick=False, php_config=php_cfg)
+    FSM_controller = FSM(state_cmd, policy_output, scalebfm_cfg, joint_names,
+                         enable_freekick=False, php_config=php_cfg, acp_config=acp_cfg)
+    acp_terrain = None
+    acp_terrain_error = None
+    if FSM_controller.acp_policy is not None:
+        from policy.acp.terrain import MujocoTerrain
+        acp_terrain = MujocoTerrain(m)
+        tau_limit = FSM_controller.acp_policy.effort_limits29.copy()
     depth_camera = None
     if FSM_controller.php_policy is not None:
         from policy.php_parkour.depth import DepthCamera
@@ -215,7 +225,7 @@ def main(cfg: DictConfig):
         raise ValueError("startup_policy must be passive, fixed_pose, or smp_recovery")
     state_cmd.skill_cmd = startup_commands[startup_policy]
     print(f"[Startup] {startup_policy}; physics={simulation_dt}s; control={simulation_dt * control_decimation}s")
-    print("[Controls] START: FixedPose; L1+A / P: PHP; R3: PHP speed; Y: SMP; keyboard R: reset simulation into passive mode")
+    print("[Controls] START: FixedPose; C: ACP; L1+A / P: PHP; R3: PHP speed; Y: SMP; keyboard R: reset simulation into passive mode")
 
     log_cfg = cfg.get("logging", {})
     logger = None
@@ -241,11 +251,14 @@ def main(cfg: DictConfig):
     reset_requested = Event()
     standing_reset_requested = Event()
     php_requested = Event()
+    acp_requested = Event()
     def key_callback(key):
         if key in (ord('R'), ord('r')):
             reset_requested.set()
         elif key in (ord('P'), ord('p')):
             php_requested.set()
+        elif key in (ord('C'), ord('c')):
+            acp_requested.set()
         elif key == 259:
             standing_reset_requested.set()
     if show_depth:
@@ -270,7 +283,12 @@ def main(cfg: DictConfig):
                     state_cmd.skill_cmd = FSMCommand.INVALID
                     state_cmd.php_depth = None
                     state_cmd.php_depth_time = 0.0
+                    state_cmd.acp_terrain = None
+                    state_cmd.acp_terrain_time = 0.0
+                    state_cmd.acp_pose_time = 0.0
+                    state_cmd.acp_pose_valid = False
                     php_requested.clear()
+                    acp_requested.clear()
                     FSM_controller.get_next_policy(FSMStateName.PASSIVE)
                     FSM_controller.FSMmode = FSMMode.NORMAL
                     FSM_controller.sim_counter = 0
@@ -361,6 +379,8 @@ def main(cfg: DictConfig):
 
                 php_button_command = php_buttons.update(joystick, php_requested.is_set())
                 php_requested.clear()
+                acp_button_command = acp_requested.is_set()
+                acp_requested.clear()
                 # Damping remains latched until FSM consumes it; recovery has priority over PHP.
                 if l2_just_released or state_cmd.skill_cmd == FSMCommand.PASSIVE:
                     state_cmd.skill_cmd = FSMCommand.PASSIVE
@@ -372,6 +392,8 @@ def main(cfg: DictConfig):
                     state_cmd.skill_cmd = FSMCommand.POS_RESET
                 elif joystick.is_button_released(JoystickButton.B):
                     state_cmd.skill_cmd = FSMCommand.LOCO
+                elif acp_button_command:
+                    state_cmd.skill_cmd = FSMCommand.CMD_ACP
                 elif php_button_command is not None:
                     state_cmd.skill_cmd = php_button_command
                 elif hat_just_pressed(0, -1):
@@ -417,6 +439,18 @@ def main(cfg: DictConfig):
                     state_cmd.torso_quat_w = d.xquat[torso_body_id].astype(np.float32)  # [w,x,y,z]
                     state_cmd.pelvis_pos_w  = d.qpos[0:3].astype(np.float32)
                     state_cmd.pelvis_quat_w = d.qpos[3:7].astype(np.float32)  # [w,x,y,z]
+                    state_cmd.acp_ang_vel = d.qvel[3:6].astype(np.float32)
+                    if acp_terrain is not None:
+                        try:
+                            acp_terrain.capture(d, state_cmd)
+                            acp_terrain_error = None
+                        except Exception as exc:
+                            state_cmd.acp_terrain = None
+                            state_cmd.acp_pose_valid = False
+                            error = str(exc)
+                            if error != acp_terrain_error:
+                                print("[ACP terrain]", error)
+                            acp_terrain_error = error
 
                     # Ball state (only valid when scene_with_ball.xml is loaded).
                     # Throttled to ball_sensor_hz to simulate real-sensor update rate.
@@ -496,7 +530,3 @@ def main(cfg: DictConfig):
 
 if __name__ == "__main__":
     main()
-
-            
-
-        

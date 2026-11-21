@@ -1,0 +1,19 @@
+defaults:
+  - mujoco
+  - _self_
+
+# Select an isolated LYD_DEPLOY_CONFIG with acp.enabled: true and php.enabled:
+# false. The weights and exported contract live in acp.model_dir.
+startup_policy: passive
+simulation_dt: 0.005
+control_decimation: 4
+ghost_enabled: false
+php_depth_preview: false
+scene:
+  name: none
+
+logging:
+  enabled: true
+  log_dir: logs
+  tag: acp_mujoco
+  states: [SKILL_ACP]

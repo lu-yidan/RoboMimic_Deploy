@@ -19,7 +19,7 @@ class FSMMode(Enum):
     NORMAL = 2
 
 class FSM:
-    def __init__(self, state_cmd:StateAndCmd, policy_output:PolicyOutput, scalebfm_config=None, joint_names=None, enable_freekick=True, php_config=None):
+    def __init__(self, state_cmd:StateAndCmd, policy_output:PolicyOutput, scalebfm_config=None, joint_names=None, enable_freekick=True, php_config=None, acp_config=None):
         self.state_cmd = state_cmd
         self.policy_output = policy_output
         self.cur_policy : FSMState
@@ -55,6 +55,13 @@ class FSM:
             from policy.php_parkour.PHPParkour import PHPParkour
             self.php_policy = PHPParkour(state_cmd, policy_output, php_config, joint_names)
 
+        self.acp_policy = None
+        if acp_config is not None and acp_config.get("enabled", False):
+            from policy.acp.ACP import ACP
+            self.acp_policy = ACP(state_cmd, policy_output, acp_config, joint_names)
+            self.fixed_pose_1.set_runtime_target(self.acp_policy.default,
+                self.acp_policy.kps, self.acp_policy.kds)
+
         print("initalized all policies!!!")
         
         self.cur_policy = self.passive_mode             # 当前policy
@@ -76,6 +83,27 @@ class FSM:
             self.policy_output.executed_fsm_state = self.cur_policy.name.value
             self.cur_policy.run()
             return
+        if self.state_cmd.skill_cmd == FSMCommand.CMD_ACP:
+            self.state_cmd.skill_cmd = FSMCommand.INVALID
+            if (self.acp_policy is not None
+                    and self.cur_policy.name == FSMStateName.FIXEDPOSE
+                    and self.cur_policy.alpha >= 1.0
+                    and self.acp_policy.entry_error() is None):
+                self.cur_policy.exit()
+                self.cur_policy = self.acp_policy
+                self.cur_policy.enter()
+                self.FSMmode = FSMMode.NORMAL
+                print("[ACP] Entering from FixedPose; localization and terrain ready.")
+            else:
+                if self.acp_policy is None:
+                    reason = "ACP is disabled in this runtime"
+                elif self.cur_policy.name != FSMStateName.FIXEDPOSE:
+                    reason = "select FixedPose before ACP"
+                elif self.cur_policy.alpha < 1.0:
+                    reason = "wait for the FixedPose ramp to finish"
+                else:
+                    reason = self.acp_policy.entry_error()
+                print(f"[ACP] Cannot enter: {reason}.")
         # PHP entry is centralized like ScaleBFM; depth must already be available.
         if self.state_cmd.skill_cmd == FSMCommand.CMD_PHP_PARKOUR:
             self.state_cmd.skill_cmd = FSMCommand.INVALID
@@ -114,6 +142,19 @@ class FSM:
             # A newly loaded reference must enter/reset before its first inference.
             if self.state_cmd.skill_cmd != FSMCommand.CMD_SCALEBFM or self.scalebfm_policy is None:
                 self.cur_policy.run()
+            if self.cur_policy is self.acp_policy and (
+                    self.state_cmd.skill_cmd == FSMCommand.PASSIVE
+                    or getattr(self.acp_policy, "failed", False)
+                    or not self.acp_policy.ready()):
+                # Do not hold the previous learned target for an extra tick.
+                self.state_cmd.skill_cmd = FSMCommand.INVALID
+                self.cur_policy.exit()
+                self.cur_policy = self.passive_mode
+                self.cur_policy.enter()
+                self.FSMmode = FSMMode.NORMAL
+                self.policy_output.executed_fsm_state = self.cur_policy.name.value
+                self.cur_policy.run()
+                return
             if self.state_cmd.skill_cmd == FSMCommand.CMD_SCALEBFM:
                 self.state_cmd.skill_cmd = FSMCommand.INVALID
                 if self.scalebfm_policy is not None and self.cur_policy.name in (FSMStateName.FIXEDPOSE, FSMStateName.LOCOMODE, FSMStateName.SKILL_AMP, FSMStateName.SKILL_SCALEBFM, FSMStateName.SKILL_PHP_PARKOUR):
@@ -177,8 +218,7 @@ class FSM:
             self.cur_policy = self.scalebfm_policy
         elif policy_name == FSMStateName.SKILL_PHP_PARKOUR and self.php_policy is not None:
             self.cur_policy = self.php_policy
+        elif policy_name == FSMStateName.SKILL_ACP and self.acp_policy is not None:
+            self.cur_policy = self.acp_policy
         else:
             pass
-            
-        
-        

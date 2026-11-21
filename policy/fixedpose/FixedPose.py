@@ -36,6 +36,16 @@ class FixedPose(FSMState):
         self._kds_out[self.joint2motor_idx]     = self.kds
         self._default_out[self.joint2motor_idx] = self.default_angles
 
+    def set_runtime_target(self, positions, kps, kds):
+        """Use the active model's named-joint pose for its two-second entry ramp."""
+        arrays = [np.asarray(value, dtype=np.float32) for value in (positions, kps, kds)]
+        if any(value.shape != self._default_out.shape or not np.isfinite(value).all() for value in arrays):
+            raise ValueError('Invalid runtime FixedPose target')
+        if np.any(arrays[1] <= 0) or np.any(arrays[2] < 0):
+            raise ValueError('Invalid runtime FixedPose gains')
+        self._default_out, self._kps_out, self._kds_out = [value.copy() for value in arrays]
+        self.default_angles, self.kps, self.kds = [value[self.joint2motor_idx].copy() for value in arrays]
+
     def enter(self):
         print("Moving to default pos(configuration A).")
         self.total_time = 2.0

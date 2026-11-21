@@ -4,6 +4,8 @@
 
 宇树 G1（29 自由度）的多策略部署仓库，支持 MuJoCo 仿真、Python 直连和 C++ SDK2 bridge 真机部署。`lyd-deploy` 整合了桌下/箱内恢复、AMP 策略切换和可选 ScaleBFM 跟踪；三种入口共用策略选择配置。
 
+`deploy/acp-g1` 的平地到点训练、模型导出、MuJoCo 与只读 bridge 流程见 [ACP G1 部署说明](docs/acp_deployment_zh.md)。
+
 ## 目录
 
 - [1. 安装与更新](#1-安装与更新)

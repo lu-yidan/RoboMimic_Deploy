@@ -18,6 +18,7 @@ class FSMStateName(Enum):
     SKILL_SMP_RECOVERY = 18
     SKILL_SCALEBFM = 19
     SKILL_PHP_PARKOUR = 20
+    SKILL_ACP = 21
 
 @unique
 class FSMCommand(Enum):
@@ -34,6 +35,7 @@ class FSMCommand(Enum):
     CMD_SMP_RECOVERY = 20
     CMD_SCALEBFM = 21
     CMD_PHP_PARKOUR = 22
+    CMD_ACP = 23
 
 
 

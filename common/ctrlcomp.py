@@ -24,6 +24,13 @@ class StateAndCmd:
         # pelvis (floating base) state for FreeKick controller (world frame, filled in deploy_mujoco)
         self.pelvis_pos_w  = np.zeros(3, dtype=np.float32)
         self.pelvis_quat_w = np.array([1., 0., 0., 0.], dtype=np.float32)  # [w,x,y,z]
+        # ACP providers must explicitly validate and timestamp pelvis localization.
+        # Terrain points are pelvis-yaw coordinates, shape (187, 3), in metres.
+        self.acp_terrain = None
+        self.acp_terrain_time = 0.0
+        self.acp_pose_time = 0.0
+        self.acp_pose_valid = False
+        self.acp_ang_vel = np.zeros(3, dtype=np.float32)  # pelvis body frame
         # ball state for FreeKick controller
         # Simulation: ball_pos_w (world frame, filled by deploy_mujoco from MuJoCo)
         # Real robot: ball_pos_b (pelvis body frame, filled by deploy_real from DDS)
@@ -107,4 +114,3 @@ class PolicyOutput:
     @kds.setter
     def kds(self, value):
         self._kds[:] = value
-        

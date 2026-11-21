@@ -87,3 +87,34 @@ def load_php_real_config():
         from policy.php_parkour.real_depth import load_camera_config
         php['camera'] = load_camera_config(php['camera_config'])
     return php
+
+
+def load_acp_config():
+    """ACP is separately enabled and consumes its exported model contract."""
+    raw = load_deployment_config().get("acp", {})
+    if not isinstance(raw, dict):
+        raise ValueError("acp must be a mapping")
+    cfg = dict(raw)
+    cfg.setdefault("enabled", False)
+    if type(cfg["enabled"]) is not bool:
+        raise ValueError("acp.enabled must be true or false")
+    path = Path(cfg.get("model_dir", "policy/acp/models")).expanduser()
+    cfg["model_dir"] = str(path if path.is_absolute() else ROOT / path)
+    return cfg
+
+
+def load_acp_real_config():
+    """Enabling ACP in simulation does not enable the bridge policy."""
+    acp = load_acp_config()
+    real = acp.get("real", {})
+    if not isinstance(real, dict):
+        raise ValueError("acp.real must be a mapping")
+    real = dict(real)
+    real.setdefault("enabled", False)
+    if type(real["enabled"]) is not bool:
+        raise ValueError("acp.real.enabled must be true or false")
+    if real["enabled"] and not acp["enabled"]:
+        raise ValueError("acp.real.enabled requires acp.enabled")
+    acp["real"] = real
+    acp["enabled"] = real["enabled"]
+    return acp

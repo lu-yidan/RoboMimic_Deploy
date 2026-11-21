@@ -75,6 +75,7 @@ struct BridgeCmdFrame {
 };
 
 struct BridgeConfig {
+  bool read_only = false;
   int domain_id = 0;
   std::string network_interface = "eth0";
   std::string lowstate_topic = "rt/lowstate";
@@ -101,8 +102,10 @@ class UnitreeIoAdapter {
     config_ = config;
     ChannelFactory::Instance()->Init(0, config.network_interface);
 
-    lowcmd_publisher_.reset(new ChannelPublisher<LowCmd_>(config.lowcmd_topic));
-    lowcmd_publisher_->InitChannel();
+    if (!config.read_only) {
+      lowcmd_publisher_.reset(new ChannelPublisher<LowCmd_>(config.lowcmd_topic));
+      lowcmd_publisher_->InitChannel();
+    }
 
     lowstate_subscriber_.reset(new ChannelSubscriber<LowState_>(config.lowstate_topic));
     lowstate_subscriber_->InitChannel(
@@ -152,6 +155,7 @@ class UnitreeIoAdapter {
   }
 
   void SendPolicyCommand(const BridgeCmdFrame& cmd) {
+    if (config_.read_only) return;
     low_cmd_.mode_pr() = mode_pr_;
     low_cmd_.mode_machine() = mode_machine_;
     for (int i = 0; i < kNumJoints; ++i) {
@@ -168,6 +172,7 @@ class UnitreeIoAdapter {
   }
 
   void SendDampingCommand() {
+    if (config_.read_only) return;
     low_cmd_.mode_pr() = mode_pr_;
     low_cmd_.mode_machine() = mode_machine_;
     for (int i = 0; i < kNumJoints; ++i) {
@@ -384,11 +389,13 @@ class Sdk2BridgeApp {
 
       const auto cmd_age = std::chrono::duration_cast<std::chrono::milliseconds>(
           Clock::now() - last_cmd_time);
-      if (latest_cmd.exit_requested || latest_cmd.request_damping ||
-          cmd_age > config_.cmd_timeout) {
-        io_.SendDampingCommand();
-      } else {
-        io_.SendPolicyCommand(latest_cmd);
+      if (!config_.read_only) {
+        if (latest_cmd.exit_requested || latest_cmd.request_damping ||
+            cmd_age > config_.cmd_timeout) {
+          io_.SendDampingCommand();
+        } else {
+          io_.SendPolicyCommand(latest_cmd);
+        }
       }
 
       const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -398,7 +405,7 @@ class Sdk2BridgeApp {
       }
     }
 
-    io_.SendDampingCommand();
+    if (!config_.read_only) io_.SendDampingCommand();
     return 0;
   }
 
@@ -418,6 +425,15 @@ int main() {
       << "SDK2 bridge scaffold created. LowState/LowCmd wiring is active; "
          "BridgeState/BridgeCmd DDS transport still requires generated C++ types.\n";
   bridge::BridgeConfig config;
+  const auto read_only = bridge::GetEnvOrDefault("BRIDGE_READ_ONLY", "0");
+  if (read_only != "0" && read_only != "1") {
+    std::cerr << "BRIDGE_READ_ONLY must be 0 or 1.\n";
+    return 1;
+  }
+  config.read_only = read_only == "1";
+  if (config.read_only) {
+    std::cout << "Read-only bridge: no LowCmd publisher or motor commands.\n";
+  }
   config.domain_id = bridge::GetEnvOrDefaultInt("BRIDGE_DOMAIN_ID", config.domain_id);
   config.network_interface = bridge::GetEnvOrDefault("BRIDGE_NETWORK_INTERFACE", config.network_interface);
   config.lowstate_topic = bridge::GetEnvOrDefault("BRIDGE_LOWSTATE_TOPIC", config.lowstate_topic);

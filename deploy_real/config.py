@@ -10,15 +10,18 @@ class Config:
         mujoco_yaml_path = os.path.join(current_dir, "config", "real.yaml")
         with open(mujoco_yaml_path, "r") as f:
             config = yaml.load(f, Loader=yaml.FullLoader)
-            from common.deployment_config import load_scalebfm_config, load_php_real_config
+            from common.deployment_config import load_scalebfm_config, load_php_real_config, load_acp_real_config
             self.scalebfm = load_scalebfm_config()
             self.php = load_php_real_config()
+            self.acp = load_acp_real_config()
             self.joint_names = config.get("joint_names", [])
             self.torch_threads = int(config.get("torch_threads", 1))
             if self.torch_threads < 1:
                 raise ValueError("torch_threads must be positive")
             if self.php["enabled"] and (config["num_joints"] != 29 or abs(config["control_dt"]-.02) > 1e-9):
                 raise ValueError("PHP requires 29 named joints and 50 Hz control")
+            if self.acp["enabled"] and (config["num_joints"] != 29 or abs(config["control_dt"]-.02) > 1e-9):
+                raise ValueError("ACP requires 29 named joints and 50 Hz control")
             if self.scalebfm.enabled:
                 if config["num_joints"] != 29 or abs(config["control_dt"] - .02) > 1e-9:
                     raise ValueError("ScaleBFM requires 29 joints and 50 Hz control")
@@ -34,7 +37,9 @@ class Config:
             self.log_enabled = log_cfg.get("enabled", False)
             self.log_dir     = log_cfg.get("log_dir", "logs")
             self.log_tag     = log_cfg.get("tag", "freekick")
-            self.log_states  = log_cfg.get("states", ["SKILL_FREEKICK"])
+            self.log_states  = list(log_cfg.get("states", ["SKILL_FREEKICK"]))
+            if self.acp["enabled"] and "SKILL_ACP" not in self.log_states:
+                self.log_states.append("SKILL_ACP")
             self.bridge_domain_id = int(os.environ.get(
                 "BRIDGE_DOMAIN_ID",
                 config.get("bridge_domain_id", 0),

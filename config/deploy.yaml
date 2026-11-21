@@ -19,6 +19,14 @@ smp:
   # path_a6_9999 | a6_no_alpha_9999 | v34_balanced4_hard19000
 
 # Right-top tmux camera; starting the policy never opens USB.
+acp:
+  enabled: false
+  model_dir: policy/acp/models
+  target_position: [1.0, 0.0]
+  target_heading: 0.0
+  real:
+    enabled: false
+
 camera:
   mode: gray  # gray | php_depth (independent of php.real.enabled)
 

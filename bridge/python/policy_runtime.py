@@ -1,6 +1,8 @@
 import time
 import struct
+import json
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 
@@ -35,7 +37,7 @@ class PolicyCommandFrame:
 class PolicyRuntime:
     """Policy/FSM runner that consumes bridge-state DDS instead of Unitree SDK."""
 
-    def __init__(self, config, *, connect=True, depth_source=None):
+    def __init__(self, config, *, connect=True, depth_source=None, acp_source=None):
         self.config = config
         self.num_joints = config.num_joints
         self.control_dt = config.control_dt
@@ -46,6 +48,18 @@ class PolicyRuntime:
         self._php_error = None
         self._php_last_tick = None
         self._php_tick_time = time.monotonic()
+        self.acp_config = getattr(config, 'acp', {'enabled': False})
+        self.acp_enabled = self.acp_config.get('enabled', False)
+        self.acp_source = acp_source
+        self._acp_error = None
+        self._acp_last_tick = None
+        self._acp_tick_time = time.monotonic()
+        if self.acp_enabled:
+            from policy.acp.state_ipc import StateReader
+            if self.num_joints != 29 or abs(self.control_dt-.02) > 1e-9:
+                raise ValueError('ACP bridge requires 29 joints and 50 Hz control')
+            if acp_source is None:
+                self.acp_source = StateReader(self.acp_config)
         if self.php_enabled:
             from policy.php_parkour.real_depth import DepthBuffer
             from policy.php_parkour.depth_ipc import DepthReader
@@ -62,7 +76,14 @@ class PolicyRuntime:
         torch.set_num_threads(config.torch_threads)
         self.FSM_controller = FSM(self.state_cmd, self.policy_output,
                                   config.scalebfm, config.joint_names, enable_freekick=False,
-                                  php_config=self.php_config)
+                                  php_config=self.php_config, acp_config=self.acp_config)
+        if self.acp_enabled:
+            policy = self.FSM_controller.acp_policy
+            policy.warmup()
+            self._acp_effort_limits = np.asarray(getattr(policy, 'effort_limits29', None), dtype=np.float32)
+            if (self._acp_effort_limits.shape != (29,) or not np.isfinite(self._acp_effort_limits).all()
+                    or np.any(self._acp_effort_limits <= 0)):
+                raise ValueError('ACP real deployment requires 29 positive manifest effort limits')
         if self.php_enabled:
             self.FSM_controller.php_policy.warmup()
             order = self.FSM_controller.php_policy.runtime_to_canonical
@@ -73,7 +94,7 @@ class PolicyRuntime:
             self.catalog = MotionCatalog(tracker.motion_path, config.scalebfm.motion_globs, PROJECT_ROOT)
             tracker.preload_motions(self.catalog.paths)
             print(self.catalog.describe())
-        self.policy_input = RealPolicyInput(self.catalog, php_enabled=self.php_enabled)
+        self.policy_input = RealPolicyInput(self.catalog, php_enabled=self.php_enabled, acp_enabled=self.acp_enabled)
         # All model/reference loading finishes before bridge subscriptions start.
 
         self.bridge_state_sub = self.diagnostics_sub = None
@@ -118,6 +139,7 @@ class PolicyRuntime:
                     "logged_fsm_states": sorted(config.log_states),
                     "time_clock": "monotonic elapsed", "torque_source": "optional tick-matched motor firmware estimate",
                     "php": self.php_config,
+                    "acp": self.acp_config, "read_only": bool(getattr(config, 'bridge_read_only', False)),
                     "unavailable_on_real": ["base_position", "base_linear_velocity", "foot_contact_force", "external_force"]},
             )
             if config.log_enabled
@@ -126,10 +148,20 @@ class PolicyRuntime:
 
         self._cmd_seq = 0
         self.exit_requested = False
+        self._acp_trace = []
+        trace_cfg = self.acp_config.get('real', {})
+        self._acp_trace_enabled = self.acp_enabled and config.log_enabled and trace_cfg.get('trace_enabled', True)
+        self._acp_trace_limit = trace_cfg.get('trace_max_frames', 3000)
+        if (self.acp_enabled and (type(trace_cfg.get('trace_enabled', True)) is not bool
+                or type(self._acp_trace_limit) is not int or not 1 <= self._acp_trace_limit <= 30000)):
+            self.close()
+            raise ValueError('ACP trace_enabled must be boolean and trace_max_frames in [1, 30000]')
 
         try:
             if self.depth_source is not None:
                 self.depth_source.start()
+            if self.acp_source is not None:
+                self.acp_source.start()
             if connect:
                 self.wait_for_bridge_state()
         except BaseException:
@@ -144,11 +176,51 @@ class PolicyRuntime:
     def close(self):
         if self.depth_source is not None:
             self.depth_source.close()
+        if self.acp_source is not None:
+            self.acp_source.close()
         for subscriber in (self.bridge_state_sub, self.ball_sub, self.target_sub):
             if subscriber is not None:
                 subscriber.stop()
         if self._logger is not None:
-            self._logger.close()
+            try:
+                self._save_acp_trace()
+            finally:
+                self._logger.close()
+
+    def _record_acp_trace(self, bridge_state):
+        if not self._acp_trace_enabled:
+            return
+        if len(self._acp_trace) >= self._acp_trace_limit:
+            self._acp_trace_enabled = False
+            self._logger.event('acp_trace_limit', frames=len(self._acp_trace))
+            return
+        policy = self.FSM_controller.acp_policy
+        if (self.FSM_controller.cur_policy.name != FSMStateName.SKILL_ACP or policy.failed
+                or policy.last_observation is None or getattr(policy, 'last_raw_action', None) is None):
+            return
+        s = self.state_cmd
+        self._acp_trace.append(dict(planner_obs=policy.last_observation[0].copy(),
+            raw_actions=policy.last_raw_action.copy(), actions=policy.last_action.copy(),
+            contacts=policy.contacts[0].copy(), occupancy=policy.occupancy[0].copy(),
+            q_des=self.policy_output.actions.copy(), q=s.q.copy(), dq=s.dq.copy(),
+            pelvis_pos_w=s.pelvis_pos_w.copy(), pelvis_quat_w=s.pelvis_quat_w.copy(),
+            pose_captured_at=s.acp_pose_time, terrain_captured_at=s.acp_terrain_time,
+            robot_received_at=getattr(bridge_state, '_local_received_monotonic', float('nan')),
+            robot_unique_tick_received_at=self._acp_tick_time,
+            sampled_at=time.monotonic(), state_tick=int(bridge_state.tick), command_seq=self._cmd_seq))
+
+    def _save_acp_trace(self):
+        if not getattr(self, '_acp_trace', None):
+            return
+        arrays = {name: np.asarray([frame[name] for frame in self._acp_trace]) for name in self._acp_trace[0]}
+        arrays['manifest_json'] = json.dumps(self.FSM_controller.acp_policy.manifest, sort_keys=True)
+        arrays['frame_id'] = str(self.acp_config.get('real', {}).get('frame_id', 'map'))
+        arrays['read_only'] = bool(getattr(self.config, 'bridge_read_only', False))
+        path = Path(self._logger._bin_path).with_suffix('.acp_trace.npz')
+        np.savez(path, **arrays)
+        self._logger.event('acp_trace_saved', path=str(path), frames=len(self._acp_trace))
+        self._acp_trace.clear()
+        print('[ACP trace] '+str(path), flush=True)
 
     def _set_remote_from_bridge(self, bridge_state):
         raw = bytes(int(v) & 0xFF for v in bridge_state.remote_raw)
@@ -216,6 +288,7 @@ class PolicyRuntime:
         self.state_cmd.torso_quat_w = torso_quat.astype(np.float32)
         self.state_cmd.pelvis_quat_w = quat.astype(np.float32)
         self.state_cmd.root_ang_vel_b = ang_vel.astype(np.float32)
+        self.state_cmd.acp_ang_vel = ang_vel.astype(np.float32)
         self.state_cmd.root_lin_vel_b = np.zeros(3, dtype=np.float32)
 
     def _apply_perception_state(self):
@@ -271,6 +344,71 @@ class PolicyRuntime:
                 print('[PHP camera] '+sample.error, flush=True)
             self._php_error = sample.error
 
+    def _apply_acp_state(self, bridge_state):
+        if not self.acp_enabled:
+            return
+        s = self.state_cmd
+        s.acp_pose_valid = False
+        s.acp_terrain = None
+        sample = self.acp_source.latest()
+        error = sample.error
+        if not error:
+            received = getattr(bridge_state, '_local_received_monotonic', None)
+            skew = float(self.acp_config.get('max_sync_skew_s', .04))
+            # Re-forwarding one SDK tick must not refresh the gyro sample age.
+            robot_stamps = [self._acp_tick_time]
+            if received is not None:
+                robot_stamps.append(received)
+            if any(abs(stamp-sample.pose_captured_at) > skew for stamp in robot_stamps):
+                error = 'ACP localization and robot state timestamps disagree'
+        if not error:
+            s.pelvis_pos_w = np.asarray(sample.pelvis_pos_w, dtype=np.float32).copy()
+            s.pelvis_quat_w = np.asarray(sample.pelvis_quat_w, dtype=np.float32).copy()
+            s.acp_terrain = sample.terrain
+            s.acp_pose_time, s.acp_terrain_time = sample.pose_captured_at, sample.terrain_captured_at
+            s.acp_pose_valid = True
+        s.telemetry.update(acp_state_sequence=sample.sequence,
+                           acp_state_age_ms=(time.monotonic()-sample.captured_at)*1000 if not error else float('nan'),
+                           acp_state_valid=not bool(error))
+        if error != self._acp_error:
+            if self._logger is not None:
+                self._logger.event('acp_state_status', error=error, sequence=sample.sequence)
+            if error:
+                print('[ACP localization] '+error, flush=True)
+            self._acp_error = error
+
+    def _damp_acp(self, reason):
+        self.state_cmd.skill_cmd = FSMCommand.PASSIVE
+        self.FSM_controller.run()
+        if self._logger is not None:
+            self._logger.event('acp_damping', reason=reason, seq=self._cmd_seq)
+        return True
+
+    def _guard_acp_output(self, was_active=False):
+        active = self.FSM_controller.cur_policy.name == FSMStateName.SKILL_ACP
+        executed_state = getattr(self.policy_output, 'executed_fsm_state', -1)
+        executed = executed_state == FSMStateName.SKILL_ACP.value
+        fixed_executed = executed_state == FSMStateName.FIXEDPOSE.value
+        if not (active or executed or fixed_executed):
+            # FSM already handled an ACP failure in this same tick.
+            return was_active and self.FSM_controller.cur_policy.name == FSMStateName.PASSIVE
+        policy = self.FSM_controller.acp_policy
+        if active or executed:
+            error = policy.error()
+            if policy.failed or error:
+                return self._damp_acp(error or policy.last_error or 'ACP inference failed')
+        q, dq = self.state_cmd.q, self.state_cmd.dq
+        target, kp, kd = self.policy_output.actions, self.policy_output.kps, self.policy_output.kds
+        if (not all(np.isfinite(value).all() for value in (q, dq, target, kp, kd))
+                or np.any(kp <= 0) or np.any(kd < 0)):
+            return self._damp_acp('Invalid ACP/FixedPose PD output')
+        self.policy_output.actions = np.clip(target,
+            q+(kd*dq-self._acp_effort_limits)/kp,
+            q+(kd*dq+self._acp_effort_limits)/kp)
+        if not np.isfinite(self.policy_output.actions).all():
+            return self._damp_acp('Non-finite bounded ACP target')
+        return False
+
     def _damp_php(self, reason):
         # Exit clears policy history. Fresh depth alone cannot re-enter PHP.
         self.state_cmd.skill_cmd = FSMCommand.PASSIVE
@@ -303,6 +441,12 @@ class PolicyRuntime:
         return False
 
     def _php_state_error(self, state):
+        return self._policy_state_error(state, 'php', self.php_config['camera']['max_age_s'])
+
+    def _acp_state_error(self, state):
+        return self._policy_state_error(state, 'acp', float(self.acp_config.get('max_age_s', .15)))
+
+    def _policy_state_error(self, state, prefix, max_age):
         try:
             for name, length in (('q',29),('dq',29),('imu_quat_wxyz',4),('imu_gyro',3)):
                 value = np.asarray(getattr(state,name))
@@ -317,11 +461,12 @@ class PolicyRuntime:
             received = getattr(state, '_local_received_monotonic', None)
             if self.connect and received is None:
                 return 'Bridge state has no local receipt timestamp'
-            if received is not None and not 0 <= now-received <= self.php_config['camera']['max_age_s']:
-                return 'Bridge state too old for PHP runtime'
-            if state.tick != self._php_last_tick:
-                self._php_last_tick, self._php_tick_time = state.tick, now
-            elif now-self._php_tick_time > self.php_config['camera']['max_age_s']:
+            if received is not None and not 0 <= now-received <= max_age:
+                return 'Bridge state too old for '+prefix.upper()+' runtime'
+            if state.tick != getattr(self, '_'+prefix+'_last_tick'):
+                setattr(self, '_'+prefix+'_last_tick', state.tick)
+                setattr(self, '_'+prefix+'_tick_time', now)
+            elif now-getattr(self, '_'+prefix+'_tick_time') > max_age:
                 return 'Bridge state tick stalled'
         except (TypeError,ValueError,AttributeError):
             return 'Malformed bridge state'
@@ -343,9 +488,22 @@ class PolicyRuntime:
                     np.zeros(29,np.float32),np.full(29,8.,np.float32),request_damping=True)
                 self._cmd_seq += 1
                 return frame
+        if self.acp_enabled and bridge_state.tick != 0:
+            error = self._acp_state_error(bridge_state)
+            if error:
+                self.state_cmd.acp_pose_valid = False
+                self._damp_acp(error)
+                frame = PolicyCommandFrame(self._cmd_seq, np.zeros(29,np.float32),
+                    np.zeros(29,np.float32),np.full(29,8.,np.float32),request_damping=True)
+                self._cmd_seq += 1
+                return frame
         if bridge_state.tick == 0:
             if self.php_enabled and self.FSM_controller.cur_policy.name == FSMStateName.SKILL_PHP_PARKOUR:
                 self._damp_php('Bridge state stale')
+            if self.acp_enabled:
+                self.state_cmd.acp_pose_valid = False
+                if self.FSM_controller.cur_policy.name == FSMStateName.SKILL_ACP:
+                    self._damp_acp('Bridge state stale')
             if self._logger is not None and not self._was_stale:
                 self._logger.event("state_stale_damping", time_s=started-self._log_start, seq=self._cmd_seq)
             self._was_stale = True
@@ -373,9 +531,17 @@ class PolicyRuntime:
             apply_diagnostics(self.state_cmd, self.diagnostics_sub.matching(bridge_state.tick))
             self._apply_perception_state()
         self._apply_php_depth()
+        self._apply_acp_state(bridge_state)
         self._apply_remote_commands()
+        acp_was_active = self.FSM_controller.cur_policy.name == FSMStateName.SKILL_ACP
+        if (self.acp_enabled and self.state_cmd.skill_cmd == FSMCommand.CMD_ACP
+                and self.FSM_controller.cur_policy.name == FSMStateName.FIXEDPOSE
+                and self.FSM_controller.acp_policy.ready()):
+            acp_was_active = True
         self.FSM_controller.run()
         php_damping = self._guard_php_output() if self.php_enabled else False
+        acp_damping = self._guard_acp_output(acp_was_active) if self.acp_enabled else False
+        self._record_acp_trace(bridge_state)
 
         self.state_cmd.telemetry["runtime_compute_ms"] = (time.monotonic()-started)*1000
         if self._logger is not None and (self.FSM_controller.cur_policy.name in self._log_states or
@@ -389,7 +555,7 @@ class PolicyRuntime:
             q_des=self.policy_output.actions.copy(),
             kp=self.policy_output.kps.copy(),
             kd=self.policy_output.kds.copy(),
-            request_damping=self.exit_requested or php_damping,
+            request_damping=self.exit_requested or php_damping or acp_damping,
             exit_requested=self.exit_requested,
         )
         self._cmd_seq += 1

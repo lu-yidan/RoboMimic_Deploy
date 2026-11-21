@@ -1,0 +1,11 @@
+{
+  "_note": "Deployment suggestion requiring review: zero matches ACP's welded wrist pose. Kp=40, Kd=1 and effort_limit=5 Nm are proposed deployment settings, not training values; ACP has no wrist actuators.",
+  "fixed_joints": {
+    "left_wrist_roll_joint": {"position": 0.0, "kp": 40.0, "kd": 1.0, "effort_limit": 5.0},
+    "left_wrist_pitch_joint": {"position": 0.0, "kp": 40.0, "kd": 1.0, "effort_limit": 5.0},
+    "left_wrist_yaw_joint": {"position": 0.0, "kp": 40.0, "kd": 1.0, "effort_limit": 5.0},
+    "right_wrist_roll_joint": {"position": 0.0, "kp": 40.0, "kd": 1.0, "effort_limit": 5.0},
+    "right_wrist_pitch_joint": {"position": 0.0, "kp": 40.0, "kd": 1.0, "effort_limit": 5.0},
+    "right_wrist_yaw_joint": {"position": 0.0, "kp": 40.0, "kd": 1.0, "effort_limit": 5.0}
+  }
+}

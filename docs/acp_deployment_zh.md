@@ -24,6 +24,9 @@
 ACP runner 不支持 DDP：先用一张 5090 训练，另一张供评估。
 
 顺序是 Stage 1 tracker、Stage 2 planner、Stage 3 goal reaching。
+首版 Stage 3 使用独立的 `Instinct-ACP-Stage3-Flat-G1-v1`：只在平地训练，
+起始航向覆盖整圈，站立奖励半径 0.2 m、航向容差 0.25 rad；目标指令的
+归一化半径仍是 0.5 m。原 17 类地形任务保留。
 每阶段保留 `model_*.pt` 与同迭代的 `acp_state_*.pt`，后者包含世界模型、
 critic 和优化器续训状态。先验证冒烟、显存和续训，再进行长训练；阶段间
 需要实际评估，不以保存了 checkpoint 作为收敛依据。
@@ -40,6 +43,7 @@ source /root/autodl-tmp/acp-g1/environment.sh
   --instinct-mj /root/InstinctMJ_acp_g1 \
   --checkpoint /absolute/path/to/stage3/model_ITER.pt \
   --dataset /root/autodl-tmp/acp-g1/data/php_flat \
+  --task Instinct-ACP-Stage3-Flat-G1-Play-v1 \
   --fixed-joints tools/acp/fixed_joints.example.json \
   --output policy/acp/models
 /root/InstinctMJ_acp_g1/.venv/bin/python tools/acp/replay_bundle.py policy/acp/models

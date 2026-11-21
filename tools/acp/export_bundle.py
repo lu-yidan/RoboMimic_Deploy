@@ -257,6 +257,12 @@ def export_bundle(env, runner, checkpoint: str | Path, output_dir: str | Path,
             versions[package] = importlib.metadata.version(package)
         except importlib.metadata.PackageNotFoundError:
             versions[package] = None
+    motion_reference = next(sensor for sensor in base.cfg.scene.sensors if sensor.name == "motion_reference")
+    dataset = Path(motion_reference.motion_buffers["TerrainMotion"].path).expanduser().resolve()
+    dataset_source = {"path": str(dataset), "metadata_sha256": sha256(dataset / "metadata.yaml")}
+    for name in ("provenance.json", "contacts_validation.json", "CONTACTS.sha256"):
+        if (dataset / name).is_file():
+            dataset_source[name + "_sha256"] = sha256(dataset / name)
     manifest = {
         "schema_version": 1, "stage": stage, "planner_obs_dim": 939,
         "policy_sha256": sha256(policy), "joint_names": names,
@@ -273,7 +279,7 @@ def export_bundle(env, runner, checkpoint: str | Path, output_dir: str | Path,
         "source": {"instinct_mj": git_source(Path(instinct_mj).expanduser().resolve()),
                    "checkpoint_path": str(checkpoint), "checkpoint_sha256": sha256(checkpoint),
                    "checkpoint_iteration": int(ck["iter"]), "checkpoint_stage": stage, "task": task,
-                   "exporter_sha256": sha256(Path(__file__).resolve()), "versions": versions},
+                   "exporter_sha256": sha256(Path(__file__).resolve()), "dataset": dataset_source, "versions": versions},
         "parity": {"file": "parity.npz", "sha256": sha256(output / "parity.npz"), "frames": steps,
                    "atol": atol, "rtol": rtol, "max_abs_error": errors,
                    "goal_world_xy_yaw": goal_world, "passed": True},
@@ -321,6 +327,9 @@ def main() -> None:
         # motion reference and terrain. Override BEFORE load_env_cfg invokes
         # __post_init__, which immediately reads metadata.yaml.
         acp_tracking_cfg.MOTION_FOLDER = str(dataset)
+        motion_buffer = acp_tracking_cfg.motion_reference_cfg.motion_buffers["TerrainMotion"]
+        motion_buffer.path = str(dataset)
+        motion_buffer.metadata_yaml = str(dataset / "metadata.yaml")
     env_cfg = load_env_cfg(args.task, play=True)
     agent_cfg = load_instinct_rl_cfg(args.task)
     env_cfg.scene.num_envs = 1

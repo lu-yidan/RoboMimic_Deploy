@@ -19,7 +19,46 @@ from policy.acp.terrain import MujocoTerrain
 from policy.fixedpose.FixedPose import FixedPose
 
 
+# Flat Stage 3 targets are surface_z + BASE_STAND_HEIGHT in InstinctMJ
+# goal_terrains.py/reset_goal_envs. This scene's plane surface is z=0.
+BASE_STAND_HEIGHT = .78
+CONTROL_DT = .02
+
+
+def final_hold_result(trajectory, target, heading, target_height=BASE_STAND_HEIGHT):
+    """Require every gate for the final 50 completed 50 Hz control periods.
+
+    Rows: time, pelvis xyz, world linear velocity xyz, yaw, upright R_zz.
+    """
+    tail = np.asarray(trajectory, dtype=np.float64)[-round(1./CONTROL_DT):]
+    result = {'stopped_last_second':False, 'held_all_criteria_last_second':False}
+    if tail.shape != (round(1./CONTROL_DT), 9) or not np.isfinite(tail).all():
+        return result
+    distance = np.linalg.norm(tail[:,1:3]-np.asarray(target), axis=1)
+    heading_error = np.abs(np.arctan2(np.sin(heading-tail[:,7]),np.cos(heading-tail[:,7])))
+    speed = np.linalg.norm(tail[:,4:6], axis=1)
+    height_error = np.abs(tail[:,3]-target_height)
+    result['stopped_last_second'] = bool(np.all(speed < .15))
+    result['held_all_criteria_last_second'] = bool(np.all(
+        (distance < .2)&(heading_error < .25)&(speed < .15)&(height_error < .1)&(tail[:,8] > np.cos(.7))))
+    return result
+
+
+def final_pose_metrics(qpos, target, heading):
+    """Keep a failed nonfinite simulation serializable as strict JSON."""
+    position = [float(value) if np.isfinite(value) else None for value in qpos[:3]]
+    distance = float(np.linalg.norm(qpos[:2]-target)) if np.isfinite(qpos[:2]).all() else None
+    try:
+        psi = yaw(qpos[3:7])
+        heading_error = float(abs(np.arctan2(np.sin(heading-psi),np.cos(heading-psi))))
+    except ValueError:
+        heading_error = None
+    return {'final_position':position,'distance':distance,'heading_error':heading_error}
+
+
 def evaluate(config,target,heading,seconds):
+    if not np.isfinite(seconds) or seconds < 1.:
+        raise ValueError('Evaluation duration must be finite and at least one second')
     model = mujoco.MjModel.from_xml_path(str(ROOT/'g1_description/scene.xml'))
     model.opt.timestep = .005
     data = mujoco.MjData(model)
@@ -29,7 +68,7 @@ def evaluate(config,target,heading,seconds):
     policy = ACP(state,output,config,names)
     fixed = FixedPose(state,output)
     fixed.set_runtime_target(policy.default,policy.kps,policy.kds)
-    data.qpos[:3], data.qpos[7:36] = [0,0,.78],policy.default
+    data.qpos[:3], data.qpos[7:36] = [0,0,BASE_STAND_HEIGHT],policy.default
     data.qpos[3:7] = [1,0,0,0]
     mujoco.mj_forward(model,data)
     state.q[:] = data.qpos[7:36]
@@ -54,20 +93,30 @@ def evaluate(config,target,heading,seconds):
                 if policy.failed:
                     error = policy.last_error
                     break
-                trajectory.append(np.r_[data.time,data.qpos[:3],data.qvel[:3],yaw(data.qpos[3:7])])
+        if not all(np.isfinite(value).all() for value in (output.actions,output.kps,output.kds)):
+            error = 'Nonfinite PD output'
+            break
         torque = output.kps*(output.actions-data.qpos[7:36])-output.kds*data.qvel[6:35]
+        if not np.isfinite(torque).all():
+            error = 'Nonfinite PD torque'
+            break
         data.ctrl[:] = np.clip(torque,-policy.effort_limits,policy.effort_limits)
         mujoco.mj_step(model,data)
-        if not np.isfinite(data.qpos).all() or data.qpos[2] < .3:
+        if not all(np.isfinite(value).all() for value in (data.qpos,data.qvel)) or data.qpos[2] < .3:
             error = 'Robot fell or state became nonfinite'
             break
-    distance = float(np.linalg.norm(data.qpos[:2]-target))
-    heading_error = float(abs(np.arctan2(np.sin(heading-yaw(data.qpos[3:7])),np.cos(heading-yaw(data.qpos[3:7])))))
-    tail = np.asarray(trajectory[-50:])
-    stopped = bool(len(tail)==50 and np.max(np.linalg.norm(tail[:,4:6],axis=1)) < .15)
+        if entered and (tick+1) % 4 == 0:
+            q = data.qpos[3:7]
+            upright = 1-2*(q[1]**2+q[2]**2)
+            trajectory.append(np.r_[data.time,data.qpos[:3],data.qvel[:3],yaw(q),upright])
+    metrics = final_pose_metrics(data.qpos,target,heading)
+    if metrics['distance'] is None or metrics['heading_error'] is None:
+        error = error or 'Invalid final pelvis pose'
+    hold = final_hold_result(trajectory,target,heading)
     return {'target':target,'heading':heading,'sim_seconds':float(data.time),'error':error,
-        'final_position':data.qpos[:3].tolist(),'distance':distance,'heading_error':heading_error,
-        'stopped_last_second':stopped,'passed':error is None and distance < .2 and heading_error < .25 and stopped},np.asarray(trajectory)
+        **metrics,
+        'target_height':BASE_STAND_HEIGHT, **hold,
+        'passed':error is None and hold['held_all_criteria_last_second']},np.asarray(trajectory)
 
 
 if __name__ == '__main__':
@@ -90,7 +139,10 @@ if __name__ == '__main__':
     passed = all(result['passed'] for result in results)
     report = {'passed':passed,'scenarios':results,'bundle':config['model_dir'],
         'policy_sha256':hashlib.sha256((Path(config['model_dir'])/'policy.onnx').read_bytes()).hexdigest(),
-        'criteria':{'distance':.2,'heading_error':.25,'speed_xy':.15,'hold_seconds':1.}}
-    args.output.write_text(json.dumps(report,indent=2)+'\n')
+        'criteria':{'distance':.2,'heading_error':.25,'speed_xy':.15,'height_error':.1,
+                    'target_height':BASE_STAND_HEIGHT,'max_tilt_rad':.7,'hold_seconds':1.,
+                    'test_seconds':float(args.seconds),
+                    'success_semantics':'all criteria hold throughout the final second of the complete test'}}
+    args.output.write_text(json.dumps(report,indent=2,allow_nan=False)+'\n')
     np.savez_compressed(args.output.with_suffix('.npz'),**paths)
     sys.exit(0 if passed else 1)

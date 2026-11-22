@@ -83,19 +83,22 @@ def test_cli_preserves_input_and_existing_evidence_when_output_overlaps(tmp_path
 
 
 @pytest.mark.skipif(not BASELINE.exists(),reason='Detached under-the-table checkout unavailable')
-@pytest.mark.parametrize('scenario',['nominal','mixed'])
-def test_actual_runtime_fsm_and_models_compare_nominal_and_priority_paths(tmp_path,scenario):
+@pytest.mark.parametrize('scenario,smp_profile',[
+    ('nominal','v34_balanced4_hard19000'),('mixed','v34_balanced4_hard19000'),
+    ('nominal','v34_balanced2_5999'),('stale','v34_balanced2_5999')])
+def test_actual_runtime_fsm_and_models_compare_nominal_and_priority_paths(tmp_path,scenario,smp_profile):
     source,out = tmp_path/'input.npz',tmp_path/'result'
     make_diagnostic(source,scenario)
     subprocess.run([sys.executable,str(ROOT/'tools/deployment/replay_branches.py'),
         '--baseline-root',str(BASELINE),'--input',str(source),'--initial-state','PASSIVE',
-        '--amp-profile','amp_0309_1','--smp-profile','v34_balanced4_hard19000',
+        '--amp-profile','amp_0309_1','--smp-profile',smp_profile,
         '--amp-model',str(ROOT/'policy/amp/model/amp_0309_1.onnx'),
-        '--smp-model',str(ROOT/'policy/smp_recovery/model/smp_v34_balanced4_hard19000_93d.onnx'),
+        '--smp-model',str(ROOT/('policy/smp_recovery/model/smp_'+smp_profile+'_93d.onnx')),
         '--output-dir',str(out)],check=True,capture_output=True,text=True)
     report = json.loads((out/'comparison.json').read_text())
     assert report['status'] == 'ready_for_real_log'
     assert report['hardware_baseline_verified'] is False
+    assert report['branches']['baseline']['contracts']['smp']['effective'] == report['branches']['candidate']['contracts']['smp']['effective']
     if scenario == 'mixed':
         assert report['comparison']['first_divergence']['frame'] == 180  # F1 is now same-tick damping.
     else:
@@ -108,6 +111,15 @@ def test_actual_runtime_fsm_and_models_compare_nominal_and_priority_paths(tmp_pa
             np.testing.assert_allclose(left[key],right[key],atol=1e-6,rtol=0)
     if scenario == 'nominal':
         assert len(baseline['records']) == len(candidate['records']) == 320
+        return
+    if scenario == 'stale':
+        for result in (baseline,candidate):
+            assert len(result['records']) == 170
+            for index in (125,126,127,128,129,134):
+                stale = result['records'][index]
+                assert stale['state_timeout'] and stale['request_damping'] and stale['executed_state']==-1
+                np.testing.assert_equal(stale['kp'],np.zeros(29))
+                np.testing.assert_equal(stale['kd'],np.full(29,8.))
         return
     for result in (baseline,candidate):
         assert len(result['records']) == 271  # Stop on SELECT; do not replay beyond outer-loop exit.

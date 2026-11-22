@@ -12,9 +12,11 @@ ROOT = Path(__file__).resolve().parents[1]
 class ProfileTorqueLimitsTest(unittest.TestCase):
     def test_model_only_limits_match_training(self):
         cfg = yaml.safe_load((ROOT / 'policy/smp_recovery/config/smp_recovery.yaml').read_text())
-        policy, _, _ = build_policy('v34_balanced4_hard19000')
-        np.testing.assert_allclose(policy.tau_limit, np.asarray(cfg['tau_limit']) * .9)
-        np.testing.assert_allclose(policy.log_metadata['effective_tau_limit'], policy.tau_limit)
+        for profile in ('v34_balanced4_hard19000','v34_balanced2_5999'):
+            with self.subTest(profile=profile):
+                policy, _, _ = build_policy(profile)
+                np.testing.assert_allclose(policy.tau_limit, np.asarray(cfg['tau_limit']) * .9)
+                np.testing.assert_allclose(policy.log_metadata['effective_tau_limit'], policy.tau_limit)
 
     def test_existing_profile_keeps_shared_limits(self):
         cfg = yaml.safe_load((ROOT / 'policy/smp_recovery/config/smp_recovery.yaml').read_text())

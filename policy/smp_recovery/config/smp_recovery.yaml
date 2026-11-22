@@ -6,6 +6,13 @@ model_profiles:
   a6_no_alpha_9999:
     model_path: smp_a6_no_alpha_9999_93d.onnx
     model_sha256: cc1fdc6f19206e62cf367721479cd1bab72888a6fcf58360a9fd8fea30d1d229
+  # Explicit compatibility with under-the-table@6a25875's default profile.
+  # Shared posture, gains, action scale and warmup match that checkout.
+  v34_balanced2_5999:
+    tau_limit: [79.2, 125.1, 79.2, 125.1, 45.0, 45.0, 79.2, 125.1, 79.2, 125.1, 45.0, 45.0, 79.2, 45.0, 45.0, 22.5,
+      22.5, 22.5, 22.5, 22.5, 4.5, 4.5, 22.5, 22.5, 22.5, 22.5, 22.5, 4.5, 4.5]
+    model_path: smp_v34_balanced2_5999_93d.onnx
+    model_sha256: a706b28755d2a609749c321df1e71a1c003e987d45c9aa8732acbb3779d2148c
   v34_balanced4_hard19000:
     tau_limit: [79.2, 125.1, 79.2, 125.1, 45.0, 45.0, 79.2, 125.1, 79.2, 125.1, 45.0, 45.0, 79.2, 45.0, 45.0, 22.5,
       22.5, 22.5, 22.5, 22.5, 4.5, 4.5, 22.5, 22.5, 22.5, 22.5, 22.5, 4.5, 4.5]

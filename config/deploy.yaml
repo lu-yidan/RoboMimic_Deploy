@@ -16,7 +16,7 @@ amp:
 
 smp:
   profile: v34_balanced4_hard19000
-  # path_a6_9999 | a6_no_alpha_9999 | v34_balanced4_hard19000
+  # path_a6_9999 | a6_no_alpha_9999 | v34_balanced4_hard19000 | v34_balanced2_5999 (legacy)
 
 # Right-top tmux camera; starting the policy never opens USB.
 acp:

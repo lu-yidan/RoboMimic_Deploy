@@ -26,7 +26,7 @@ from policy.smp_recovery.SmpRecovery import SmpRecovery
 from FSM.FSM import FSM
 
 ROOT = Path(__file__).resolve().parents[1]
-SMP = ('path_a6_9999', 'a6_no_alpha_9999', 'v34_balanced4_hard19000')
+SMP = ('path_a6_9999', 'a6_no_alpha_9999', 'v34_balanced4_hard19000', 'v34_balanced2_5999')
 AMP = ('amp_0309_1', 'stratified_guidance_60000', 'stratified_single_60000')
 
 
@@ -51,12 +51,17 @@ class UnifiedDeploymentTest(unittest.TestCase):
 
     def test_shared_config_selects_all_amp_and_smp_models(self):
         base = load_deployment_config()
-        for amp, smp in zip(AMP, SMP):
+        for amp in AMP:
             cfg = copy.deepcopy(base)
-            cfg['amp']['profile'], cfg['smp']['profile'] = amp, smp
+            cfg['amp']['profile'] = amp
             self.select(cfg)
             state, output = StateAndCmd(29), PolicyOutput(29)
             self.assertEqual(Amp(state, output).profile, amp)
+        for smp in SMP:
+            cfg = copy.deepcopy(base)
+            cfg['smp']['profile'] = smp
+            self.select(cfg)
+            state, output = StateAndCmd(29), PolicyOutput(29)
             self.assertEqual(SmpRecovery(state, output).profile, smp)
         models = set(p.stem for p in (ROOT/'policy/smp_recovery/model').glob('*.onnx'))
         self.assertEqual(models, {'smp_'+p+'_93d' for p in SMP})

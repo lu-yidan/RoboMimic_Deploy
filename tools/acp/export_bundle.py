@@ -9,6 +9,7 @@ script and its ``export_bundle`` helper called with a loaded env and runner.
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import hashlib
 import importlib.metadata
 import json
@@ -42,6 +43,32 @@ def inline_onnx_parameters(path: Path) -> None:
     model = onnx.load(str(path), load_external_data=True)
     onnx.external_data_helper.convert_model_from_external_data(model)
     onnx.save_model(model, str(path), save_as_external_data=False)
+
+
+@contextmanager
+def ieee_fp32_export():
+    """Compare FP32 ONNX to FP32 native inference without changing training.
+
+    PyTorch 2.9+ convolution can explicitly retain TF32 even when its parent
+    cuDNN precision is IEEE. Set the child as well, then restore every setting,
+    including on failed exports. Older training environments use the bool API.
+    """
+    import torch
+    if hasattr(torch.backends.cuda.matmul, "fp32_precision"):
+        settings = [(torch.backends.cuda.matmul, "fp32_precision", "ieee"),
+                    (torch.backends.cudnn, "fp32_precision", "ieee"),
+                    (torch.backends.cudnn.conv, "fp32_precision", "ieee")]
+    else:
+        settings = [(torch.backends.cuda.matmul, "allow_tf32", False),
+                    (torch.backends.cudnn, "allow_tf32", False)]
+    previous = [(backend, name, getattr(backend, name)) for backend, name, _ in settings]
+    try:
+        for backend, name, value in settings:
+            setattr(backend, name, value)
+        yield
+    finally:
+        for backend, name, value in reversed(previous):
+            setattr(backend, name, value)
 
 
 def git_source(path: Path) -> dict[str, Any]:
@@ -113,6 +140,7 @@ def _apply_goal(env, goal_world):
     env.observation_manager._obs_buffer = None
 
 
+@ieee_fp32_export()
 def export_bundle(env, runner, checkpoint: str | Path, output_dir: str | Path,
                   *, fixed_joints: dict, instinct_mj: str | Path,
                   task: str = "Instinct-ACP-Stage3-G1-Play-v1", steps: int = 300,
@@ -290,6 +318,7 @@ def export_bundle(env, runner, checkpoint: str | Path, output_dir: str | Path,
                    "checkpoint_iteration": int(ck["iter"]), "checkpoint_stage": stage, "task": task,
                    "exporter_sha256": sha256(Path(__file__).resolve()), "dataset": dataset_source, "versions": versions},
         "parity": {"file": "parity.npz", "sha256": sha256(output / "parity.npz"), "frames": steps,
+                   "native_precision": "ieee_fp32",
                    "atol": atol, "rtol": rtol, "max_abs_error": errors,
                    "goal_world_xy_yaw": goal_world, "passed": True},
         "scan_miss_height": float(scanner.cfg.max_distance-scanner.cfg.ray_offset-.5),

@@ -58,6 +58,10 @@ source /root/autodl-tmp/acp-g1/environment.sh
 Stage 2 不会被误标。`parity.npz` 保存原生及 ONNX 三输出、完整输入、
 具名关节状态、骨盆状态、目标与独立射线命中数据。重建工具用这些原始量
 复原历史、地形和目标，比较全部 939 维输入及三输出。
+导出对拍使用 IEEE FP32 原生推理，临时关闭 CUDA matmul 与 cuDNN 卷积的
+TF32（PyTorch 2.9+ 还需显式设置卷积子项），结束或失败后恢复调用方设置。
+这避免把 GPU 降低精度造成的差异混入 CPU ONNX 验收，不改变训练配置或
+默认对拍容差 `atol=1e-5, rtol=1e-4`；manifest 记录原生推理精度。
 
 `--dataset` 也可通过 `ACP_DATASET` 指定；导出与训练必须使用同一数据与配置。
 

@@ -36,6 +36,14 @@ def sha256(path: Path) -> str:
     return h.hexdigest()
 
 
+def inline_onnx_parameters(path: Path) -> None:
+    """Make the policy hash cover weights written externally by newer Torch."""
+    import onnx
+    model = onnx.load(str(path), load_external_data=True)
+    onnx.external_data_helper.convert_model_from_external_data(model)
+    onnx.save_model(model, str(path), save_as_external_data=False)
+
+
 def git_source(path: Path) -> dict[str, Any]:
     def git(*args):
         return subprocess.check_output(
@@ -187,6 +195,7 @@ def export_bundle(env, runner, checkpoint: str | Path, output_dir: str | Path,
     output.mkdir(parents=True, exist_ok=True)
     runner.export_policy_onnx(obs, str(output))
     policy = output / "policy.onnx"
+    inline_onnx_parameters(policy)
     graph = runner.policy_graph(False).eval()
     session = ort.InferenceSession(str(policy), providers=["CPUExecutionProvider"])
     if session.get_inputs()[0].name != "planner_obs" or session.get_inputs()[0].shape != [1, 939]:
@@ -265,7 +274,7 @@ def export_bundle(env, runner, checkpoint: str | Path, output_dir: str | Path,
             dataset_source[name + "_sha256"] = sha256(dataset / name)
     manifest = {
         "schema_version": 1, "stage": stage, "planner_obs_dim": 939,
-        "policy_sha256": sha256(policy), "joint_names": names,
+        "policy_sha256": sha256(policy), "policy_storage": "self_contained_onnx", "joint_names": names,
         "default_joint_pos": default.tolist(), "kps": kps[ids].tolist(), "kds": kds[ids].tolist(),
         "effort_limits": effort_limits[ids].tolist(),
         "fixed_joints": fixed_joints, "fixed_joints_source": "explicit deployment configuration; not learned or training actuator gains",

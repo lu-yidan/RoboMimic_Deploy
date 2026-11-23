@@ -73,11 +73,15 @@ class ACP(FSMState):
                 or not np.isfinite(self.heading) or not np.isfinite(self.radius) or self.radius <= 0):
             raise ValueError('Invalid ACP fixed target')
         policy_file = directory / 'policy.onnx'
-        if hashlib.sha256(policy_file.read_bytes()).hexdigest() != m['policy_sha256']:
+        policy_bytes = policy_file.read_bytes()
+        if hashlib.sha256(policy_bytes).hexdigest() != m['policy_sha256']:
             raise ValueError('ACP policy SHA256 does not match manifest')
         options = ort.SessionOptions()
         options.intra_op_num_threads = options.inter_op_num_threads = 1
-        self.session = ort.InferenceSession(str(policy_file), options, providers=['CPUExecutionProvider'])
+        from policy.acp.onnx_storage import require_self_contained_model
+        require_self_contained_model(policy_bytes)
+        # Use exactly the authenticated bytes, without reopening the path.
+        self.session = ort.InferenceSession(policy_bytes, options, providers=['CPUExecutionProvider'])
         inputs, outputs = self.session.get_inputs(), self.session.get_outputs()
         if ([(x.name, x.shape, x.type) for x in inputs] != [('planner_obs', [1, 939], 'tensor(float)')]
                 or {x.name: x.shape for x in outputs} != {'actions': [1,23], 'contacts': [1,9,3], 'occupancy': [1,9,1]}):

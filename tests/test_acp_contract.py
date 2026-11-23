@@ -130,6 +130,19 @@ def test_bundle_hash_and_incomplete_mapping_fail(bundle):
         make_policy(bundle)
 
 
+def test_policy_rejects_external_weights_even_with_matching_graph_hash(bundle):
+    directory, _, manifest, _ = bundle
+    path = directory / 'policy.onnx'
+    model = onnx.load(path)
+    onnx.save_model(model, path, save_as_external_data=True, all_tensors_to_one_file=True,
+                    location='weights.bin', size_threshold=0, convert_attribute=True)
+    assert (directory / 'weights.bin').is_file()
+    manifest['policy_sha256'] = hashlib.sha256(path.read_bytes()).hexdigest()
+    (directory / 'manifest.json').write_text(json.dumps(manifest))
+    with pytest.raises(ValueError, match='self-contained'):
+        make_policy(bundle)
+
+
 def test_real_fsm_entry_ramp_reset_and_same_tick_damping(bundle):
     from FSM.FSM import FSM, FSMMode
     directory,names,_,_ = bundle

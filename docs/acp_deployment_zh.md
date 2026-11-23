@@ -50,6 +50,9 @@ source /root/autodl-tmp/acp-g1/environment.sh
 ```
 
 `policy.onnx` 包含 planner、tracker 裁剪、观测归一化和 actor。
+导出工具会把新版 Torch 拆出的外部权重合并回这个文件，使其 SHA256 同时
+覆盖图和参数。运行时与重建工具拒绝仍依赖外部权重的 ONNX，并加载已经
+校验过的模型字节；单独匹配图文件哈希不足以验证外部参数。
 `manifest.json` 保存实际关节序、默认角、增益、力矩限值、目标半径、
 源码/权重哈希。只有 checkpoint 的 `infos.stage == 3` 能证明 Stage 3；
 Stage 2 不会被误标。`parity.npz` 保存原生及 ONNX 三输出、完整输入、

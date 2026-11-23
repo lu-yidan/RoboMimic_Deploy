@@ -11,6 +11,7 @@ import onnxruntime as ort
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from policy.acp.observations import ObservationHistory, goal_command, grid_xy, rotation
+from policy.acp.onnx_storage import require_self_contained_model
 
 
 def replay(directory, atol=1e-5, rtol=1e-4):
@@ -20,7 +21,9 @@ def replay(directory, atol=1e-5, rtol=1e-4):
                          ('parity.npz',manifest['parity']['sha256'])):
         if hashlib.sha256((directory/name).read_bytes()).hexdigest() != digest:
             raise ValueError('Bundle hash mismatch: '+name)
-    session = ort.InferenceSession(str(directory/'policy.onnx'),providers=['CPUExecutionProvider'])
+    policy_bytes = (directory/'policy.onnx').read_bytes()
+    require_self_contained_model(policy_bytes)
+    session = ort.InferenceSession(policy_bytes,providers=['CPUExecutionProvider'])
     history = ObservationHistory()
     errors = {'observation':0.,'actions':0.,'contacts':0.,'occupancy':0.}
     with np.load(directory/'parity.npz',allow_pickle=False) as records:

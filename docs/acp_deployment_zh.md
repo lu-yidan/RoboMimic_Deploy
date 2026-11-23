@@ -9,6 +9,18 @@
 原生/ONNX 对拍及平地到点、转向、停车评估的 Stage 3 bundle 才是有效基线。
 合成 ONNX 单元测试不能证明策略会走路。
 
+2026-11-23 已完成单 seed、最多 2k 的独立 Stage3 Flat 短训。两组各128个
+固定状态/目标中，1k 与2k均有255/256个 episode 在最后一秒持续停稳，
+未跌倒或数值失效。正式原生独立seed43验收分别128/128和127/128，均通过。
+保留1k为当前仿真候选、2k为对照，尚未追加训练；Stage2正式失败和门槛不变。
+两份新bundle各300帧三输出对拍、939维重建及部署MuJoCo三场景均通过。
+部署通过的初始化条件为下文显式FixedPose支撑，ACP阶段完整15秒无支撑；
+无支撑开环FixedPose尚未通过，不能由此推断真机入口可直接复现。
+245证据目录为 `/root/autodl-tmp/acp-g1/diagnostics/stage3-flat-trial-v1`，
+候选bundle为该目录下的 `bundle_stage3_1000`，权重及同迭代sidecar在
+`/root/autodl-tmp/acp-g1/runs/stage3-flat-from-native9k-v1`。
+本轮未连接或控制机器人；骨盆定位/目标坐标系和六腕增益仍需现场验证。
+
 ## 训练数据与环境
 
 本轮按用户指定使用

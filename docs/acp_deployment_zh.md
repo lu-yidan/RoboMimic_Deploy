@@ -71,7 +71,8 @@ TF32（PyTorch 2.9+ 还需显式设置卷积子项），结束或失败后恢复
 cd /root/RoboMimic_Deploy_acp
 LYD_DEPLOY_CONFIG=config/deploy_acp.yaml python deploy_mujoco/deploy_mujoco.py \
   --config-name mujoco_acp
-LYD_DEPLOY_CONFIG=config/deploy_acp.yaml python tools/acp/evaluate_mujoco.py
+LYD_DEPLOY_CONFIG=config/deploy_acp.yaml python tools/acp/evaluate_mujoco.py \
+  --support-during-fixedpose
 ```
 
 GUI 先 START 进入 FixedPose，等待两秒站姿渐变完成，再按 C 进入 ACP。
@@ -85,6 +86,14 @@ FixedPose 使用本次 bundle 的默认角和 PD 增益，入口同时检查实�
 <0.15 m/s、骨盆高度 0.78±0.1 m、倾角 <0.7 rad 和有限值要求，
 全程跌倒或推理失效均失败。原生 Stage 3 评估采用 episode 语义：
 在 episode 内首次连续满足上述条件 1 秒即记成功。
+`--support-during-fixedpose` 是显式仿真初始化条件：仅在前两秒站姿渐变时
+固定骨盆，ACP 首帧前撤除，随后完整 15 秒自由运动。默认关闭，不改变
+生产 FixedPose/FSM 或真机控制。报告分别记录支撑条件、是否进入 ACP、
+失败阶段和无支撑 ACP 时长；不带支撑的站姿入口结果不能与此条件混用。
+当前 1k 候选在不支撑的开环 FixedPose 阶段约 1.625 秒跌倒，尚未进入
+ACP；该失败仍保留，不能据仿真策略通过推断无支撑站姿入口已验证。
+静态地形射线使用独立模型中的几何分组，一开始排除动态机器人几何，
+避免复杂网格遮挡耗尽逐次跳过的重试次数；原模型碰撞/渲染分组不修改。
 地图或定位过期、不同步、
 非有限值、倾斜/高度越界时同周期进入阻尼；重新有效不会自动重入。
 

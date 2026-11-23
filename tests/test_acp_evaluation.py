@@ -45,3 +45,34 @@ def test_nonfinite_pose_keeps_a_structured_failure_receipt():
     metrics = final_pose_metrics(np.array([np.nan,0.,.78,1.,np.nan,0.,0.]),[1.,0.],0.)
     assert metrics['distance'] is None and metrics['heading_error'] is None
     assert json.loads(json.dumps(metrics,allow_nan=False))['final_position'] == [None,0.,.78]
+
+
+def test_initialization_support_is_released_before_policy_physics(monkeypatch):
+    """A deliberately passive controller must fall after the held entry ramp.
+
+    Run real MuJoCo/G1 physics: leaking the root fixture into ACP would mask the
+    fall, so this checks the boundary that matters to the acceptance result.
+    """
+    import tools.acp.evaluate_mujoco as evaluation
+
+    class PassivePolicy:
+        def __init__(self,state,output,config,names):
+            self.output = output
+            self.default = np.zeros(29)
+            self.default[[0,6]],self.default[[3,9]],self.default[[4,10]] = -.3,.62,-.33
+            self.kps,self.kds,self.effort_limits = np.ones(29)*40,np.ones(29),np.ones(29)*100
+            self.failed,self.last_error = False,None
+        def entry_error(self):return None
+        def enter(self):pass
+        def run(self):
+            self.output.actions = self.default.copy()
+            self.output.kps = np.zeros(29)
+            self.output.kds = np.zeros(29)
+
+    monkeypatch.setattr(evaluation,'ACP',PassivePolicy)
+    result,trajectory = evaluation.evaluate({},[0.,0.],0.,15.,support_during_fixedpose=True)
+    assert result['policy_entered'] and result['failure_phase'] == 'acp'
+    assert 2. < result['sim_seconds'] < 17.
+    assert result['final_position'][2] < .3
+    assert 0. < result['unassisted_acp_seconds'] < 15.
+    assert not result['passed']

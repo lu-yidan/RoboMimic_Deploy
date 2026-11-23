@@ -1,4 +1,5 @@
 """Yaw-aligned ACP terrain samples from static MuJoCo geometry."""
+import copy
 import time
 import numpy as np
 from policy.acp.observations import grid_xy, yaw
@@ -12,6 +13,14 @@ class MujocoTerrain:
     def __init__(self, model):
         self.model = model
         self.xy = grid_xy()
+        # Filter robot geometry before ray intersection. Advancing a ray past
+        # dynamic mesh hits can repeatedly hit the same surface or exceed a
+        # fixed retry count. A private model changes only ray visibility; live
+        # collision/render groups and all geometry indices remain untouched.
+        self.ray_model = copy.copy(model)
+        static = model.body_weldid[model.geom_bodyid] == 0
+        self.ray_model.geom_group[:] = np.where(static, 0, 1)
+        self.ray_groups = np.array([1,0,0,0,0,0], dtype=np.uint8)
 
     def capture(self, data, state):
         import mujoco
@@ -27,18 +36,10 @@ class MujocoTerrain:
         geom_id = np.zeros(1, dtype=np.int32)
         for index, xy in enumerate(xy_world):
             origin = np.r_[xy, state.pelvis_pos_w[2]+3.]
-            # mj_ray includes dynamic robot geometry. Advance past those hits;
-            # only geometry welded to the world supplies terrain truth.
-            for _ in range(64):
-                distance = mujoco.mj_ray(self.model, data, origin, direction, None, True, -1, geom_id)
-                if distance < 0:
-                    break
-                hit_z = origin[2]-distance
-                body = self.model.geom_bodyid[geom_id[0]]
-                if self.model.body_weldid[body] == 0:
-                    heights[index] = hit_z
-                    break
-                origin[2] = hit_z-1e-5
+            distance = mujoco.mj_ray(self.ray_model, data, origin, direction,
+                                     self.ray_groups, True, -1, geom_id)
+            if distance >= 0:
+                heights[index] = origin[2]-distance
         state.acp_terrain = np.column_stack((self.xy, state.pelvis_pos_w[2]-heights-.5)).astype(np.float32)
         stamp = time.monotonic()
         state.acp_pose_time = state.acp_terrain_time = stamp

@@ -198,3 +198,22 @@ def test_rays_skip_robot_and_rotate_grid_at_step():
     sampler.capture(data,state)
     expected = np.where((grid_xy()[:,1] <= -.25)&(grid_xy()[:,1] >= -.75), .08, .28)
     np.testing.assert_allclose(state.acp_terrain[:,2],expected,atol=1e-6)
+
+
+def test_static_scan_survives_many_robot_occluders_without_changing_live_groups():
+    # More surfaces than the old 64-hit retry budget; terrain visibility must
+    # depend on static geometry, not the number of robot mesh intersections.
+    blockers = ''.join('<geom type="box" pos="0 0 {}" size="1 1 .001"/>'.format(z)
+                       for z in np.linspace(-.6,.6,70))
+    model = mujoco.MjModel.from_xml_string('''<mujoco><worldbody>
+      <geom type="plane" group="5" size="10 10 .1"/>
+      <body pos="0 0 .78"><freejoint/>{}</body>
+      </worldbody></mujoco>'''.format(blockers))
+    original_groups = model.geom_group.copy()
+    data = mujoco.MjData(model)
+    mujoco.mj_forward(model,data)
+    state = StateAndCmd(29)
+    MujocoTerrain(model).capture(data,state)
+    assert state.acp_pose_valid
+    np.testing.assert_allclose(state.acp_terrain[:,2],.28,atol=1e-6)
+    np.testing.assert_array_equal(model.geom_group,original_groups)

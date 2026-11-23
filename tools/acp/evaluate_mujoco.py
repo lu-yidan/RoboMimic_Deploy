@@ -56,7 +56,7 @@ def final_pose_metrics(qpos, target, heading):
     return {'final_position':position,'distance':distance,'heading_error':heading_error}
 
 
-def evaluate(config,target,heading,seconds):
+def evaluate(config,target,heading,seconds,support_during_fixedpose=False):
     if not np.isfinite(seconds) or seconds < 1.:
         raise ValueError('Evaluation duration must be finite and at least one second')
     model = mujoco.MjModel.from_xml_path(str(ROOT/'g1_description/scene.xml'))
@@ -70,6 +70,7 @@ def evaluate(config,target,heading,seconds):
     fixed.set_runtime_target(policy.default,policy.kps,policy.kds)
     data.qpos[:3], data.qpos[7:36] = [0,0,BASE_STAND_HEIGHT],policy.default
     data.qpos[3:7] = [1,0,0,0]
+    initial_root_pose = data.qpos[:7].copy()
     mujoco.mj_forward(model,data)
     state.q[:] = data.qpos[7:36]
     fixed.enter()
@@ -102,6 +103,14 @@ def evaluate(config,target,heading,seconds):
             break
         data.ctrl[:] = np.clip(torque,-policy.effort_limits,policy.effort_limits)
         mujoco.mj_step(model,data)
+        if support_during_fixedpose and not entered:
+            # Explicit initialization fixture, equivalent to holding the base
+            # while joint PD settles. Release completely before ACP inference;
+            # never reset or constrain the free root during the policy test.
+            data.qpos[:7] = initial_root_pose
+            data.qvel[:6] = 0.
+            data.qacc_warmstart[:6] = 0.
+            mujoco.mj_forward(model,data)
         if not all(np.isfinite(value).all() for value in (data.qpos,data.qvel)) or data.qpos[2] < .3:
             error = 'Robot fell or state became nonfinite'
             break
@@ -114,6 +123,9 @@ def evaluate(config,target,heading,seconds):
         error = error or 'Invalid final pelvis pose'
     hold = final_hold_result(trajectory,target,heading)
     return {'target':target,'heading':heading,'sim_seconds':float(data.time),'error':error,
+        'policy_entered':entered,'failure_phase':None if error is None else ('acp' if entered else 'fixedpose'),
+        'support_during_fixedpose':bool(support_during_fixedpose),
+        'unassisted_acp_seconds':len(trajectory)*CONTROL_DT,
         **metrics,
         'target_height':BASE_STAND_HEIGHT, **hold,
         'passed':error is None and hold['held_all_criteria_last_second']},np.asarray(trajectory)
@@ -123,6 +135,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--seconds',type=float,default=15.)
     parser.add_argument('--bundle',type=Path,help='Evaluate this explicit bundle in simulation')
+    parser.add_argument('--support-during-fixedpose',action='store_true',
+                        help='Hold the pelvis only during the two-second initialization; release before the complete unassisted ACP test')
     parser.add_argument('--output',type=Path,default=ROOT/'outputs/acp/mujoco_eval.json')
     args = parser.parse_args()
     config = load_acp_config()
@@ -131,7 +145,7 @@ if __name__ == '__main__':
     if not config['enabled']: raise SystemExit('Set LYD_DEPLOY_CONFIG=config/deploy_acp.yaml')
     results,paths = [],{}
     for index,(target,heading) in enumerate((([1.,0.],0.),([0.,1.],np.pi/2),([0.,0.],0.))):
-        result,path = evaluate(config,target,heading,args.seconds)
+        result,path = evaluate(config,target,heading,args.seconds,args.support_during_fixedpose)
         results.append(result)
         paths[f'scenario_{index}'] = path
         print(json.dumps(result),flush=True)
@@ -142,6 +156,8 @@ if __name__ == '__main__':
         'criteria':{'distance':.2,'heading_error':.25,'speed_xy':.15,'height_error':.1,
                     'target_height':BASE_STAND_HEIGHT,'max_tilt_rad':.7,'hold_seconds':1.,
                     'test_seconds':float(args.seconds),
+                    'support_during_fixedpose':bool(args.support_during_fixedpose),
+                    'support_during_acp':False,
                     'success_semantics':'all criteria hold throughout the final second of the complete test'}}
     args.output.write_text(json.dumps(report,indent=2,allow_nan=False)+'\n')
     np.savez_compressed(args.output.with_suffix('.npz'),**paths)

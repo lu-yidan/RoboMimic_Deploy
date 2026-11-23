@@ -54,7 +54,8 @@ ACP 阶段最大骨盆倾角为 0.24274 rad。完整轨迹中三个前进场景�
 `/home/yujy/Documents/ChatGPT/G1 locomotion/RoboMimic_Deploy_acp`。
 证据目录：
 `/home/yujy/Documents/ChatGPT/G1 locomotion/data/acp_g1_reports/real_pose_entry_v1`。
-245 归档目录：`/root/autodl-tmp/acp-g1/diagnostics/real-pose-entry-v1`。
+245 已同步本轮代码。真实日志衍生的姿态、轨迹与视频保存在本机，
+上传到其他主机需用户明确授权。
 
 查看已经计算的前进仿真，使用图形桌面终端：
 

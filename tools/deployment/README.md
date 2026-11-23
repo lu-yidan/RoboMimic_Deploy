@@ -1,5 +1,20 @@
 # Offline AMP/SMP branch replay
 
+Real-log migration check (2026-11-23): user-provided `~/Downloads/SMP LOG`
+contains bridge logs from `under-the-table@6a25875` with effective SMP profiles
+and weight hashes. Four contiguous segments were replayed: October 16 SMP
+balanced4 (325 + 239 frames), October 16 FixedPose/AMP (200 frames), and November
+5 SMP a6 (322 frames). In all 1,086 frames the two checkouts' executed state and
+29 joint targets/Kp/Kd were identical. Each checkout also matched the original
+logged executed state and targets/gains exactly (maximum absolute error zero),
+including the recorded SMP warmup. Shared SMP parameters, effective torque
+limits and selected ONNX hashes match the logged configuration. This confirms
+the relevant Python state-to-command migration for those segments. Logs mark
+the onboard checkout dirty; this is output evidence, not a claim of a clean
+historical source tree. DDS/C++ transport was not re-executed. Detailed local
+evidence is in `data/acp_g1_reports/deployment_replay/real_log_summary.json` in
+the parent workspace; raw logs remain in the user-provided directory.
+
 `replay_branches.py` compares bridge Python `PolicyRuntime.step`, `FSM.run`,
 Passive/FixedPose and actual AMP/SMP ONNX inference in separate processes.
 It never calls runtime/FSM constructors or creates DDS participants/publishers.

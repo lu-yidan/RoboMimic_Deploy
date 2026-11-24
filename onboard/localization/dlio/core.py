@@ -88,12 +88,12 @@ def pelvis_pose(position, quaternion, waist, head_angle, lidar_angle):
     if (waist.shape != (3,) or position.shape != (3,) or
             not np.isfinite(np.r_[waist, position, head_angle, lidar_angle]).all()):
         raise ValueError('Invalid mount/joint/position values')
-    world_lidar = np.eye(4)
-    world_lidar[:3, :3], world_lidar[:3, 3] = rotation(quaternion), position
     # Nominal G1 URDF chain, with explicitly reviewed fixed head/mount angles.
     pelvis_lidar = compute_mid360_to_base_transform(*waist, q_head=head_angle, q_mid=lidar_angle)
-    world_pelvis = world_lidar @ np.linalg.inv(pelvis_lidar)
-    return world_pelvis[:3, 3], quaternion_wxyz(world_pelvis[:3, :3])
+    # Analytic inverse of a rigid transform; avoid a general LAPACK solve at 100 Hz.
+    world_pelvis_rotation = rotation(quaternion) @ pelvis_lidar[:3, :3].T
+    world_pelvis_position = position-world_pelvis_rotation @ pelvis_lidar[:3, 3]
+    return world_pelvis_position, quaternion_wxyz(world_pelvis_rotation)
 
 
 class WaistHistory:

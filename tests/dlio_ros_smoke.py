@@ -4,6 +4,7 @@ No physical driver, Unitree/DDS subscriber or motor publisher is created.
 Run in a sourced Foxy + ACP DLIO workspace using system Python.
 """
 import argparse
+from array import array
 import json
 import os
 from pathlib import Path
@@ -25,7 +26,13 @@ from policy.acp.state_ipc import boot_id
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', required=True)
+    parser.add_argument('--points', type=int, default=1600)
+    parser.add_argument('--cloud-age-ms', type=float, default=120., help='Age of first point when generating each 100 ms cloud')
     args = parser.parse_args()
+    if not 1600 <= args.points <= 100000:
+        parser.error('--points must be between 1600 and 100000')
+    if not 90 <= args.cloud_age_ms <= 200:
+        parser.error('--cloud-age-ms must be between 90 and 200')
     if os.environ.get('ROS_LOCALHOST_ONLY') != '1' or os.environ.get('ROS_DOMAIN_ID') != '78':
         parser.error('Use ROS_LOCALHOST_ONLY=1 ROS_DOMAIN_ID=78 (isolated offline domain)')
     import rclpy
@@ -47,7 +54,8 @@ def main():
                               '--site', str(here/'config/site.example.json'),
                               '--ipc-dir', str(directory), '--publish-acp'],
                              stdout=relay_log, stderr=subprocess.STDOUT, start_new_session=True)
-    result = dict(hardware_started=False, directory=str(directory), passed=False)
+    result = dict(hardware_started=False, directory=str(directory), passed=False,
+                  points_per_cloud=args.points, source_cloud_age_ms=args.cloud_age_ms)
     rclpy.init()
 
     class Synthetic(Node):
@@ -64,11 +72,12 @@ def main():
             self.accel_g = mount[:3, :3].T @ [0., 0., 1.]
             rng = np.random.RandomState(42)
             # Room walls + floor, full 3D structure, fixed points in sensor coordinates.
-            xyz = rng.uniform(-3., 3., (1600, 3))
-            xyz[:400, 2] = -1.25
-            xyz[400:800, 0] = 3.
-            xyz[800:1200, 1] = 3.
-            xyz[1200:, 1] = -3.
+            xyz = rng.uniform(-3., 3., (args.points, 3))
+            quarter = args.points//4
+            xyz[:quarter, 2] = -1.25
+            xyz[quarter:2*quarter, 0] = 3.
+            xyz[2*quarter:3*quarter, 1] = 3.
+            xyz[3*quarter:, 1] = -3.
             self.points = np.zeros(len(xyz), dtype=np.dtype(dict(
                 names=['x', 'y', 'z', 'intensity', 'timestamp'],
                 formats=['<f4', '<f4', '<f4', '<f4', '<f8'], offsets=[0, 4, 8, 12, 16], itemsize=24)))
@@ -96,7 +105,7 @@ def main():
         def cloud(self):
             if not self.cloud_enabled:
                 return
-            first = time.time()-.12
+            first = time.time()-args.cloud_age_ms/1000
             self.points['timestamp'] = (first+np.linspace(0., .09, len(self.points)))*1e9
             message = PointCloud2()
             self.stamp(message.header, first)
@@ -105,7 +114,9 @@ def main():
             message.is_dense = True
             message.fields = [PointField(name=key, offset=offset, datatype=typ, count=1)
                               for key, offset, typ in [('x', 0, 7), ('y', 4, 7), ('z', 8, 7), ('intensity', 12, 7), ('timestamp', 16, 8)]]
-            message.data = self.points.tobytes()
+            # Foxy validates bytes element-by-element; an already typed buffer
+            # avoids blocking this same executor's 200 Hz synthetic IMU timer.
+            message.data = array('B', self.points.tobytes())
             self.cloud_pub.publish(message)
 
         def pose(self, message):
@@ -116,6 +127,8 @@ def main():
     try:
         started, calibrated = time.monotonic(), False
         valid_frames = 0
+        steady_status = []
+        last_sampled = 0.
         while time.monotonic()-started < 14.:
             rclpy.spin_once(node, timeout_sec=.005)
             if native.poll() is not None or relay.poll() is not None:
@@ -129,10 +142,15 @@ def main():
                     calibrated = True
                 if status['acp_output_valid']:
                     valid_frames += 1
+                if time.monotonic()-started > 8. and status['sampled_at'] != last_sampled:
+                    steady_status.append(status)
+                    last_sampled = status['sampled_at']
             except OSError:
                 pass
         if not node.poses or not calibrated or valid_frames < 30:
             raise RuntimeError('No sustained fresh pelvis/ACP output')
+        if len(steady_status) < 2:
+            raise RuntimeError('No steady-state status observations')
         pose = np.array(node.poses)
         norms = np.linalg.norm(pose[:, 4:], axis=1)
         if not np.allclose(norms, 1., atol=1e-5) or np.max(np.ptp(pose[-100:, 1:4], axis=0)) > .05:
@@ -140,6 +158,12 @@ def main():
         with np.load(directory/'acp-state.npz', allow_pickle=False) as packet:
             assert str(packet['frame_id']) == 'acp_odom'
             assert abs(float(packet['pelvis_pos_w'][2])-float(packet['ground_height'])-.78) < .03
+        result['steady_observation'] = dict(
+            distinct_status_samples=len(steady_status),
+            fresh_pelvis_fraction=float(np.mean([s['pose_valid'] for s in steady_status])),
+            acp_output_fraction=float(np.mean([s['acp_output_valid'] for s in steady_status])),
+            status_interval_p99_s=float(np.percentile(np.diff([s['sampled_at'] for s in steady_status]), 99)),
+            last_status=steady_status[-1])
         node.cloud_enabled = False
         then = time.monotonic()
         while time.monotonic()-then < .7:

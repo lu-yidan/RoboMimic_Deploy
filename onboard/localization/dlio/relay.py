@@ -9,6 +9,11 @@ import sys
 import time
 import uuid
 
+# Only tiny rigid-body matrices are used here. A spinning BLAS worker on G1
+# was consuming a full core; keep this process independent of DLIO's OpenMP.
+if __name__ == '__main__':
+    os.environ['OPENBLAS_NUM_THREADS'] = '1'
+    os.environ['MKL_NUM_THREADS'] = '1'
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
@@ -80,6 +85,9 @@ def main():
             self.counts = dict(raw_imu=0, si_imu=0, raw_cloud=0, checked_cloud=0,
                                registered_cloud=0, odom=0, pelvis=0, acp_state=0)
             self.last_waist_stamp = 0.
+            self.last_raw_arrival = self.last_registered_arrival = 0.
+            self.max_raw_gap = self.max_registered_gap = 0.
+            self.raw_receive_age = self.registration_receive_age = None
             self.waist_skew = None
             self.imu_norm = None
             self.trace = (Path(__file__).resolve().parents[3] / 'logs' / 'acp-dlio' /
@@ -97,7 +105,9 @@ def main():
             self.create_subscription(Odometry, '/dlio/odom_node/odom', self.odom, qos_profile_sensor_data)
             self.create_subscription(PointCloud2, '/dlio/odom_node/pointcloud/deskewed', self.cloud, qos_profile_sensor_data)
             self.create_subscription(PoseStamped, '/acp/goal_pose', self.goal, 10)
-            self.create_timer(.1, self.status)
+            # A 10 Hz snapshot could itself be ~100 ms old when check.py read it.
+            # This changes diagnostic reporting only, not acquisition timestamps.
+            self.create_timer(.02, self.status)
 
         def goal(self, msg):
             try:
@@ -146,6 +156,11 @@ def main():
 
         def points(self, msg):
             self.counts['raw_cloud'] += 1
+            arrival = time.monotonic()
+            if self.last_raw_arrival:
+                self.max_raw_gap = max(self.max_raw_gap, arrival-self.last_raw_arrival)
+            self.last_raw_arrival = arrival
+            self.raw_receive_age = time.time()-stamp_seconds(msg.header)
             try:
                 if msg.header.frame_id != 'livox_frame':
                     raise ValueError('Unexpected raw LiDAR frame; disable driver extrinsic transforms')
@@ -163,6 +178,11 @@ def main():
                 self.stage_errors['raw_cloud'] = self.error
 
         def cloud(self, msg):
+            arrival = time.monotonic()
+            if self.last_registered_arrival:
+                self.max_registered_gap = max(self.max_registered_gap, arrival-self.last_registered_arrival)
+            self.last_registered_arrival = arrival
+            self.registration_receive_age = time.time()-stamp_seconds(msg.header)
             try:
                 stamp = self.clock_map.convert(stamp_seconds(msg.header), max_age=.25)
                 if msg.header.frame_id != 'acp_odom' or msg.width*msg.height <= 64 or stamp <= self.last_cloud:
@@ -246,6 +266,13 @@ def main():
                            stage_errors=self.stage_errors.copy(),
                            calibration_ready=self.calibration is not None,
                            diagnostic_trace=str(self.trace))
+            payload.update(raw_cloud_arrival_age_s=now-self.last_raw_arrival if self.last_raw_arrival else None,
+                           registered_cloud_arrival_age_s=now-self.last_registered_arrival if self.last_registered_arrival else None,
+                           raw_cloud_receive_age_s=self.raw_receive_age,
+                           registration_receive_age_s=self.registration_receive_age,
+                           raw_cloud_max_gap_s=self.max_raw_gap,
+                           registered_cloud_max_gap_s=self.max_registered_gap,
+                           status_period_s=.02, blas_threads=1)
             if self.pose is not None:
                 payload.update(pelvis_pos_w=self.pose[0].tolist(), pelvis_quat_w=self.pose[1].tolist())
             atomic_json(directory / 'acp-dlio-status.json', payload)

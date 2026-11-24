@@ -1,0 +1,61 @@
+{
+  "date": "2026-11-24",
+  "platform": "G1 aarch64 Ubuntu 20.04 ROS2 Foxy",
+  "purpose": "Offline functional and timing observations, not continuous-freshness acceptance",
+  "physical_sensor_started": false,
+  "robot_control_started": false,
+  "isolated_ros_domain": 78,
+  "production_age_limits_unchanged": true,
+  "acp_regression_tests_passed": 55,
+  "runs": [
+    {
+      "passed": false,
+      "hardware_started": false,
+      "points_per_cloud": 20000,
+      "error": "No sustained fresh pelvis/ACP output",
+      "source_cloud_age_ms": 120,
+      "source_buffer": "bytes (blocked synthetic IMU timer)"
+    },
+    {
+      "passed": true,
+      "hardware_started": false,
+      "points_per_cloud": 20000,
+      "pelvis_messages": 778,
+      "stationary_drift_m": [
+        1.2225403155097236e-07,
+        4.528346862238877e-08,
+        3.4758266870271726e-07
+      ],
+      "cloud_stall_invalidated": true,
+      "source_cloud_age_ms": 120,
+      "source_buffer": "typed array",
+      "steady_observation": {
+        "distinct_status_samples": 301,
+        "fresh_pelvis_fraction": 1.0,
+        "acp_output_fraction": 0.8471760797342193,
+        "status_interval_p99_s": 0.02145469326010243
+      }
+    },
+    {
+      "passed": true,
+      "hardware_started": false,
+      "points_per_cloud": 20000,
+      "pelvis_messages": 808,
+      "stationary_drift_m": [
+        1.2730762431745202e-07,
+        5.066336629087163e-08,
+        3.958691014993576e-07
+      ],
+      "cloud_stall_invalidated": true,
+      "source_cloud_age_ms": 100,
+      "source_buffer": "typed array",
+      "steady_observation": {
+        "distinct_status_samples": 301,
+        "fresh_pelvis_fraction": 0.9933554817275747,
+        "acp_output_fraction": 0.9501661129568106,
+        "status_interval_p99_s": 0.02539533925025353
+      }
+    }
+  ],
+  "conclusion": "Typed synthetic buffers avoid starving the source IMU. Relay diagnostic cadence is near 20 ms. Intermittent output invalidity remains; physical localization acceptance is pending."
+}

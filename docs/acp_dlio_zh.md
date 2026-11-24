@@ -70,13 +70,20 @@ ACP_DLIO=1 bash tools/deploy/start_tmux_layout.sh acp-dlio-readonly
 
 ```bash
 cd /home/unitree/RoboMimic_Deploy
-/usr/bin/python3 onboard/localization/dlio/check.py
+/usr/bin/python3 onboard/localization/dlio/check.py --duration 5
 ```
 
 `Blocking stage: relay` 表示定位进程已经停止或状态文件过期；
 `imu/raw_cloud/registration/pelvis` 分别指向 IMU、原始点云、DLIO 配准、腰部/骨盆转换。
 先修复这些状态；`pose_valid=true` 后才做下方实测平地标定。
 例如配准点云年龄超过 250 ms 时不会接受当前位姿，不要通过放宽时效阈值跳过。
+`--duration 5` 连续观察五秒，分别报告各阻塞阶段的采样次数和新鲜骨盆位姿比例，
+最后再打印当前一帧。单帧恢复不代表间歇超时已经解决。
+中转状态每 20 ms 更新一次；检查器仍按真实采集时间计算年龄。
+`Cloud ages AT ARRIVAL` 区分点云抵达中转时已有的延迟与后续断流，
+`max arrival gaps` 是当前中转会话累计的最大间隔，包含初始化阶段。
+Python 中转与腰部导出限制 BLAS 为单线程，DLIO 的 OpenMP 设置保持独立。
+更新这些 Python 文件不需要重编 C++；需由操作者重启右中与右上对应进程才会生效。
 
 左中打印缺少 `/dev/shm/robomimic-1000/acp-state.npz`，表示定位/标定尚未就绪，
 不是缺少模型。Python 可以保持只读等待；只有定位新鲜且本会话标定完成才生成该文件。
@@ -165,6 +172,13 @@ ssh g1-wifi 'cd /home/unitree/RoboMimic_Deploy && /usr/bin/python3 onboard/local
 不代表真实雷达精度。停止点云后 ACP 文件被撤销。没有运行真实雷达驱动或控制实验。
 上述为离线验证范围；用户随后已自行启动真实定位链路，其现场时效和地面标定仍需验收。
 结果摘要在 `docs/validation/dlio_foxy_20261124.json`。
+
+另以每帧 20,000 点、10 Hz 做隔离时效测试。合成发布器改用 Foxy 的类型化字节数组，
+避免逐字节校验阻塞同进程 IMU。原始点云生成年龄为 100 ms 时，末段 301 次状态采样中，
+骨盆位姿新鲜率为 99.3%，ACP 输出有效率为 95.0%；120 ms 压力输入的输出有效率为 84.7%。
+两次均验证点云断流后撤销 ACP 输出，但仍有间歇失效，**不视为持续新鲜或现场验收通过**。
+状态更新间隔 P99 分别为 25.4/21.5 ms；未放宽任何时效阈值。
+合成发布器修正前的失败记录也保留在 `docs/validation/dlio_timing_20261124.json`。
 
 现场结束后保留策略 `logs/` 中的普通日志、`.acp_trace.npz`，
 当前 `site.json`、`MID360_config.json`、`acp-dlio-status.json`、标定与目标 JSON，

@@ -1,0 +1,228 @@
+{
+  "source_log": "20261124_211631_real_policies",
+  "source_commit": "06c3111751a96daefaf695190efd7cd827361ca3",
+  "read_only": true,
+  "policy_sha256": "2a85ea0312bbdff8b681dabe659c8f9c68b1d55221c4f9ec41284dd674e310e8",
+  "acp_frames": 1071,
+  "duration_s": 22.506949567999982,
+  "command_seq_first_last": [
+    1316,
+    2386
+  ],
+  "continuous_command_sequence": true,
+  "effective_recorded_rate_hz": 47.54087162132841,
+  "acp_damping_events_during_trace": [],
+  "earlier_damping_events": [],
+  "all_numeric_trace_arrays_finite": true,
+  "independent_939_reconstruction_and_live_arm_vs_local_onnx_max_abs_error": {
+    "observation": 0.0,
+    "actions": 0.0,
+    "contacts": 0.0,
+    "occupancy": 3.159046173095703e-06
+  },
+  "arm_vs_local_parity_failures": [],
+  "reconstruction_assumptions": [
+    "One unchanged goal confirmed by events and request ID",
+    "Measured flat plane from same-session calibration",
+    "One continuous ACP entry; first history repeated and previous action zero"
+  ],
+  "inference_ms": {
+    "min": 5.119862999890756,
+    "p50": 6.297169999925245,
+    "p90": 10.060220000013942,
+    "p99": 12.112101299862843,
+    "max": 15.023566999843752
+  },
+  "sync_skew_ms": {
+    "min": 0.05894732566957828,
+    "p50": 7.003248339060519,
+    "p90": 9.729565060297318,
+    "p99": 11.84298176713126,
+    "max": 14.454950172876124
+  },
+  "pose_age_ms": {
+    "min": 27.20715688610653,
+    "p50": 46.75019576370687,
+    "p90": 56.00415755634458,
+    "p99": 67.12783591683547,
+    "max": 74.566570551724
+  },
+  "loop_period_ms": {
+    "min": 20.011383056640625,
+    "p50": 20.083749771118164,
+    "p90": 23.714052200317383,
+    "p99": 29.65847663879392,
+    "max": 34.52888107299805
+  },
+  "runtime_compute_ms": {
+    "min": 11.276262283325195,
+    "p50": 17.387062072753906,
+    "p90": 20.872352600097656,
+    "p99": 25.12317218780517,
+    "max": 30.935274124145508
+  },
+  "runtime_compute_over_20ms_fraction": 0.17647058823529413,
+  "gravity_error_deg_vs_matched_sdk_imu": {
+    "min": 0.542207689356767,
+    "p50": 0.6175311023604197,
+    "p90": 0.6639469888857583,
+    "p99": 0.7001671065173105,
+    "max": 0.7089057265948002
+  },
+  "sdk_comparison": "Exact time-matched IMU quaternion saved in this trace; world yaw is ignored",
+  "pelvis_max_adjacent_translation_m": 0.004807446617633104,
+  "pelvis_xyz_span_m": [
+    0.009995711967349052,
+    0.013009019196033478,
+    0.005427151918411255
+  ],
+  "first_target_minus_actual_max_rad": 0.6251917481422424,
+  "first_target_minus_actual_joint": "right_shoulder_yaw_joint",
+  "physical_closed_loop_tested": false,
+  "readonly_acceptance_complete": false,
+  "blockers": [
+    "Physical movement/turning localization not tested (operator confirmed stationary hanging)",
+    "Read-only FSM did not move actual non-reset hanging posture into B/Loco posture",
+    "Six wrist fixed positions/gains still require onsite review",
+    "Live runtime tail latency exceeds 20 ms on some frames"
+  ],
+  "hashes": {
+    "20261124_211631_real_policies.json": "ab551ddf89243863181a532be87b4f20f194813055ac0a3da9381b99adbd9d5e",
+    "20261124_211631_real_policies.bin": "23b564097fc4458f59f9c6750df71ece636613a56485440751abe88eb4070c21",
+    "20261124_211631_real_policies.events.jsonl": "a97233fa55747113b27c813eb705464aa325607cc35d5789a98edd2927e6ed0c",
+    "20261124_211631_real_policies.acp_trace.npz": "d43bc6faf7d8a1ccce6c21e2a35368a8efb49c0718997737270674c4b8cce38c"
+  },
+  "operator_observation": "Stationary, hanging under support; no actual movement or turning tested",
+  "static_input_inference_check_passed": true,
+  "timing_acceptance_passed": false,
+  "overall_readonly_acceptance_complete": false,
+  "site_mount_angles_rad": [
+    0.0,
+    0.0
+  ],
+  "bridge_readonly_verification": {
+    "pid": 17413,
+    "BRIDGE_READ_ONLY": "1",
+    "process_started_before_recording": true,
+    "start_monotonic": 955.98,
+    "python_log_read_only": true
+  },
+  "gravity_error_trace_vs_independent_max_abs_rad": 7.491576803353439e-14,
+  "pd_effort_limit_max_float_excess_nm": 1.9073486328125e-06,
+  "pd_effort_limit_check_passed_with_1e-4_nm_roundoff_tolerance": true,
+  "state_status_transitions": [
+    {
+      "event": "acp_state_status",
+      "error": "ACP state producer not started",
+      "sequence": -1,
+      "pose_captured_at": 0.0,
+      "latest_robot_received_at": 4332.061873436,
+      "matched_robot_captured_at": null,
+      "sampled_at": 4332.073075122
+    },
+    {
+      "event": "acp_state_status",
+      "error": "ACP live goal: Invalid/stale goal or goal from a different localization session",
+      "sequence": 1881,
+      "pose_captured_at": 4332.024806261063,
+      "latest_robot_received_at": 4332.077844574,
+      "matched_robot_captured_at": 4332.061873436,
+      "sampled_at": 4332.089910436
+    },
+    {
+      "event": "acp_state_status",
+      "error": "",
+      "sequence": 2364,
+      "pose_captured_at": 4341.6910564899445,
+      "latest_robot_received_at": 4341.719874215,
+      "matched_robot_captured_at": 4341.700568533,
+      "sampled_at": 4341.72428406
+    },
+    {
+      "event": "acp_state_status",
+      "error": "ACP state IPC: ACP state stale, future, or unsynchronized",
+      "sequence": -1,
+      "pose_captured_at": 0.0,
+      "latest_robot_received_at": 4355.122125944,
+      "matched_robot_captured_at": null,
+      "sampled_at": 4355.124425782
+    },
+    {
+      "event": "acp_state_status",
+      "error": "",
+      "sequence": 3034,
+      "pose_captured_at": 4355.091456413269,
+      "latest_robot_received_at": 4355.147695221,
+      "matched_robot_captured_at": 4355.122125944,
+      "sampled_at": 4355.15170757
+    }
+  ],
+  "passive_timing_probe": {
+    "passive_only": true,
+    "datawriter_constructor_blocked": true,
+    "frames": 300,
+    "failures": [],
+    "timing_ms_p50_p90_p99_max": {
+      "fetch_guard": [
+        0.2507144999981392,
+        0.32654520000505727,
+        0.7196149798619442,
+        1.8343809997531935
+      ],
+      "diagnostics": [
+        0.2853559999493882,
+        0.34751479943224695,
+        0.4828485201414876,
+        0.9766809998836834
+      ],
+      "robot_state": [
+        0.3896159996656934,
+        0.8374493995688682,
+        2.160351710253957,
+        3.7261719999150955
+      ],
+      "acp_state": [
+        0.7449590002579498,
+        0.995919500019227,
+        1.7389795902727196,
+        3.9302129998759483
+      ],
+      "policy_run": [
+        10.172011000122438,
+        15.109774599659435,
+        19.81734858959498,
+        23.350197999207012
+      ],
+      "output_guard": [
+        1.1024939994968008,
+        1.5761278998979842,
+        2.7307403198392195,
+        7.351061000008485
+      ],
+      "trace": [
+        0.16451900000902242,
+        0.78382830024566,
+        7.101650759932451,
+        9.060796999619924
+      ]
+    },
+    "total_ms_p50_p90_p99_max": [
+      13.870742499875632,
+      19.525844000327197,
+      22.785960130067902,
+      26.336820000324224
+    ]
+  },
+  "passive_timing_probe_limitations": [
+    "cProfile instrumentation adds overhead",
+    "Bypasses FSM, goal reader, ordinary logger, and legacy ball/target republishing; not the full live runtime",
+    "Does not prove 50 Hz after optimization"
+  ],
+  "low_impact_optimization": {
+    "change": "Precompute immutable grid XY once; return independent writable copies, preserving dtype/order and all validations",
+    "evidence": "900 grid constructions during 300 passive frames, cumulative 0.367 s under cProfile",
+    "model_or_safety_limits_changed": false,
+    "live_runtime_retest_required": true
+  },
+  "regression_tests_passed": 97
+}

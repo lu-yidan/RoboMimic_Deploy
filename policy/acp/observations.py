@@ -3,10 +3,16 @@ import numpy as np
 
 DEFAULT_MAX_GRAVITY_ERROR_RAD = np.pi / 18  # 10 degrees; independent of world yaw.
 
+_grid_x, _grid_y = np.meshgrid(np.arange(-8, 9) * .1, np.arange(-5, 6) * .1)
+_GRID_XY = np.stack((_grid_x.ravel(), _grid_y.ravel()), axis=-1).astype(np.float32)
+_GRID_XY.setflags(write=False)
+del _grid_x, _grid_y
+
 
 def grid_xy():
-    x, y = np.meshgrid(np.arange(-8, 9) * .1, np.arange(-5, 6) * .1)
-    return np.stack((x.ravel(), y.ravel()), axis=-1).astype(np.float32)
+    # Validation runs before and after inference. Reuse the fixed geometry,
+    # retaining an independent writable result for existing callers.
+    return _GRID_XY.copy()
 
 
 def rotation(quat):

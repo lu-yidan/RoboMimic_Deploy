@@ -216,6 +216,8 @@ class PolicyRuntime:
             observation_q=(s.q if s.acp_joint_pos is None else s.acp_joint_pos).copy(),
             observation_dq=(s.dq if s.acp_joint_vel is None else s.acp_joint_vel).copy(),
             observation_gyro=s.acp_ang_vel.copy(),
+            observation_imu_quat_wxyz=s.acp_imu_quat_wxyz.copy(),
+            gravity_error_rad=s.acp_gravity_error_rad,
             robot_sample_captured_at=s.acp_robot_time, robot_sample_tick=s.acp_robot_tick,
             inference_ms=float(getattr(policy, 'last_inference_ms', float('nan'))),
             raw_occupancy_range=np.asarray(getattr(policy, 'last_occupancy_range', [float('nan')]*2)),
@@ -368,6 +370,8 @@ class PolicyRuntime:
         s.acp_terrain = None
         s.acp_joint_pos = s.acp_joint_vel = None
         s.acp_robot_time, s.acp_robot_tick = 0., 0
+        s.acp_imu_quat_wxyz = None
+        s.acp_gravity_error_rad = float('nan')
         sample = self.acp_source.latest()
         error = sample.error
         matched = None
@@ -388,6 +392,9 @@ class PolicyRuntime:
             self._acp_robot_history.add(bridge_state, received, now)
             if not error:
                 matched = self._acp_robot_history.nearest(sample.pose_captured_at, now)
+                from policy.acp.observations import check_gravity_alignment, DEFAULT_MAX_GRAVITY_ERROR_RAD
+                s.acp_gravity_error_rad = check_gravity_alignment(sample.pelvis_quat_w, matched.imu_quat_wxyz,
+                    float(self.acp_config.get('max_gravity_error_rad', DEFAULT_MAX_GRAVITY_ERROR_RAD)))
         except (ValueError, TypeError, AttributeError) as failure:
             error = str(failure)
         if not error and getattr(self, '_acp_goal_reader', None) is not None:
@@ -411,11 +418,13 @@ class PolicyRuntime:
             s.acp_pose_time, s.acp_terrain_time = sample.pose_captured_at, sample.terrain_captured_at
             s.acp_joint_pos, s.acp_joint_vel = matched.q, matched.dq
             s.acp_ang_vel = matched.gyro
+            s.acp_imu_quat_wxyz = matched.imu_quat_wxyz
             s.acp_robot_time, s.acp_robot_tick = matched.captured_at, matched.tick
             s.acp_pose_valid = True
         s.telemetry.update(acp_state_sequence=sample.sequence,
                            acp_state_age_ms=(time.monotonic()-sample.captured_at)*1000 if not error else float('nan'),
                            acp_state_valid=not bool(error))
+        s.telemetry['acp_gravity_error_rad'] = s.acp_gravity_error_rad
         if error != self._acp_error:
             if self._logger is not None:
                 self._logger.event('acp_state_status', error=error, sequence=sample.sequence,

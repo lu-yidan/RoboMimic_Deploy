@@ -35,8 +35,13 @@ bash onboard/localization/dlio/build.sh
 `.120` 三次 ping 均回应，`.20` 无回应；8 秒被动 UDP 检查未见目标流量。
 因此 `.120` 目前为待驱动确认的设备地址。驱动启动后必须收到有效点云和 IMU，才算确认。
 配置在 `~/.config/robomimic/acp-dlio/`，现场安装角在 `site.json`。
-`head_angle_rad=0.593412`、`lidar_angle_rad=0` 与安装平移来自仓库名义 URDF，
-要对照实际安装核查。腰部采用 SDK 电机顺序第 12/13/14 项 yaw/roll/pitch。
+原 `head_angle_rad=0.593412` 来自共享变换示例，并非这台原厂固定安装的实测角。
+2026-11-24 只读日志核查后，ACP 的原厂安装候选改为 `head_angle_rad=0`、
+`lidar_angle_rad=0`；使用实际腰部角重算，重力偏差中位数由约 34° 降至 0.66°。
+这是有日志支持的候选修正，尚不是完整外参标定；安装平移、yaw 与运动中的腰部补偿仍需现场核对。
+共享 PHP/SMP 变换函数默认值不改。旧 `site.json` 不会随 git pull 自动更新；
+本次这台 G1 的配置已单独备份并修正，须由操作者重启右中 DLIO 才生效。
+腰部采用 SDK 电机顺序第 12/13/14 项 yaw/roll/pitch。
 
 ## 启动窗口与旧流程
 
@@ -139,6 +144,10 @@ read -r -p '实测骨盆原点到平地的高度(m): ' PELVIS_HEIGHT_M
 不插值、不外推或改写时间戳。这里 bridge 的时间是本机 DDS 接收时间，不能视为硬件采集时间的精确测量。
 遥控器、当前关节状态与 PD 力矩限幅继续使用最新 bridge 帧。
 重复 tick 不刷新历史样本时间，tick/接收时间倒退会锁定错误并要求重启策略。
+策略还比较同一匹配 tick 的 SDK 骨盆 IMU 与 DLIO 骨盆重力方向，
+偏差超过 10° 时拒绝进入 ACP，运行中则退出到阻尼。两路世界坐标系的 yaw 可以不同；
+该检查不要求机器人复位，也不能代替完整安装外参验证。
+`check.py` 的 ready 只表示定位状态文件就绪，最终重力一致性检查发生在 Python 策略侧。
 
 左中启动后先设置明确目标，再按 Y：
 **START 仍是原 FSM 复位/准备姿态，B 是 LocoMode，Y 从 LocoMode 切 ACP**。
@@ -264,6 +273,35 @@ occupancy 最大差约 `4.23e-6`。首个缓存尚未填充的样本仍明确拒
 离线首帧目标相对当前吊姿的最大差约 0.79 rad；只读 FSM 不改变真实姿态，
 这不能代替真实 B/LocoMode 站姿的切入和六腕固定目标核对。
 结果与限制在 `docs/validation/acp_readonly_20261124.json`。
+
+同日第二次只读日志 `20261124_205302_real_policies` 已连续执行 ACP 28.17 秒、1365 帧，
+ACP 期间无自动阻尼退出。939 维输入独立重建最大误差为 0，匹配时间差最大 14.84 ms，
+推理耗时 P50/P99/最大为 6.36/12.29/18.26 ms。
+本轮仍未通过只读验收：骨盆重力与 SDK IMU 约有 34° 固定差，需应用上述安装候选并复测。
+当时机器人未复位；只读 START/B/Y 不改变实际吊姿，因此约 0.79 rad 的首帧目标差不能
+替代真实 B/Loco 姿态下的切入验证。
+
+1364/1365 帧动作/接触点在 ARM 与 x86 完全相同，第 1185 帧选点相差一个 0.1 m 网格。
+离线暴露 planner 分数后复现：两候选分数约为 0.089594，平台间最多约 `3.69e-7` 的差异
+翻转了近似并列的 ArgMax；ARM 离线结果与现场动作/接触完全相同。
+这是尚未通过的逐帧对拍，不能放宽容差后记为通过；先修正错误重力输入，再看有效输入下是否重现。
+实时循环计算有约 6.6% 帧超过 20 ms，整体记录频率约 48.4 Hz，仍有尾延迟待处理。
+完整数据摘要见 `docs/validation/acp_readonly_20261124_205302.json`。
+
+这次修正后的复测不需要重编 bridge：保留左上只读 bridge、右上腰部导出，
+由操作者在右中 Ctrl+C 后重启原 DLIO 命令。更换安装角会改变推算的骨盆原点，
+因此必须为新会话重新测量/标定地面并重新发送目标，不能沿用旧标定或旧目标。
+静止定位稳定后，若当前实测骨盆高度仍为 0.78 m，可直接逐条执行：
+
+```bash
+/usr/bin/python3 onboard/localization/dlio/calibrate.py --pelvis-height 0.78 --confirm-mount
+/usr/bin/python3 onboard/localization/dlio/check.py --duration 10
+```
+
+然后启动左中原 `--read-only` 策略命令，在 monitor 执行 `goal.py --stop`，
+再依次 START（等待准备插值至少 2 秒）→ B → Y，按键之间松开。
+保持双侧只读，记录至少 15 秒后仅在左中 Ctrl+C 保存 trace。
+新版 trace 保存匹配 SDK 四元数及重力偏差，避免再用同帧最新 IMU 近似比较。
 
 现场结束后保留策略 `logs/` 中的普通日志、`.acp_trace.npz`，
 当前 `site.json`、`MID360_config.json`、`acp-dlio-status.json`、标定与目标 JSON，

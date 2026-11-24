@@ -1,0 +1,320 @@
+{
+  "source_log": "20261124_205302_real_policies",
+  "source_commit": "7ea7029a7ddbb86f46df44fd28558e5de202ec6d",
+  "read_only": true,
+  "policy_sha256": "2a85ea0312bbdff8b681dabe659c8f9c68b1d55221c4f9ec41284dd674e310e8",
+  "acp_frames": 1365,
+  "duration_s": 28.167329032999987,
+  "command_seq_first_last": [
+    1496,
+    2860
+  ],
+  "continuous_command_sequence": true,
+  "effective_recorded_rate_hz": 48.42489674480598,
+  "acp_damping_events_during_trace": [],
+  "earlier_damping_events": [
+    {
+      "event": "acp_damping",
+      "reason": "Bridge state too old for ACP runtime",
+      "seq": 1128
+    }
+  ],
+  "all_numeric_trace_arrays_finite": true,
+  "independent_939_reconstruction_and_live_arm_vs_local_onnx_max_abs_error": {
+    "observation": 0.0,
+    "actions": 0.04814767837524414,
+    "contacts": 0.10000000894069672,
+    "occupancy": 4.112720489501953e-06
+  },
+  "arm_vs_local_parity_failures": [
+    {
+      "frame": 1185,
+      "output": "actions",
+      "max_abs_error": 0.04814767837524414
+    },
+    {
+      "frame": 1185,
+      "output": "contacts",
+      "max_abs_error": 0.10000000894069672
+    }
+  ],
+  "reconstruction_assumptions": [
+    "One unchanged goal confirmed by events and request ID",
+    "Measured flat plane from same-session calibration",
+    "One continuous ACP entry; first history repeated and previous action zero"
+  ],
+  "inference_ms": {
+    "min": 5.129788999965967,
+    "p50": 6.360890999985713,
+    "p90": 10.562017999927775,
+    "p99": 12.287274720038113,
+    "max": 18.256063000080758
+  },
+  "sync_skew_ms": {
+    "min": 0.0008070005605986807,
+    "p50": 6.734662318649498,
+    "p90": 9.606276693739346,
+    "p99": 11.223196689697927,
+    "max": 14.840738615930604
+  },
+  "pose_age_ms": {
+    "min": 26.529731990649452,
+    "p50": 44.603146672670846,
+    "p90": 52.22655036204742,
+    "p99": 64.34238464622467,
+    "max": 74.34178258108659
+  },
+  "loop_period_ms": {
+    "min": 20.001800537109375,
+    "p50": 20.078216552734375,
+    "p90": 22.503510284423832,
+    "p99": 26.73771713256836,
+    "max": 33.110347747802734
+  },
+  "runtime_compute_ms": {
+    "min": 10.061044692993164,
+    "p50": 15.539676666259766,
+    "p90": 19.429831314086915,
+    "p99": 23.31059684753416,
+    "max": 31.76442527770996
+  },
+  "runtime_compute_over_20ms_fraction": 0.06593406593406594,
+  "gravity_error_deg_vs_latest_logged_sdk_imu": {
+    "min": 33.91424067271225,
+    "p50": 33.992395983146714,
+    "p90": 34.02177986407719,
+    "p99": 34.05618890051354,
+    "max": 34.079582331587815
+  },
+  "sdk_comparison_limitation": "Old trace saved matched gyro/q/dq but not matched IMU quaternion; gravity comparator here uses latest ordinary-log SDK gravity at same command sequence. New traces save matched IMU quaternion.",
+  "pelvis_max_adjacent_translation_m": 0.003846512408927083,
+  "pelvis_xyz_span_m": [
+    0.006214261054992676,
+    0.007932960987091064,
+    0.0076458752155303955
+  ],
+  "first_target_minus_actual_max_rad": 0.7883920073509216,
+  "first_target_minus_actual_joint": "left_knee_joint",
+  "physical_closed_loop_tested": false,
+  "readonly_acceptance_complete": false,
+  "blockers": [
+    "Mount/gravity mismatch; correct and repeat live readonly",
+    "Read-only FSM did not move actual non-reset hanging posture into B/Loco posture",
+    "Six wrist fixed positions/gains still require onsite review",
+    "Live runtime tail latency exceeds 20 ms on some frames",
+    "One near-tied ArgMax frame differs across ARM/x86; exact parity is not a pass. Repeat after correcting the invalid gravity input before considering model changes."
+  ],
+  "hashes": {
+    "20261124_205302_real_policies.json": "6b25ae59b3f472a86f1a93fdad981b26fdf4a7104eb2d769e42b327d4638264a",
+    "20261124_205302_real_policies.bin": "68cfb44e44f445655943bd1304225f5646b8505a98f1a540135c901606dd0341",
+    "20261124_205302_real_policies.events.jsonl": "230449523b892eb6df92066ce23260529675bb56de42a2e0c045e13272299050",
+    "20261124_205302_real_policies.acp_trace.npz": "a4a5d3dacf9aa046088c93c1446e4e8c0f70baf83195ac2fb15dc55e1fd5be3b"
+  },
+  "mount_analysis": {
+    "frames": 137,
+    "assumed_mount_chain": "existing URDF chain, only head_joint pitch varied",
+    "fitted_head_angle_rad": -0.0027591939294144574,
+    "fitted_head_angle_deg": -0.15809016701356599,
+    "nominal_head_angle_rad": 0.593412,
+    "config_changed": false,
+    "live_restarted": false,
+    "head_and_mid_pitch_not_independently_identifiable_from_static_data": true,
+    "nominal": {
+      "gravity_error_deg_p50_p99_max": [
+        33.99226393465919,
+        34.05124139897812,
+        34.06279479490682
+      ],
+      "position_shift_from_original_xyz_m": [
+        -2.9091043185491827e-09,
+        -2.213365601910766e-11,
+        2.2483452322141773e-09
+      ]
+    },
+    "zero_head": {
+      "gravity_error_deg_p50_p99_max": [
+        0.6586061821749689,
+        0.7399888780032836,
+        0.7554841665523482
+      ],
+      "position_shift_from_original_xyz_m": [
+        -0.17407021216455787,
+        0.0927467192416648,
+        -0.07310505450901694
+      ]
+    },
+    "fitted": {
+      "gravity_error_deg_p50_p99_max": [
+        0.6408685293682913,
+        0.7222283492686368,
+        0.7362789904196895
+      ],
+      "position_shift_from_original_xyz_m": [
+        -0.17493077469041832,
+        0.09323800271848448,
+        -0.07316279857696978
+      ]
+    },
+    "sdk_imu_pelvis_hypothesis": {
+      "head_angle_deg": -0.15810402290479572,
+      "gravity_residual_deg_p50_p99": [
+        0.6408684705226539,
+        0.7222282755272645
+      ]
+    },
+    "sdk_imu_torso_hypothesis": {
+      "head_angle_deg": -2.416358467487503,
+      "gravity_residual_deg_p50_p99": [
+        5.972160003482511,
+        6.015351981571048
+      ]
+    },
+    "operator_report": "Factory mount unchanged; robot not in reset pose. Recorded actual waist angles were used."
+  },
+  "raw_floor_vs_lidar_imu": {
+    "offline_only": true,
+    "hardware_started": false,
+    "database": "/home/unitree/RoboMimic_Deploy/logs/acp-dlio/record-20261124_163023-ZjnTc6/bag/bag_0.db3",
+    "floor_fits": [
+      {
+        "fraction": 0.2,
+        "inliers": 1258,
+        "points": 6154,
+        "normal_sensor": [
+          -0.04451877623796463,
+          0.06710171699523926,
+          -0.9967524409294128
+        ],
+        "accel_up_sensor": [
+          -0.04652353052309455,
+          0.058415970011965856,
+          -0.9972076692220272
+        ],
+        "angle_normal_vs_imu_up_deg": 0.5114387081284741,
+        "plane_offset_m": -1.2375507354736328
+      },
+      {
+        "fraction": 0.4,
+        "inliers": 811,
+        "points": 5773,
+        "normal_sensor": [
+          -0.046603161841630936,
+          0.06770462542772293,
+          -0.9966163635253906
+        ],
+        "accel_up_sensor": [
+          -0.04652353052309455,
+          0.058415970011965856,
+          -0.9972076692220272
+        ],
+        "angle_normal_vs_imu_up_deg": 0.5334624304517751,
+        "plane_offset_m": -1.2339404821395874
+      },
+      {
+        "fraction": 0.6,
+        "inliers": 2033,
+        "points": 6185,
+        "normal_sensor": [
+          -0.046451881527900696,
+          0.06910744309425354,
+          -0.9965271353721619
+        ],
+        "accel_up_sensor": [
+          -0.04652353052309455,
+          0.058415970011965856,
+          -0.9972076692220272
+        ],
+        "angle_normal_vs_imu_up_deg": 0.6139729591219756,
+        "plane_offset_m": -1.2365971803665161
+      },
+      {
+        "fraction": 0.8,
+        "inliers": 2884,
+        "points": 6373,
+        "normal_sensor": [
+          -0.04505616053938866,
+          0.06786967068910599,
+          -0.9966763257980347
+        ],
+        "accel_up_sensor": [
+          -0.04652353052309455,
+          0.058415970011965856,
+          -0.9972076692220272
+        ],
+        "angle_normal_vs_imu_up_deg": 0.5488458701859422,
+        "plane_offset_m": -1.23785400390625
+      }
+    ]
+  },
+  "argmax_boundary_diagnosis": {
+    "frame": 1185,
+    "offline_only": true,
+    "debug_graph_adds_outputs_only": true,
+    "argmax_x86": [
+      [
+        170,
+        170,
+        170,
+        127,
+        74,
+        170,
+        170,
+        170,
+        170
+      ]
+    ],
+    "argmax_arm": [
+      [
+        170,
+        170,
+        170,
+        127,
+        73,
+        170,
+        170,
+        170,
+        170
+      ]
+    ],
+    "max_mean_difference": 3.688037395477295e-07,
+    "score_pairs": [
+      {
+        "contact_index": 4,
+        "x86_index": 74,
+        "arm_index": 73,
+        "x86_scores_at_x86_arm_indices": [
+          0.0895940437912941,
+          0.08959382772445679
+        ],
+        "arm_scores_at_x86_arm_indices": [
+          0.08959412574768066,
+          0.08959414809942245
+        ]
+      }
+    ],
+    "arm_debug_vs_live": {
+      "actions": 0.0,
+      "contacts": 0.0,
+      "occupancy": 5.960464477539063e-08
+    }
+  },
+  "fixes": {
+    "factory_mount_candidate_head_rad": 0.0,
+    "lidar_angle_rad": 0.0,
+    "full_extrinsic_calibration_completed": false,
+    "max_gravity_error_rad": 0.1745329252,
+    "sdk_gravity_uses_matched_history_tick": true,
+    "world_yaw_origins_may_differ": true,
+    "requires_user_restart_recalibration_and_new_goal": true,
+    "regression_tests_passed": 97,
+    "shared_php_smp_transform_defaults_changed": false
+  },
+  "site_update": {
+    "host": "g1-wifi",
+    "path": "/home/unitree/.config/robomimic/acp-dlio/site.json",
+    "backup": "/home/unitree/.config/robomimic/acp-dlio/site.before-head-zero-20261124T131211800239Z.json",
+    "head_angle_rad": 0.0,
+    "processes_restarted": false,
+    "old_calibration_and_goal_must_not_be_reused": true
+  }
+}

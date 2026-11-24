@@ -36,6 +36,8 @@ class StateAndCmd:
         self.acp_joint_pos = self.acp_joint_vel = None
         self.acp_robot_time = 0.0
         self.acp_robot_tick = 0
+        self.acp_imu_quat_wxyz = None  # SDK pelvis IMU at matched robot tick
+        self.acp_gravity_error_rad = float('nan')
         # ball state for FreeKick controller
         # Simulation: ball_pos_w (world frame, filled by deploy_mujoco from MuJoCo)
         # Real robot: ball_pos_b (pelvis body frame, filled by deploy_real from DDS)

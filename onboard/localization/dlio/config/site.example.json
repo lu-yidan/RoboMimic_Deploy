@@ -2,7 +2,7 @@
   "host_ip": "192.168.123.164",
   "lidar_ip": "192.168.123.120",
   "acceleration_unit": "g",
-  "head_angle_rad": 0.593412,
+  "head_angle_rad": 0.0,
   "lidar_angle_rad": 0.0,
-  "mount_note": "Nominal repository URDF only; confirm the actual fixed head/mount and waist signs onsite."
+  "mount_note": "Factory fixed mount candidate: head/mid pitch zero. Confirm actual mount and time-matched SDK pelvis gravity onsite; this is not a full extrinsic calibration. Do not reuse the shared helper's 34-degree example head angle."
 }

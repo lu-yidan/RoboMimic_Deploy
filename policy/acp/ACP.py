@@ -9,7 +9,8 @@ import onnxruntime as ort
 
 from FSM.FSMState import FSMState
 from common.utils import FSMCommand, FSMStateName
-from policy.acp.observations import ObservationHistory, goal_command, grid_xy, rotation
+from policy.acp.observations import (ObservationHistory, goal_command, grid_xy, rotation,
+                                     check_gravity_alignment, DEFAULT_MAX_GRAVITY_ERROR_RAD)
 
 
 class ACP(FSMState):
@@ -25,10 +26,12 @@ class ACP(FSMState):
         tilt = float(config.get('max_tilt_rad', .7))
         clearance = float(config.get('min_clearance', .3))
         entry_error = float(config.get('max_entry_error', .35))
-        if (not np.isfinite([age,skew,tilt,clearance,entry_error]).all()
+        gravity_error = float(config.get('max_gravity_error_rad', DEFAULT_MAX_GRAVITY_ERROR_RAD))
+        if (not np.isfinite([age,skew,tilt,clearance,entry_error,gravity_error]).all()
                 or not 0 < age <= .5 or not 0 <= skew <= age or not 0 < tilt < np.pi/2
-                or not 0 < clearance < 1.5 or not 0 < entry_error < 1.):
-            raise ValueError('Invalid ACP timing, tilt, clearance, or entry limits')
+                or not 0 < clearance < 1.5 or not 0 < entry_error < 1.
+                or not 0 < gravity_error < np.pi/2):
+            raise ValueError('Invalid ACP timing, tilt, clearance, entry, or gravity limits')
         directory = Path(config['model_dir']).expanduser()
         self.manifest = m = json.loads((directory / 'manifest.json').read_text())
         if (m.get('schema_version') != 1 or m.get('stage') != 3 or m.get('planner_obs_dim') != 939
@@ -122,6 +125,8 @@ class ACP(FSMState):
                 if (not 0 <= now-s.acp_robot_time <= age_limit
                         or abs(s.acp_robot_time-s.acp_pose_time) > float(self.config.get('max_sync_skew_s', .04))):
                     return 'ACP synchronized robot sample stale or misaligned'
+                s.acp_gravity_error_rad = check_gravity_alignment(s.pelvis_quat_w, s.acp_imu_quat_wxyz,
+                    float(self.config.get('max_gravity_error_rad', DEFAULT_MAX_GRAVITY_ERROR_RAD)))
             if not np.allclose(s.acp_terrain[:,:2], grid_xy(), atol=1e-5):
                 return 'ACP terrain grid order mismatch'
             gravity_z = rotation(s.pelvis_quat_w)[2,2]

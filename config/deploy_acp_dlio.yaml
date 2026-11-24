@@ -14,6 +14,7 @@ acp:
   max_age_s: 0.15
   max_sync_skew_s: 0.04
   max_tilt_rad: 0.7
+  max_gravity_error_rad: 0.1745329252  # 10 deg vs time-matched SDK pelvis IMU
   min_clearance: 0.3
   real:
     enabled: true

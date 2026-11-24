@@ -9,7 +9,7 @@ from policy.acp.robot_history import RobotHistory
 
 def state(tick, value):
     return SimpleNamespace(tick=tick, q=np.full(29, value), dq=np.full(29, -value),
-                           imu_gyro=np.full(3, value/10))
+                           imu_gyro=np.full(3, value/10), imu_quat_wxyz=np.array([1., 0., 0., 0.]))
 
 
 def test_nearest_capture_preserves_values_and_duplicate_tick_does_not_renew():
@@ -23,6 +23,8 @@ def test_nearest_capture_preserves_values_and_duplicate_tick_does_not_renew():
     assert matched.tick == 1 and matched.captured_at == 10.
     np.testing.assert_array_equal(matched.q, np.ones(29))
     assert not matched.q.flags.writeable
+    assert not matched.imu_quat_wxyz.flags.writeable
+    np.testing.assert_array_equal(matched.imu_quat_wxyz, [1., 0., 0., 0.])
     assert history.samples[-1].captured_at == 10.02
     with pytest.raises(ValueError, match='stale'):
         history.nearest(10.16, 10.18)
@@ -60,3 +62,13 @@ def test_history_is_bounded_and_missing_robot_stream_expires():
     assert len(history.samples) == 64
     with pytest.raises(ValueError, match='stale'):
         history.nearest(10.34, 10.36)
+
+
+@pytest.mark.parametrize('quat', [[0., 0., 0., 0.], [np.nan, 0., 0., 0.], [1., 0., 0.]])
+def test_invalid_imu_quaternion_is_not_stored(quat):
+    history = RobotHistory()
+    bad = state(1, 1.)
+    bad.imu_quat_wxyz = quat
+    with pytest.raises(ValueError, match='quaternion|imu_quat'):
+        history.add(bad, 10., 10.)
+    assert not history.samples

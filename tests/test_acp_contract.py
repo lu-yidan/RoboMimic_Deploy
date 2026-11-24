@@ -104,6 +104,7 @@ def test_observation_uses_aligned_joints_and_checks_their_time(bundle, failure):
     s.dq[:] = .9
     s.acp_joint_pos = policy.default + .01
     s.acp_joint_vel = np.full(29, -.2, dtype=np.float32)
+    s.acp_imu_quat_wxyz = np.array([1., 0., 0., 0.])
     s.acp_robot_time = s.acp_pose_time
     policy.enter()
     policy.run()
@@ -118,6 +119,22 @@ def test_observation_uses_aligned_joints_and_checks_their_time(bundle, failure):
         s.acp_robot_time -= 1. if failure == 'stale' else .06
     policy.run()
     assert policy.failed and s.skill_cmd == FSMCommand.PASSIVE
+
+
+def test_real_policy_rejects_wrong_gravity_before_inference(bundle):
+    policy = make_policy(bundle)
+    policy.config['real'] = dict(enabled=True)
+    s = fresh(policy)
+    s.acp_joint_pos, s.acp_joint_vel = s.q.copy(), s.dq.copy()
+    s.acp_robot_time = s.acp_pose_time
+    s.acp_imu_quat_wxyz = np.array([1., 0., 0., 0.])
+    angle = np.deg2rad(34.)
+    s.pelvis_quat_w[:] = [np.cos(angle/2), 0., np.sin(angle/2), 0.]
+    policy.enter()
+    policy.run()
+    assert policy.failed and 'gravity disagrees' in policy.last_error
+    assert policy.last_observation is None
+    np.testing.assert_array_equal(policy.policy_output.kps, 0)
 
 
 def test_terms_roll_oldest_to_newest():

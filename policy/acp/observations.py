@@ -1,6 +1,8 @@
 """Raw ACP observations; normalization is already inside policy.onnx."""
 import numpy as np
 
+DEFAULT_MAX_GRAVITY_ERROR_RAD = np.pi / 18  # 10 degrees; independent of world yaw.
+
 
 def grid_xy():
     x, y = np.meshgrid(np.arange(-8, 9) * .1, np.arange(-5, 6) * .1)
@@ -20,6 +22,18 @@ def rotation(quat):
 def yaw(quat):
     r = rotation(quat)
     return np.arctan2(r[1, 0], r[0, 0])
+
+
+def check_gravity_alignment(pelvis_quat, imu_quat, limit=DEFAULT_MAX_GRAVITY_ERROR_RAD):
+    """Compare body-frame gravity, allowing the two world frames different yaw."""
+    if not np.isfinite(limit) or not 0 < limit < np.pi/2:
+        raise ValueError('Invalid ACP gravity disagreement limit')
+    cosine = np.dot(rotation(pelvis_quat)[2], rotation(imu_quat)[2])
+    error = float(np.arccos(np.clip(cosine, -1., 1.)))
+    if error > limit:
+        raise ValueError('ACP pelvis gravity disagrees with robot IMU '
+                         f'({np.degrees(error):.2f} deg > {np.degrees(limit):.2f} deg)')
+    return error
 
 
 def goal_command(position, quaternion, target, heading, radius):

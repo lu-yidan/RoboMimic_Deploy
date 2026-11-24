@@ -17,6 +17,7 @@ class RobotSample:
     q: np.ndarray
     dq: np.ndarray
     gyro: np.ndarray
+    imu_quat_wxyz: np.ndarray
 
 
 class RobotHistory:
@@ -43,10 +44,15 @@ class RobotHistory:
             if tick == previous.tick:
                 return  # Re-forwarded ticks cannot refresh the stored capture time.
         values = []
-        for name, size in (('q', 29), ('dq', 29), ('imu_gyro', 3)):
+        for name, size in (('q', 29), ('dq', 29), ('imu_gyro', 3), ('imu_quat_wxyz', 4)):
             value = np.array(getattr(state, name), dtype=np.float32, copy=True)
             if value.shape != (size,) or not np.isfinite(value).all():
                 raise ValueError('Invalid ACP bridge history '+name)
+            if name == 'imu_quat_wxyz':
+                norm = np.linalg.norm(value)
+                if abs(norm-1.) > .05:
+                    raise ValueError('Invalid ACP bridge history quaternion norm')
+                value /= norm
             value.setflags(write=False)
             values.append(value)
         self.samples.append(RobotSample(int(tick), float(stamp), *values))

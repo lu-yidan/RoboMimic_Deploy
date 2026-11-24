@@ -142,6 +142,39 @@ class ACPBridgeTest(unittest.TestCase):
         runtime._acp_tick_time -= 1
         self.assertIn('stalled', runtime._acp_state_error(state))
 
+    def test_gravity_check_uses_matched_imu_and_ignores_world_yaw(self):
+        from scipy.spatial.transform import Rotation
+        runtime = self.fixture()
+        # The robot is not reset; both independent IMUs must still agree on
+        # pelvis gravity. Different world-yaw origins are legitimate.
+        imu = Rotation.from_euler('xyz', [.08, -.12, .3])
+        pose = Rotation.from_euler('z', 1.7) * imu
+        sample = StateSample()
+        runtime.acp_source = SimpleNamespace(latest=lambda: sample)
+        for tick, now in [(1, 100.), (2, 100.08)]:
+            with patch('bridge.python.policy_runtime.time.monotonic', return_value=now):
+                state = self.state(tick)
+                state.q[12:15] = [.08, -.11, -.04]
+                # Latest IMU differs: only historical IMU matches delayed pose.
+                quat = (imu if tick == 1 else Rotation.from_euler('y', .6)).as_quat()
+                state.imu_quat_wxyz = quat[[3, 0, 1, 2]]
+                runtime._acp_tick_time = now
+                if tick == 2:
+                    sample = StateSample(np.array([0., 0., .78]), pose.as_quat()[[3, 0, 1, 2]],
+                                         np.zeros((187, 3)), 100., 100., 100., 1, 'map', '')
+                runtime._apply_acp_state(state)
+        self.assertTrue(runtime.state_cmd.acp_pose_valid)
+        self.assertLess(runtime.state_cmd.acp_gravity_error_rad, 1e-6)
+        # Same fresh timestamps, but a wrong mount produces 34 degrees of error.
+        wrong = pose * Rotation.from_euler('y', 34., degrees=True)
+        sample = StateSample(sample.pelvis_pos_w, wrong.as_quat()[[3, 0, 1, 2]], sample.terrain,
+                             100., 100., 100., 2, 'map', '')
+        with patch('bridge.python.policy_runtime.time.monotonic', return_value=100.08):
+            runtime._apply_acp_state(state)
+        self.assertFalse(runtime.state_cmd.acp_pose_valid)
+        self.assertIsNone(runtime.state_cmd.acp_imu_quat_wxyz)
+        self.assertIn('gravity disagrees', runtime._acp_error)
+
     def test_invalid_output_requests_same_tick_damping(self):
         runtime = self.fixture()
         runtime.policy_output.kps, runtime.policy_output.kds = np.full(29, 50.), np.full(29, 2.)
@@ -207,6 +240,8 @@ class ACPBridgeTest(unittest.TestCase):
         policy.last_raw_action = np.arange(23, dtype=np.float32)
         policy.last_action = np.ones(23, np.float32)
         policy.contacts, policy.occupancy = np.zeros((1, 9, 3)), np.ones((1, 9, 1))
+        runtime.state_cmd.acp_imu_quat_wxyz = np.array([1., 0., 0., 0.])
+        runtime.state_cmd.acp_gravity_error_rad = .01
         runtime._record_acp_trace(state)
         runtime._record_acp_trace(state)
         self.assertEqual(len(runtime._acp_trace), 1)
@@ -219,6 +254,8 @@ class ACPBridgeTest(unittest.TestCase):
                 np.testing.assert_array_equal(trace['raw_actions'][0], policy.last_raw_action)
                 self.assertEqual(trace['state_tick'][0], state.tick)
                 self.assertTrue(trace['read_only'].item())
+                np.testing.assert_array_equal(trace['observation_imu_quat_wxyz'], [[1., 0., 0., 0.]])
+                self.assertEqual(trace['gravity_error_rad'][0], .01)
 
 
 class ReadOnlyEntrypointTest(unittest.TestCase):

@@ -1,0 +1,288 @@
+{
+  "date": "2026-11-24",
+  "deployment_commit": "6b0552298d9fc485a4a828f0c5171f83c7ae2e24",
+  "native_binary_sha256": "59f75e4625797496cf09115eaeb8fcae69af3561445eb677b75fff18539369d0",
+  "dlio_upstream_commit": "c8acc37100e349d70a9d8432d656cbce7e5072cd",
+  "recordings": [
+    {
+      "directory": "record-20261124_162806-vsNbOY",
+      "raw_bag": {
+        "file": "bag/bag_0.db3",
+        "size_bytes": 1064120320,
+        "sha256": "9552a59cb2a6b02382c47a3fd1dcc657be5cb0b9788cac4d6e878c3add05eab5",
+        "sqlite_quick_check": "ok"
+      },
+      "topic_counts": {
+        "/acp/livox/imu_si": 14076,
+        "/acp/livox/points_checked": 1428,
+        "/dlio/odom_node/odom": 6725,
+        "/dlio/odom_node/pointcloud/deskewed": 1346,
+        "/acp/pelvis/odom": 6724,
+        "/livox/lidar": 1446,
+        "/livox/imu": 14510
+      },
+      "native_odom": {
+        "production_pose_gate": {
+          "passed": true,
+          "accepted": 6724,
+          "duplicate_stamps_ignored": 1,
+          "error": null,
+          "fault": null
+        },
+        "position_range_m": [
+          0.009455930208787322,
+          0.006136882584542036,
+          0.007232715142890811
+        ],
+        "delta_position_m": {
+          "min": 1.5233548158612616e-06,
+          "p50": 3.804845403034926e-05,
+          "p90": 0.0006999689242824156,
+          "p99": 0.0014084771076578373,
+          "max": 0.0039604763236889854
+        },
+        "reported_speed_mps": {
+          "min": 0.00011432831760898419,
+          "p50": 0.0032943435609008014,
+          "p90": 0.005713044472264934,
+          "p99": 0.008614880536320969,
+          "max": 0.011540072901512358
+        }
+      },
+      "pelvis_odom": {
+        "production_pose_gate": {
+          "passed": true,
+          "accepted": 6724,
+          "duplicate_stamps_ignored": 0,
+          "error": null,
+          "fault": null
+        },
+        "position_range_m": [
+          0.009438085794287607,
+          0.00591094912229137,
+          0.0075009106693170735
+        ],
+        "delta_position_m": {
+          "min": 2.054863311503446e-06,
+          "p50": 3.890322466142182e-05,
+          "p90": 0.0007082548818592338,
+          "p99": 0.001439357692523482,
+          "max": 0.003892281857505426
+        },
+        "position_derived_speed_mps": {
+          "min": 0.00021077222249758418,
+          "p50": 0.003880665078494063,
+          "p90": 0.07241933673026912,
+          "p99": 0.1667044399906618,
+          "max": 0.6705093998846703
+        }
+      },
+      "source_timing": {
+        "raw_cloud_dt_s": {
+          "min": 0.048575639724731445,
+          "p50": 0.049974679946899414,
+          "p90": 0.05093965530395508,
+          "p99": 0.05112065315246582,
+          "max": 1.400045394897461
+        },
+        "registered_arrival_age_s": {
+          "min": 0.05938839912414551,
+          "p50": 0.06821060180664062,
+          "p90": 0.07350373268127441,
+          "p99": 0.07797161340713502,
+          "max": 0.21810030937194824
+        }
+      },
+      "imu_conversion": {
+        "matched_acquisition_stamps": 14076,
+        "max_accel_si_error": 0.0,
+        "max_gyro_change": 0.0
+      },
+      "relay_samples": {
+        "total": 351,
+        "fresh_pose": 319,
+        "motion_eligible": 259,
+        "motion_eligible_fraction": 0.8119122257053292,
+        "samples_with_latched_fault": 0,
+        "acp_output_max_count": 0
+      },
+      "offline_native_replay": {
+        "hardware_started": false,
+        "motor_control_started": false,
+        "ros_domain": 78,
+        "timestamps_rewritten": false,
+        "uses_acp_relay": false,
+        "input_directory": "/home/unitree/RoboMimic_Deploy/logs/acp-dlio/record-20261124_162806-vsNbOY",
+        "completed": true,
+        "input_counts": {
+          "cloud": 1428,
+          "imu": 14049,
+          "registered": 1346
+        },
+        "odom_messages": 6783,
+        "duplicate_stamps": 391,
+        "pose_span_s": 67.26024222373962,
+        "position_range_m": [
+          0.009774439502507448,
+          0.006262407288886607,
+          0.007791658630594611
+        ],
+        "maximum_step_m": 0.00437475236316575,
+        "maximum_step_angle_rad": 0.0017276059478447724,
+        "gate_violations": 0,
+        "first_fault": null,
+        "distinct_source_dt_max_s": 0.10012459754943848,
+        "distinct_source_dt_p99_s": 0.02566964626312256
+      }
+    },
+    {
+      "directory": "record-20261124_163023-ZjnTc6",
+      "raw_bag": {
+        "file": "bag/bag_0.db3",
+        "size_bytes": 1350938624,
+        "sha256": "0d0ca9ab53b2f45e515b3b70a5185643892cc764249c1921995b56aa533abbc9",
+        "sqlite_quick_check": "ok"
+      },
+      "topic_counts": {
+        "/livox/imu": 17900,
+        "/livox/lidar": 1790,
+        "/dlio/odom_node/pointcloud/deskewed": 1790,
+        "/dlio/odom_node/odom": 8950,
+        "/acp/pelvis/odom": 8939,
+        "/acp/livox/points_checked": 1791,
+        "/acp/livox/imu_si": 17899
+      },
+      "native_odom": {
+        "production_pose_gate": {
+          "passed": true,
+          "accepted": 8940,
+          "duplicate_stamps_ignored": 10,
+          "error": null,
+          "fault": null
+        },
+        "position_range_m": [
+          0.0070169351529330015,
+          0.005914153764024377,
+          0.011135132750496268
+        ],
+        "delta_position_m": {
+          "min": 0.0,
+          "p50": 3.58139782254613e-05,
+          "p90": 0.0007365589540123418,
+          "p99": 0.001623703124053326,
+          "max": 0.007611717319272472
+        },
+        "reported_speed_mps": {
+          "min": 0.00012424391368854768,
+          "p50": 0.0030453457388269767,
+          "p90": 0.005540245815089579,
+          "p99": 0.009532478507534765,
+          "max": 0.017146022314645862
+        }
+      },
+      "pelvis_odom": {
+        "production_pose_gate": {
+          "passed": true,
+          "accepted": 8939,
+          "duplicate_stamps_ignored": 0,
+          "error": null,
+          "fault": null
+        },
+        "position_range_m": [
+          0.006990766692862221,
+          0.006004858170748029,
+          0.011316917645808389
+        ],
+        "delta_position_m": {
+          "min": 2.2642588682136585e-06,
+          "p50": 3.668091503818782e-05,
+          "p90": 0.0007410013818186963,
+          "p99": 0.001674460540022306,
+          "max": 0.007769009537706944
+        },
+        "position_derived_speed_mps": {
+          "min": 0.0002299179302760863,
+          "p50": 0.0036171923539085934,
+          "p90": 0.08489126830093024,
+          "p99": 0.23033808361029817,
+          "max": 1.2561881543909352
+        }
+      },
+      "source_timing": {
+        "raw_cloud_dt_s": {
+          "min": 0.04864692687988281,
+          "p50": 0.049976348876953125,
+          "p90": 0.05067906379699707,
+          "p99": 0.051154956817626954,
+          "max": 0.05141949653625488
+        },
+        "registered_arrival_age_s": {
+          "min": 0.060204505920410156,
+          "p50": 0.06948721408843994,
+          "p90": 0.07518219947814941,
+          "p99": 0.07961397171020507,
+          "max": 0.08306431770324707
+        }
+      },
+      "imu_conversion": {
+        "matched_acquisition_stamps": 17899,
+        "max_accel_si_error": 0.0,
+        "max_gyro_change": 0.0
+      },
+      "relay_samples": {
+        "total": 487,
+        "fresh_pose": 455,
+        "motion_eligible": 372,
+        "motion_eligible_fraction": 0.8175824175824176,
+        "samples_with_latched_fault": 0,
+        "acp_output_max_count": 0
+      },
+      "offline_native_replay": {
+        "hardware_started": false,
+        "motor_control_started": false,
+        "ros_domain": 78,
+        "timestamps_rewritten": false,
+        "uses_acp_relay": false,
+        "input_directory": "/home/unitree/RoboMimic_Deploy/logs/acp-dlio/record-20261124_163023-ZjnTc6",
+        "completed": true,
+        "input_counts": {
+          "cloud": 1791,
+          "imu": 17897,
+          "registered": 1728
+        },
+        "odom_messages": 8695,
+        "duplicate_stamps": 454,
+        "pose_span_s": 86.38070607185364,
+        "position_range_m": [
+          0.0077093434520065784,
+          0.006520268740132451,
+          0.0077481395564973354
+        ],
+        "maximum_step_m": 0.0039130349069523155,
+        "maximum_step_angle_rad": 0.0013401765820768088,
+        "gate_violations": 0,
+        "first_fault": null,
+        "distinct_source_dt_max_s": 0.03589034080505371,
+        "distinct_source_dt_p99_s": 0.025842254161834718
+      }
+    }
+  ],
+  "conclusions": {
+    "previous_15cm_jump_reproduced": false,
+    "previous_jump_root_cause_identified": false,
+    "previous_jump_fixed": false,
+    "raw_si_imu_scaling_correct": true,
+    "current_recordings_pass_original_pose_gate": true,
+    "acquisition_age_and_jump_thresholds_changed": false,
+    "runtime_code_changed": false,
+    "ground_calibration_and_live_acp_policy_not_accepted_by_this_analysis": true,
+    "next_operator_step": "Restart onsite read-only bridge/waist/DLIO after reboot, measure current standing pelvis height and calibrate in the current session. If rejected, preserve the new exact reason; proceed to read-only policy only after fresh calibrated state."
+  },
+  "limitations": [
+    "Two recorded sessions and one native-only replay per session cannot rule out an intermittent discontinuity seen in another session.",
+    "Replay retains acquisition timestamps in isolated loopback ROS domain 78. It does not run ACP relay, fresh-state IPC, physical sensor drivers, bridge, or robot control.",
+    "Best-effort replay observer counts are recorded and do not establish loss-free delivery to the estimator itself.",
+    "Small scan-matching corrections produce finite-difference speed spikes; about 18% of sampled fresh poses fail the unchanged instantaneous motion criterion. This does not identify why the earlier calibration command was rejected.",
+    "The second recording starts after native IMU initialization; replay performs a new initialization from the recorded inputs."
+  ]
+}

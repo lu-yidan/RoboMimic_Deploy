@@ -12,7 +12,6 @@ class RealPolicyInput:
         self.php_a_latched = False
         self.php_chord = False
         self.acp_enabled = acp_enabled
-        self.acp_chord = False
 
     def update(self, buttons, fsm, state, output):
         buttons = list(map(bool, buttons))
@@ -22,9 +21,6 @@ class RealPolicyInput:
         chord = self.php_enabled and buttons[KeyMap.L1] and buttons[KeyMap.A]
         php_edge = chord and not self.php_chord
         self.php_chord = chord
-        acp_chord = self.acp_enabled and buttons[KeyMap.L1] and buttons[KeyMap.X]
-        acp_edge = acp_chord and not self.acp_chord
-        self.acp_chord = acp_chord
         if chord:
             self.php_a_latched = True
         a_released = previous[KeyMap.A] and not buttons[KeyMap.A]
@@ -34,12 +30,10 @@ class RealPolicyInput:
         if buttons[KeyMap.F1] or buttons[KeyMap.select]:
             state.skill_cmd = FSMCommand.PASSIVE
             return
-        # Recovery and damping preempt PHP, including a simultaneous chord.
+        # Y selects ACP in the ACP runtime, SMP in the existing runtime.
+        # Damping above always wins, including simultaneous Y/other keys.
         if rising(KeyMap.Y) and not buttons[KeyMap.L1]:
-            state.skill_cmd = FSMCommand.CMD_SMP_RECOVERY
-            return
-        if acp_edge:
-            state.skill_cmd = FSMCommand.CMD_ACP
+            state.skill_cmd = FSMCommand.CMD_ACP if self.acp_enabled else FSMCommand.CMD_SMP_RECOVERY
             return
         if php_edge:
             state.skill_cmd = FSMCommand.CMD_PHP_PARKOUR

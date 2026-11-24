@@ -17,6 +17,9 @@ class ACP(FSMState):
         super().__init__()
         self.name, self.name_str = FSMStateName.SKILL_ACP, 'ACP'
         self.state_cmd, self.policy_output, self.config = state_cmd, policy_output, config
+        self.entry_mode = config.get('entry_mode', 'loco')
+        if self.entry_mode not in ('loco', 'fixed_pose'):
+            raise ValueError('ACP entry_mode must be loco or fixed_pose (legacy diagnostic)')
         age = float(config.get('max_age_s', .15))
         skew = float(config.get('max_sync_skew_s', .04))
         tilt = float(config.get('max_tilt_rad', .7))
@@ -128,7 +131,8 @@ class ACP(FSMState):
         problem = self.error()
         if problem:
             return problem
-        if np.max(np.abs(self.state_cmd.q-self.default)) > float(self.config.get('max_entry_error', .35)):
+        if (self.entry_mode == 'fixed_pose'
+                and np.max(np.abs(self.state_cmd.q-self.default)) > float(self.config.get('max_entry_error', .35))):
             return 'Robot has not reached the ACP default pose'
         return None
 
@@ -189,7 +193,9 @@ class ACP(FSMState):
         self.last_action.fill(0)
 
     def checkChange(self):
-        transitions = {FSMCommand.PASSIVE: FSMStateName.PASSIVE, FSMCommand.POS_RESET: FSMStateName.FIXEDPOSE}
+        transitions = {FSMCommand.PASSIVE: FSMStateName.PASSIVE,
+                       FSMCommand.POS_RESET: FSMStateName.FIXEDPOSE,
+                       FSMCommand.LOCO: FSMStateName.LOCOMODE}
         state = transitions.get(self.state_cmd.skill_cmd, self.name)
         if state != self.name:
             self.state_cmd.skill_cmd = FSMCommand.INVALID

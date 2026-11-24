@@ -110,6 +110,7 @@ class JoyStick:
             return self.button_released[phys]
         return False
 
+
     def get_axis_value(self, axis_id):
         """get joystick axis value"""
         if 0 <= axis_id < self.axis_count:
@@ -121,3 +122,13 @@ class JoyStick:
         if 0 <= hat_id < self.hat_count:
             return self.hat_states[hat_id]
         return (0, 0)
+
+
+class NoJoystick:
+    """Keyboard-only simulation; never stands in for robot remote input."""
+    def update(self): pass
+    def is_button_pressed(self, button_id): return False
+    def is_button_just_pressed(self, button_id): return False
+    def is_button_released(self, button_id): return False
+    def get_hat_direction(self, hat_id=0): return (0, 0)
+    def get_axis_value(self, axis_id): return 0.

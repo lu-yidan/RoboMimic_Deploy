@@ -4,7 +4,11 @@ defaults:
 
 # Select an isolated LYD_DEPLOY_CONFIG with acp.enabled: true and php.enabled:
 # false. The weights and exported contract live in acp.model_dir.
-startup_policy: passive
+startup_policy: loco
+# Set this to the fixed bundle_stage3_1000 directory on this host.
+acp_bundle: null
+keyboard_control: true
+joystick_required: false
 simulation_dt: 0.005
 control_decimation: 4
 ghost_enabled: false
@@ -16,4 +20,15 @@ logging:
   enabled: true
   log_dir: logs
   tag: acp_mujoco
-  states: [SKILL_ACP]
+  states: [LOCOMODE, SKILL_ACP, FIXEDPOSE, PASSIVE]
+
+camera:
+  follow: true
+  body: torso_link
+  distance: 3.4
+  azimuth: 135
+  elevation: -18
+
+hydra:
+  job:
+    chdir: false

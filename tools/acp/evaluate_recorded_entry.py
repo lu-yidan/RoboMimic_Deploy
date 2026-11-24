@@ -160,7 +160,7 @@ def run_case(bundle,pose,scenario,support,seconds=15.):
     initial_heading = yaw(pose['pelvis_quat_w'])
     offset,heading = {'stop':([0.,0.],initial_heading),'forward':([np.cos(initial_heading),np.sin(initial_heading)],initial_heading),
                      'turn':([-np.sin(initial_heading),np.cos(initial_heading)],initial_heading+np.pi/2)}[scenario]
-    config = dict(load_acp_config(),enabled=True,model_dir=str(bundle),target_position=offset,target_heading=heading)
+    config = dict(load_acp_config(),enabled=True,entry_mode='fixed_pose',model_dir=str(bundle),target_position=offset,target_heading=heading)
     policy = ACP(state,out,config,names)
     fixed = FixedPose(state,out);fixed.set_runtime_target(policy.default,policy.kps,policy.kds)
     fsm = FSM.__new__(FSM)

@@ -106,11 +106,11 @@ class ACPBridgeTest(unittest.TestCase):
         self.assertTrue(runtime._guard_acp_output())
         self.assertEqual(runtime.state_cmd.skill_cmd, FSMCommand.PASSIVE)
 
-    def test_remote_chord_is_edge_triggered_and_damping_preempts(self):
+    def test_y_selects_acp_once_and_damping_preempts(self):
         inputs = RealPolicyInput(acp_enabled=True)
         buttons, state = [False]*16, StateAndCmd(29)
         fsm, output = MagicMock(), PolicyOutput(29)
-        buttons[KeyMap.L1] = buttons[KeyMap.X] = True
+        buttons[KeyMap.Y] = True
         inputs.update(buttons, fsm, state, output)
         self.assertEqual(state.skill_cmd, FSMCommand.CMD_ACP)
         state.skill_cmd = FSMCommand.INVALID
@@ -119,6 +119,18 @@ class ACPBridgeTest(unittest.TestCase):
         buttons[KeyMap.F1] = True
         inputs.update(buttons, fsm, state, output)
         self.assertEqual(state.skill_cmd, FSMCommand.PASSIVE)
+
+    def test_y_retains_smp_without_acp_and_old_chord_does_not_enter(self):
+        state, output, fsm = StateAndCmd(29), PolicyOutput(29), MagicMock()
+        buttons = [False]*16
+        buttons[KeyMap.Y] = True
+        RealPolicyInput(acp_enabled=False).update(buttons,fsm,state,output)
+        self.assertEqual(state.skill_cmd,FSMCommand.CMD_SMP_RECOVERY)
+        state.skill_cmd = FSMCommand.INVALID
+        buttons = [False]*16
+        buttons[KeyMap.L1] = buttons[KeyMap.X] = True
+        RealPolicyInput(acp_enabled=True).update(buttons,fsm,state,output)
+        self.assertEqual(state.skill_cmd,FSMCommand.INVALID)
 
     def test_trace_keeps_exact_graph_io_and_is_bounded(self):
         runtime, state = self.fixture(), self.state()

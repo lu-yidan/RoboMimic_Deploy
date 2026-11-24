@@ -535,7 +535,7 @@ class PolicyRuntime:
         self._apply_remote_commands()
         acp_was_active = self.FSM_controller.cur_policy.name == FSMStateName.SKILL_ACP
         if (self.acp_enabled and self.state_cmd.skill_cmd == FSMCommand.CMD_ACP
-                and self.FSM_controller.cur_policy.name == FSMStateName.FIXEDPOSE
+                and self.FSM_controller.cur_policy.name in (FSMStateName.LOCOMODE, FSMStateName.FIXEDPOSE)
                 and self.FSM_controller.acp_policy.ready()):
             acp_was_active = True
         self.FSM_controller.run()

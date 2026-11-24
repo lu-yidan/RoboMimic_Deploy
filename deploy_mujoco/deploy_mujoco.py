@@ -19,7 +19,7 @@ from common.ctrlcomp import *
 from FSM.FSM import *
 from common.utils import get_gravity_orientation, FSMStateName
 from common.logger import Logger
-from common.joystick import JoyStick, JoystickButton
+from common.joystick import JoyStick, JoystickButton, NoJoystick
 from omegaconf import DictConfig
 import hydra
 from threading import Event
@@ -186,6 +186,9 @@ def main(cfg: DictConfig):
     scalebfm_cfg = load_mujoco_scalebfm_config(cfg)
     php_cfg = load_php_config()
     acp_cfg = load_acp_config()
+    if cfg.get("acp_bundle"):
+        bundle_path = Path(str(cfg.acp_bundle)).expanduser()
+        acp_cfg["model_dir"] = str(bundle_path if bundle_path.is_absolute() else Path(PROJECT_ROOT)/bundle_path)
     if acp_cfg["enabled"] and not np.isclose(mj_per_step_duration, .02):
         raise ValueError("ACP requires a 50 Hz control loop")
     if php_cfg["enabled"] and not np.isclose(mj_per_step_duration, .02):
@@ -203,10 +206,16 @@ def main(cfg: DictConfig):
                          enable_freekick=False, php_config=php_cfg, acp_config=acp_cfg)
     acp_terrain = None
     acp_terrain_error = None
+    acp_guard = None
     if FSM_controller.acp_policy is not None:
         from policy.acp.terrain import MujocoTerrain
         acp_terrain = MujocoTerrain(m)
-        tau_limit = FSM_controller.acp_policy.effort_limits29.copy()
+        # Reuse exactly the bridge's ACP output bounds, without its transport constructor.
+        from bridge.python.policy_runtime import PolicyRuntime
+        acp_guard = PolicyRuntime.__new__(PolicyRuntime)
+        acp_guard.state_cmd, acp_guard.policy_output = state_cmd, policy_output
+        acp_guard.FSM_controller, acp_guard._logger = FSM_controller, None
+        acp_guard._acp_effort_limits = FSM_controller.acp_policy.effort_limits29.copy()
     depth_camera = None
     if FSM_controller.php_policy is not None:
         from policy.php_parkour.depth import DepthCamera
@@ -220,12 +229,19 @@ def main(cfg: DictConfig):
         print(catalog.describe())
     startup_policy = str(cfg.get("startup_policy", "passive"))
     startup_commands = {"passive": FSMCommand.INVALID, "fixed_pose": FSMCommand.POS_RESET,
-                        "smp_recovery": FSMCommand.CMD_SMP_RECOVERY}
+                        "smp_recovery": FSMCommand.CMD_SMP_RECOVERY, "loco": FSMCommand.LOCO}
     if startup_policy not in startup_commands:
-        raise ValueError("startup_policy must be passive, fixed_pose, or smp_recovery")
+        raise ValueError("startup_policy must be passive, fixed_pose, smp_recovery, or loco")
     state_cmd.skill_cmd = startup_commands[startup_policy]
+    if startup_policy == "loco":
+        from deploy_mujoco.acp_interactive import reset_to_loco
+        reset_to_loco(m, d, FSM_controller, state_cmd, policy_output)
+        policy_output_action[:] = policy_output.actions
+        kps[:], kds[:] = policy_output.kps, policy_output.kds
     print(f"[Startup] {startup_policy}; physics={simulation_dt}s; control={simulation_dt * control_decimation}s")
-    print("[Controls] START: FixedPose; C: ACP; L1+A / P: PHP; R3: PHP speed; Y: SMP; keyboard R: reset simulation into passive mode")
+    print("[Controls] START: FixedPose; B: LocoMode; Y: " + ("ACP" if acp_cfg["enabled"] else "SMP") + "; L1+A / P: PHP; R3: PHP speed")
+    if cfg.get("keyboard_control", False):
+        print("[Keyboard] B: Loco; Y: ACP; W/S,A/D,Q/E: Loco velocity; Z: zero velocity; 1: forward goal; 2: left-turn goal; 3: stop here; SPACE: pause; F1: damping; R: reset to startup mode")
 
     log_cfg = cfg.get("logging", {})
     logger = None
@@ -235,12 +251,23 @@ def main(cfg: DictConfig):
             log_cfg.get("log_dir", "logs"),
             log_cfg.get("tag", "freekick"),
             extra_meta={"robot_type": "mujoco", "xml_path": cfg.xml_path,
-                        "control_dt": mj_per_step_duration},
+                        "control_dt": mj_per_step_duration, "startup_policy": startup_policy,
+                        "acp": acp_cfg},
         )
         log_states = {FSMStateName[s] for s in log_cfg.get("states", ["SKILL_FREEKICK"])}
     log_step = 0
 
-    joystick = JoyStick()
+    try:
+        joystick = JoyStick()
+    except RuntimeError:
+        if cfg.get("joystick_required", True):
+            raise
+        joystick = NoJoystick()
+        print("[Input] No gamepad connected; keyboard controls enabled.")
+    keyboard = None
+    if cfg.get("keyboard_control", False):
+        from deploy_mujoco.acp_interactive import KeyboardControl, velocity_sticks
+        keyboard = KeyboardControl(keyboard_velocity=isinstance(joystick, NoJoystick))
     show_depth = depth_camera is not None and bool(cfg.get("php_depth_preview", True))
     prev_hat = (0, 0)
     prev_r2_pressed = False
@@ -251,16 +278,15 @@ def main(cfg: DictConfig):
     reset_requested = Event()
     standing_reset_requested = Event()
     php_requested = Event()
-    acp_requested = Event()
     def key_callback(key):
         if key in (ord('R'), ord('r')):
             reset_requested.set()
         elif key in (ord('P'), ord('p')):
             php_requested.set()
-        elif key in (ord('C'), ord('c')):
-            acp_requested.set()
-        elif key == 259:
+        elif key == 259 and keyboard is None:
             standing_reset_requested.set()
+        elif keyboard is not None:
+            keyboard.push(key)
     if show_depth:
         from deploy_mujoco.native_depth_overlay import NativeDepthOverlay, require_native_overlay
         require_native_overlay()
@@ -268,12 +294,26 @@ def main(cfg: DictConfig):
         depth_overlay = NativeDepthOverlay(viewer) if show_depth else None
         from deploy_mujoco.viewer_camera import configure_camera
         configure_camera(viewer.cam, m, cfg.get("camera", {}))
+        print("[Viewer] Live MuJoCo opened; policy and physics are running.", flush=True)
         deadline = time.perf_counter()
         next_render = deadline
         while viewer.is_running() and Running:
             try:
                 if reset_requested.is_set():
                     reset_requested.clear()
+                    if startup_policy == "loco":
+                        reset_to_loco(m, d, FSM_controller, state_cmd, policy_output)
+                        if keyboard is not None:
+                            keyboard.velocity.fill(0)
+                            keyboard.paused = False
+                            keyboard.keyboard_velocity = isinstance(joystick, NoJoystick)
+                            while not keyboard.events.empty(): keyboard.events.get_nowait()
+                        policy_output_action[:] = policy_output.actions
+                        kps[:], kds[:] = policy_output.kps, policy_output.kds
+                        print("[Reset] initialized B/LocoMode; no support. Press Y for ACP.")
+                        viewer.sync()
+                        deadline = time.perf_counter()
+                        continue
                     # Physics and FSM changes run on this thread, not the viewer callback.
                     FSM_controller.cur_policy.exit()
                     mujoco.mj_resetData(m, d)
@@ -288,7 +328,6 @@ def main(cfg: DictConfig):
                     state_cmd.acp_pose_time = 0.0
                     state_cmd.acp_pose_valid = False
                     php_requested.clear()
-                    acp_requested.clear()
                     FSM_controller.get_next_policy(FSMStateName.PASSIVE)
                     FSM_controller.FSMmode = FSMMode.NORMAL
                     FSM_controller.sim_counter = 0
@@ -297,7 +336,7 @@ def main(cfg: DictConfig):
                     policy_output_action[:] = policy_output.actions
                     kps[:] = policy_output.kps
                     kds[:] = policy_output.kds
-                    print("[Reset] configured initial state; PASSIVE. Press Y to start SMP.")
+                    print("[Reset] configured initial state; PASSIVE.")
                     viewer.sync()
                     deadline = time.perf_counter()
                     continue
@@ -379,21 +418,17 @@ def main(cfg: DictConfig):
 
                 php_button_command = php_buttons.update(joystick, php_requested.is_set())
                 php_requested.clear()
-                acp_button_command = acp_requested.is_set()
-                acp_requested.clear()
                 # Damping remains latched until FSM consumes it; recovery has priority over PHP.
                 if l2_just_released or state_cmd.skill_cmd == FSMCommand.PASSIVE:
                     state_cmd.skill_cmd = FSMCommand.PASSIVE
                 elif joystick.is_button_just_pressed(JoystickButton.Y) and not joystick.is_button_pressed(JoystickButton.L1):
-                    state_cmd.skill_cmd = FSMCommand.CMD_SMP_RECOVERY
+                    state_cmd.skill_cmd = FSMCommand.CMD_ACP if acp_cfg["enabled"] else FSMCommand.CMD_SMP_RECOVERY
                 elif state_cmd.skill_cmd == FSMCommand.CMD_SMP_RECOVERY:
                     pass
                 elif joystick.is_button_released(JoystickButton.START):
                     state_cmd.skill_cmd = FSMCommand.POS_RESET
                 elif joystick.is_button_released(JoystickButton.B):
                     state_cmd.skill_cmd = FSMCommand.LOCO
-                elif acp_button_command:
-                    state_cmd.skill_cmd = FSMCommand.CMD_ACP
                 elif php_button_command is not None:
                     state_cmd.skill_cmd = php_button_command
                 elif hat_just_pressed(0, -1):
@@ -409,11 +444,25 @@ def main(cfg: DictConfig):
                 state_cmd.vel_cmd[0] = -joystick.get_axis_value(1)
                 state_cmd.vel_cmd[1] = -joystick.get_axis_value(0)
                 state_cmd.vel_cmd[2] = -joystick.get_axis_value(3)
+                if keyboard is not None:
+                    keyboard.poll(state_cmd, FSM_controller)
+                    if np.linalg.norm(state_cmd.vel_cmd) > .1:
+                        keyboard.keyboard_velocity = False
+                    if keyboard.keyboard_velocity:
+                        state_cmd.vel_cmd = velocity_sticks(FSM_controller.loco_policy, keyboard.velocity)
+                    if keyboard.paused:
+                        viewer.sync()
+                        time.sleep(.02)
+                        deadline = time.perf_counter()
+                        continue
                 
                 # The deadline accumulates physics time, including inference/input cost.
                 
                 tau = pd_control(policy_output_action, d.qpos[7:7+num_joints], kps, np.zeros_like(kps), d.qvel[6:6+num_joints], kds)
-                tau = np.clip(tau, -tau_limit, tau_limit)
+                active_limits = (FSM_controller.acp_policy.effort_limits29
+                                 if acp_guard is not None and FSM_controller.cur_policy.name in
+                                 (FSMStateName.SKILL_ACP, FSMStateName.FIXEDPOSE) else tau_limit)
+                tau = np.clip(tau, -active_limits, active_limits)
                 d.ctrl[:] = tau
                 mujoco.mj_step(m, d)
                 FSM_controller.sim_counter += 1
@@ -471,7 +520,10 @@ def main(cfg: DictConfig):
                         except Exception as exc:
                             state_cmd.php_depth = None
                             print("[PHP camera]", exc)
+                    acp_was_active = FSM_controller.cur_policy is FSM_controller.acp_policy
                     FSM_controller.run()
+                    if acp_guard is not None:
+                        acp_guard._guard_acp_output(acp_was_active)
                     policy_output_action = policy_output.actions.copy()
                     kps = policy_output.kps.copy()
                     kds = policy_output.kds.copy()
@@ -485,6 +537,9 @@ def main(cfg: DictConfig):
                 # Rendering is independent of the 500 Hz physics / 50 Hz policy loop.
                 now = time.perf_counter()
                 if now >= next_render:
+                    viz_spheres = list(policy_output.viz_spheres or [])
+                    if keyboard is not None and FSM_controller.acp_policy is not None:
+                        viz_spheres += keyboard.goal_markers(FSM_controller.acp_policy)
                     if show_depth:
                         depth_overlay.set_depth(
                             state_cmd.php_depth, state_cmd.php_depth_time,
@@ -501,11 +556,11 @@ def main(cfg: DictConfig):
                                 mujoco.mjtCatBit.mjCAT_DYNAMIC.value,
                                 viewer.user_scn,
                             )
-                            _draw_viz_spheres(viewer.user_scn, policy_output.viz_spheres)
+                            _draw_viz_spheres(viewer.user_scn, viz_spheres)
                     else:
                         with viewer.lock():
                             viewer.user_scn.ngeom = 0
-                            _draw_viz_spheres(viewer.user_scn, policy_output.viz_spheres)
+                            _draw_viz_spheres(viewer.user_scn, viz_spheres)
 
                     viewer.sync()
                     next_render = time.perf_counter() + 1.0 / render_hz

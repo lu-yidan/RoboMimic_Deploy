@@ -148,7 +148,7 @@ def test_real_fsm_entry_ramp_reset_and_same_tick_damping(bundle):
     directory,names,_,_ = bundle
     state,output = StateAndCmd(29),PolicyOutput(29)
     fsm = FSM(state,output,joint_names=names,enable_freekick=False,
-              acp_config={'enabled':True,'model_dir':str(directory)})
+              acp_config={'enabled':True,'entry_mode':'fixed_pose','model_dir':str(directory)})
     policy = fsm.acp_policy
     fresh(policy)
     state.skill_cmd = FSMCommand.CMD_ACP
@@ -177,6 +177,49 @@ def test_real_fsm_entry_ramp_reset_and_same_tick_damping(bundle):
     state.skill_cmd = FSMCommand.PASSIVE
     fsm.run()
     assert fsm.cur_policy is fsm.passive_mode
+
+
+def test_loco_to_acp_preserves_robot_state_and_can_return_to_b(bundle):
+    from FSM.FSM import FSM, FSMMode
+    from common.utils import FSMStateName
+    directory,names,_,_ = bundle
+    state,output = StateAndCmd(29),PolicyOutput(29)
+    fsm = FSM(state,output,joint_names=names,enable_freekick=False,
+              acp_config={'enabled':True,'model_dir':str(directory)})
+    policy = fsm.acp_policy
+    fresh(policy)
+    # Default runtime rejects a prepared FixedPose: the requested source is B.
+    fsm.cur_policy = fsm.fixed_pose_1
+    fsm.fixed_pose_1.enter()
+    fsm.fixed_pose_1.alpha = 1.
+    state.skill_cmd = FSMCommand.CMD_ACP
+    fsm.run()
+    assert fsm.cur_policy is fsm.fixed_pose_1
+    fsm.cur_policy = fsm.loco_policy
+    fsm.FSMmode = FSMMode.CHANGE
+    state.skill_cmd = FSMCommand.CMD_ACP
+    fsm.run()
+    assert fsm.cur_policy is fsm.loco_policy
+    # A moving Loco sample is not required to reach the ACP default pose.
+    fresh(policy)
+    state.q[18] += .6
+    state.dq[:] = .2
+    before_q,before_dq = state.q.copy(),state.dq.copy()
+    state.skill_cmd = FSMCommand.CMD_ACP
+    fsm.run()
+    assert fsm.cur_policy is policy
+    np.testing.assert_array_equal(state.q,before_q)
+    np.testing.assert_array_equal(state.dq,before_dq)
+    assert policy.last_observation is not None
+    state.skill_cmd = FSMCommand.LOCO
+    fsm.run()
+    fsm.run()
+    assert fsm.cur_policy.name == FSMStateName.LOCOMODE
+    state.acp_pose_valid = False
+    # An invalid sample must reject a new Y request while continuing Loco.
+    state.skill_cmd = FSMCommand.CMD_ACP
+    fsm.run()
+    assert fsm.cur_policy is fsm.loco_policy
 
 
 def test_rays_skip_robot_and_rotate_grid_at_step():

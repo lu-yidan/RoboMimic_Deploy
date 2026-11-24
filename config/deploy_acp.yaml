@@ -9,6 +9,7 @@ php:
   enabled: false
 acp:
   enabled: true
+  entry_mode: loco  # B (LocoMode) -> Y (ACP), without a FixedPose ramp/reset.
   # A real Stage 3 export with manifest.json is required. No weights are bundled.
   model_dir: policy/acp/models
   target_position: [1.0, 0.0]  # metres in the localization world frame

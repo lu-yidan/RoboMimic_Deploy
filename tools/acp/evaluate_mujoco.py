@@ -64,7 +64,7 @@ def evaluate(config,target,heading,seconds,support_during_fixedpose=False):
     data = mujoco.MjData(model)
     names = [model.joint(int(model.actuator_trnid[i,0])).name for i in range(model.nu)]
     state,output = StateAndCmd(29),PolicyOutput(29)
-    config = dict(config,target_position=target,target_heading=heading)
+    config = dict(config,entry_mode='fixed_pose',target_position=target,target_heading=heading)
     policy = ACP(state,output,config,names)
     fixed = FixedPose(state,output)
     fixed.set_runtime_target(policy.default,policy.kps,policy.kds)

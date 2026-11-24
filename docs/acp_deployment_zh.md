@@ -84,21 +84,25 @@ TF32（PyTorch 2.9+ 还需显式设置卷积子项），结束或失败后恢复
 
 ## MuJoCo
 
+当前交互入口为 **B/LocoMode → Y/ACP**，窗口实时运行策略与物理。
+本机启动命令、键盘/手柄操作和新入口检查见
+[实时交互说明](acp_interactive_zh.md)。下列命令用于245有图形桌面的环境；
+headless服务器应在本机图形桌面查看。历史FixedPose评估单独保留。
+
 ```bash
 cd /root/RoboMimic_Deploy_acp
-LYD_DEPLOY_CONFIG=config/deploy_acp.yaml python deploy_mujoco/deploy_mujoco.py \
-  --config-name mujoco_acp
-LYD_DEPLOY_CONFIG=config/deploy_acp.yaml python tools/acp/evaluate_mujoco.py \
-  --support-during-fixedpose
+LYD_DEPLOY_CONFIG="$PWD/config/deploy_acp.yaml" python deploy_mujoco/deploy_mujoco.py \
+  --config-name mujoco_acp \
+  acp_bundle=/root/autodl-tmp/acp-g1/diagnostics/stage3-flat-trial-v1/bundle_stage3_1000
 ```
 
-GUI 先 START 进入 FixedPose，等待两秒站姿渐变完成，再按 C 进入 ACP。
-FixedPose 使用本次 bundle 的默认角和 PD 增益，入口同时检查实际关节是否
-接近目标。策略 50 Hz、PD 200 Hz；力矩限值使用 bundle。射线只接受焊接到
+该预设启动即处于B行走模式，Y直接切入ACP，B可返回行走模式。
+切换不复位或固定机器人，不要求动态关节角接近ACP默认姿态。
+策略 50 Hz、PD 200 Hz；ACP力矩限值使用 bundle。射线只接受焊接到
 世界的静态地形，跳过机器人本体；地图为骨盆 yaw 系、y 外层 x 内层的
 17×11 点，每点 `(x,y,pelvis_z-hit_z-0.5)`。
 
-无头部署评估分别对前方目标、侧方转向目标和原地停车完整运行 15 秒；
+历史无头FixedPose部署评估分别对前方目标、侧方转向目标和原地停车完整运行 15 秒；
 末 1 秒每帧须同时满足距离 <0.2 m、航向误差 <0.25 rad、平面速度
 <0.15 m/s、骨盆高度 0.78±0.1 m、倾角 <0.7 rad 和有限值要求，
 全程跌倒或推理失效均失败。原生 Stage 3 评估采用 episode 语义：
@@ -141,7 +145,8 @@ publisher，正常退出和异常退出也不发布退出电机命令。源 C++ 
 需要在实机只读阶段核对其与 IMU 的轴和外参。桥接状态、定位和地图各自
 检查年龄，默认 150 ms、同步偏差 40 ms；重复或停滞状态不能刷新有效期。
 
-遥控器 START 站姿，L1+X 边沿请求 ACP，F1/SELECT 阻尼抢占。
+遥控器按既有准备流程进入B/LocoMode，再用Y边沿请求ACP，B返回LocoMode；
+启用ACP时Y替代SMP，未启用ACP时保留SMP。L1+X不再请求ACP。F1/SELECT阻尼抢占。
 定位/地图失效、非有限输出、bridge tick 停滞会退出；ACP 和其 FixedPose
 阶段都按 manifest 限制计算出的 PD 力矩。它们不代替物理防护和实机验证。
 启用现有 logging 后，退出时会额外保存 `.acp_trace.npz`，默认最多 3000 帧，

@@ -85,21 +85,27 @@ class FSM:
             return
         if self.state_cmd.skill_cmd == FSMCommand.CMD_ACP:
             self.state_cmd.skill_cmd = FSMCommand.INVALID
+            source = self.cur_policy.name
+            expected = (FSMStateName.FIXEDPOSE if self.acp_policy is not None
+                        and self.acp_policy.entry_mode == 'fixed_pose' else FSMStateName.LOCOMODE)
             if (self.acp_policy is not None
-                    and self.cur_policy.name == FSMStateName.FIXEDPOSE
-                    and self.cur_policy.alpha >= 1.0
+                    and source == expected and self.FSMmode == FSMMode.NORMAL
+                    and (expected != FSMStateName.FIXEDPOSE or self.cur_policy.alpha >= 1.0)
                     and self.acp_policy.entry_error() is None):
                 self.cur_policy.exit()
                 self.cur_policy = self.acp_policy
                 self.cur_policy.enter()
                 self.FSMmode = FSMMode.NORMAL
-                print("[ACP] Entering from FixedPose; localization and terrain ready.")
+                print(f"[ACP] Entering from {source.name}; localization and terrain ready.")
             else:
                 if self.acp_policy is None:
                     reason = "ACP is disabled in this runtime"
-                elif self.cur_policy.name != FSMStateName.FIXEDPOSE:
-                    reason = "select FixedPose before ACP"
-                elif self.cur_policy.alpha < 1.0:
+                elif source != expected:
+                    reason = ("press B to enter LocoMode before Y/ACP" if expected == FSMStateName.LOCOMODE
+                              else "select FixedPose before ACP (legacy diagnostic)")
+                elif self.FSMmode != FSMMode.NORMAL:
+                    reason = "wait for the current mode to enter before ACP"
+                elif expected == FSMStateName.FIXEDPOSE and self.cur_policy.alpha < 1.0:
                     reason = "wait for the FixedPose ramp to finish"
                 else:
                     reason = self.acp_policy.entry_error()

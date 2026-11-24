@@ -1,5 +1,8 @@
 # 1k ACP 候选：真实站姿切入仿真
 
+此页保留旧FixedPose入口的历史对照。当前交互入口已按用户要求改为
+**B/LocoMode → Y/ACP**，实时打开MuJoCo的命令见[交互说明](acp_interactive_zh.md)。
+
 固定 `bundle_stage3_1000`，`policy.onnx` SHA256 为
 `2a85ea0312bbdff8b681dabe659c8f9c68b1d55221c4f9ec41284dd674e310e8`。
 本轮不训练，不连接机器人；用户先查看仿真，再安排现场只读实验。

@@ -14,6 +14,7 @@ from common.remote_controller import KeyMap
 from common.utils import FSMCommand, FSMStateName
 from deploy_real.scalebfm_input import RealPolicyInput
 from policy.acp.state_ipc import StateReader, StateWriter
+from policy.acp.state_ipc import StateSample
 from policy.acp.goal_ipc import GoalReader, write_goal
 from onboard.localization.dlio.core import atomic_json
 from policy.acp.state_ipc import boot_id
@@ -91,14 +92,43 @@ class ACPBridgeTest(unittest.TestCase):
             s, o = runtime.state_cmd, runtime.policy_output
             torque = o.kps*(o.actions-s.q)-o.kds*s.dq
             self.assertTrue(np.all(np.abs(torque) <= runtime._acp_effort_limits+1e-4))
-            runtime._acp_tick_time -= .1
+            runtime._acp_tick_time -= 1
             runtime._apply_acp_state(state)
             self.assertFalse(runtime.state_cmd.acp_pose_valid)
-            runtime._acp_tick_time += .1
+            runtime._acp_tick_time += 1
             state._local_received_monotonic += .1
             runtime._apply_acp_state(state)
             self.assertFalse(runtime.state_cmd.acp_pose_valid)
             self.assertIsNone(runtime.state_cmd.acp_terrain)
+
+    def test_delayed_pose_uses_matching_history_and_pd_keeps_latest_state(self):
+        runtime = self.fixture()
+        sample = StateSample()
+        runtime.acp_source = SimpleNamespace(latest=lambda: sample)
+        for tick, now, joint in [(1, 100., 1.), (2, 100.02, 2.), (3, 100.08, 3.)]:
+            with patch('bridge.python.policy_runtime.time.monotonic', return_value=now):
+                state = self.state(tick)
+                state.q = [joint]*29
+                state.imu_gyro = [joint]*3
+                runtime._acp_tick_time = now
+                runtime._apply_robot_state(state)
+                if tick == 3:
+                    sample = StateSample(np.array([0., 0., .78]), np.array([1., 0., 0., 0.]),
+                                         np.zeros((187, 3)), 100., 100., 100., 1, 'map', '')
+                runtime._apply_acp_state(state)
+        s = runtime.state_cmd
+        self.assertTrue(s.acp_pose_valid)
+        np.testing.assert_array_equal(s.q, np.full(29, 3.))
+        np.testing.assert_array_equal(s.acp_joint_pos, np.ones(29))
+        np.testing.assert_array_equal(s.acp_ang_vel, np.ones(3))
+        self.assertEqual(s.acp_robot_time, 100.)
+        self.assertEqual(s.acp_robot_tick, 1)
+        runtime.policy_output.kps, runtime.policy_output.kds = np.full(29, 50.), np.full(29, 2.)
+        runtime.policy_output.actions = np.zeros(29)
+        self.assertFalse(runtime._guard_acp_output())
+        o = runtime.policy_output
+        self.assertTrue(np.all(np.abs(o.kps*(o.actions-s.q)-o.kds*s.dq) <= runtime._acp_effort_limits+1e-4))
+        self.assertTrue(np.all(o.actions > 2.))
 
     def test_invalid_gyro_old_receipt_and_stalled_tick(self):
         runtime, state = self.fixture(), self.state()

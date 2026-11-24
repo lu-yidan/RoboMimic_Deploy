@@ -95,6 +95,7 @@ class ACP(FSMState):
         self.last_error = None
         self.last_observation = None
         self.last_raw_action = None
+        self.last_inference_ms = float('nan')
 
     def error(self):
         s, now = self.state_cmd, time.monotonic()
@@ -113,6 +114,13 @@ class ACP(FSMState):
                                   (s.pelvis_pos_w,(3,)), (s.acp_terrain,(187,3))):
                 if np.shape(value) != shape or not np.isfinite(value).all():
                     return 'Invalid ACP robot or terrain sample'
+            if self.config.get('real', {}).get('enabled', False) or s.acp_joint_pos is not None:
+                for value in (s.acp_joint_pos, s.acp_joint_vel):
+                    if np.shape(value) != (29,) or not np.isfinite(value).all():
+                        return 'Invalid ACP synchronized joint sample'
+                if (not 0 <= now-s.acp_robot_time <= age_limit
+                        or abs(s.acp_robot_time-s.acp_pose_time) > float(self.config.get('max_sync_skew_s', .04))):
+                    return 'ACP synchronized robot sample stale or misaligned'
             if not np.allclose(s.acp_terrain[:,:2], grid_xy(), atol=1e-5):
                 return 'ACP terrain grid order mismatch'
             gravity_z = rotation(s.pelvis_quat_w)[2,2]
@@ -148,8 +156,10 @@ class ACP(FSMState):
 
     def build_observation(self):
         s = self.state_cmd
+        q = s.q if s.acp_joint_pos is None else s.acp_joint_pos
+        dq = s.dq if s.acp_joint_vel is None else s.acp_joint_vel
         proprio = self.history.append(s.acp_ang_vel, s.pelvis_quat_w,
-            (s.q-self.default)[self.to_model], s.dq[self.to_model], self.last_action)
+            (q-self.default)[self.to_model], dq[self.to_model], self.last_action)
         goal = goal_command(s.pelvis_pos_w, s.pelvis_quat_w, self.target, self.heading, self.radius)
         obs = np.concatenate((proprio, s.acp_terrain.ravel(), goal)).astype(np.float32)[None]
         if obs.shape != (1,939) or not np.isfinite(obs).all():
@@ -158,7 +168,9 @@ class ACP(FSMState):
         return obs
 
     def _infer(self, obs):
+        started = time.perf_counter()
         result = self.session.run(['actions','contacts','occupancy'], {'planner_obs': obs})
+        self.last_inference_ms = (time.perf_counter()-started)*1000
         if [x.shape for x in result] != [(1,23),(1,9,3),(1,9,1)] or not all(np.isfinite(x).all() for x in result):
             raise ValueError('Invalid ACP inference output')
         if np.any(result[2] < 0) or np.any(result[2] > 1):

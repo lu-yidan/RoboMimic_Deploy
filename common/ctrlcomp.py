@@ -31,6 +31,11 @@ class StateAndCmd:
         self.acp_pose_time = 0.0
         self.acp_pose_valid = False
         self.acp_ang_vel = np.zeros(3, dtype=np.float32)  # pelvis body frame
+        # Real ACP observations may use a time-matched bridge snapshot. q/dq
+        # above always retain the latest measurements for control and PD bounds.
+        self.acp_joint_pos = self.acp_joint_vel = None
+        self.acp_robot_time = 0.0
+        self.acp_robot_tick = 0
         # ball state for FreeKick controller
         # Simulation: ball_pos_w (world frame, filled by deploy_mujoco from MuJoCo)
         # Real robot: ball_pos_b (pelvis body frame, filled by deploy_real from DDS)

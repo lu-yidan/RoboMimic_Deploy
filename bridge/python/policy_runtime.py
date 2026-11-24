@@ -55,8 +55,12 @@ class PolicyRuntime:
         self._acp_last_tick = None
         self._acp_tick_time = time.monotonic()
         self._acp_goal_reader = None
+        self._acp_robot_history = None
         if self.acp_enabled:
             from policy.acp.state_ipc import StateReader
+            from policy.acp.robot_history import RobotHistory
+            self._acp_robot_history = RobotHistory(self.acp_config.get('max_age_s', .15),
+                                                   self.acp_config.get('max_sync_skew_s', .04))
             if self.num_joints != 29 or abs(self.control_dt-.02) > 1e-9:
                 raise ValueError('ACP bridge requires 29 joints and 50 Hz control')
             if acp_source is None:
@@ -208,6 +212,12 @@ class PolicyRuntime:
             raw_actions=policy.last_raw_action.copy(), actions=policy.last_action.copy(),
             contacts=policy.contacts[0].copy(), occupancy=policy.occupancy[0].copy(),
             q_des=self.policy_output.actions.copy(), q=s.q.copy(), dq=s.dq.copy(),
+            kps=self.policy_output.kps.copy(), kds=self.policy_output.kds.copy(),
+            observation_q=(s.q if s.acp_joint_pos is None else s.acp_joint_pos).copy(),
+            observation_dq=(s.dq if s.acp_joint_vel is None else s.acp_joint_vel).copy(),
+            observation_gyro=s.acp_ang_vel.copy(),
+            robot_sample_captured_at=s.acp_robot_time, robot_sample_tick=s.acp_robot_tick,
+            inference_ms=float(getattr(policy, 'last_inference_ms', float('nan'))),
             pelvis_pos_w=s.pelvis_pos_w.copy(), pelvis_quat_w=s.pelvis_quat_w.copy(),
             pose_captured_at=s.acp_pose_time, terrain_captured_at=s.acp_terrain_time,
             robot_received_at=getattr(bridge_state, '_local_received_monotonic', float('nan')),
@@ -355,17 +365,30 @@ class PolicyRuntime:
         s = self.state_cmd
         s.acp_pose_valid = False
         s.acp_terrain = None
+        s.acp_joint_pos = s.acp_joint_vel = None
+        s.acp_robot_time, s.acp_robot_tick = 0., 0
         sample = self.acp_source.latest()
         error = sample.error
-        if not error:
+        matched = None
+        try:
+            from policy.acp.robot_history import RobotHistory
+            if getattr(self, '_acp_robot_history', None) is None:
+                self._acp_robot_history = RobotHistory(self.acp_config.get('max_age_s', .15),
+                                                       self.acp_config.get('max_sync_skew_s', .04))
+            now = time.monotonic()
             received = getattr(bridge_state, '_local_received_monotonic', None)
-            skew = float(self.acp_config.get('max_sync_skew_s', .04))
-            # Re-forwarding one SDK tick must not refresh the gyro sample age.
-            robot_stamps = [self._acp_tick_time]
-            if received is not None:
-                robot_stamps.append(received)
-            if any(abs(stamp-sample.pose_captured_at) > skew for stamp in robot_stamps):
-                error = 'ACP localization and robot state timestamps disagree'
+            if received is None:
+                if self.connect:
+                    raise ValueError('Bridge state has no local receipt timestamp')
+                received = self._acp_tick_time
+            if not 0 <= now-self._acp_tick_time <= float(self.acp_config.get('max_age_s', .15)):
+                raise ValueError('Bridge state tick stalled')
+            # Populate in every mode, including before localization/goal readiness.
+            self._acp_robot_history.add(bridge_state, received, now)
+            if not error:
+                matched = self._acp_robot_history.nearest(sample.pose_captured_at, now)
+        except (ValueError, TypeError, AttributeError) as failure:
+            error = str(failure)
         if not error and getattr(self, '_acp_goal_reader', None) is not None:
             try:
                 reader = self._acp_goal_reader
@@ -385,13 +408,20 @@ class PolicyRuntime:
             s.pelvis_quat_w = np.asarray(sample.pelvis_quat_w, dtype=np.float32).copy()
             s.acp_terrain = sample.terrain
             s.acp_pose_time, s.acp_terrain_time = sample.pose_captured_at, sample.terrain_captured_at
+            s.acp_joint_pos, s.acp_joint_vel = matched.q, matched.dq
+            s.acp_ang_vel = matched.gyro
+            s.acp_robot_time, s.acp_robot_tick = matched.captured_at, matched.tick
             s.acp_pose_valid = True
         s.telemetry.update(acp_state_sequence=sample.sequence,
                            acp_state_age_ms=(time.monotonic()-sample.captured_at)*1000 if not error else float('nan'),
                            acp_state_valid=not bool(error))
         if error != self._acp_error:
             if self._logger is not None:
-                self._logger.event('acp_state_status', error=error, sequence=sample.sequence)
+                self._logger.event('acp_state_status', error=error, sequence=sample.sequence,
+                                   pose_captured_at=sample.pose_captured_at,
+                                   latest_robot_received_at=getattr(bridge_state, '_local_received_monotonic', None),
+                                   matched_robot_captured_at=None if matched is None else matched.captured_at,
+                                   sampled_at=time.monotonic())
             if error:
                 print('[ACP localization] '+error, flush=True)
             self._acp_error = error

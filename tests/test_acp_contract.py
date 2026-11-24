@@ -94,6 +94,31 @@ def test_goal_frame_and_near_goal_scaling():
     np.testing.assert_array_equal(goal_command([0,0,.78],[1,0,0,0],[0,0],0,.5),[0,0,0])
 
 
+@pytest.mark.parametrize('failure', ['stale', 'skew', 'missing'])
+def test_observation_uses_aligned_joints_and_checks_their_time(bundle, failure):
+    policy = make_policy(bundle)
+    policy.config['real'] = dict(enabled=True)
+    s = fresh(policy)
+    s.q += .4
+    s.dq[:] = .9
+    s.acp_joint_pos = policy.default + .01
+    s.acp_joint_vel = np.full(29, -.2, dtype=np.float32)
+    s.acp_robot_time = s.acp_pose_time
+    policy.enter()
+    policy.run()
+    assert not policy.failed
+    obs = policy.last_observation[0]
+    np.testing.assert_allclose(obs[30:145], .01, atol=1e-7)
+    np.testing.assert_allclose(obs[145:260], -.2)
+    np.testing.assert_allclose(s.q-policy.default, .4, atol=1e-7)
+    if failure == 'missing':
+        s.acp_joint_pos = s.acp_joint_vel = None
+    else:
+        s.acp_robot_time -= 1. if failure == 'stale' else .06
+    policy.run()
+    assert policy.failed and s.skill_cmd == FSMCommand.PASSIVE
+
+
 def test_terms_roll_oldest_to_newest():
     history = ObservationHistory()
     for tick in range(7):

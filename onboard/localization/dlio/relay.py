@@ -80,6 +80,8 @@ def main():
             self.pose = None
             self.speed = self.turn_rate = None
             self.last_published = 0.
+            self.next_state_publish = 0.
+            self.state_writer = StateWriter(directory / 'acp-state.npz', frame_id='acp_odom')
             self.error = 'Waiting for Livox and DLIO'
             self.stage_errors = {}
             self.counts = dict(raw_imu=0, si_imu=0, raw_cloud=0, checked_cloud=0,
@@ -234,19 +236,26 @@ def main():
                             or not np.isfinite(ground) or not .3 <= pos[2]-ground <= 1.2):
                         raise ValueError('Missing current-session mount/ground calibration or invalid clearance')
                     self.calibration = calibration
-                    StateWriter(directory / 'acp-state.npz', frame_id='acp_odom').write(
-                        pelvis_pos_w=pos, pelvis_quat_w=quat, captured_at=stamp,
-                        pose_captured_at=stamp, terrain_captured_at=stamp,
-                        sequence=self.sequence, ground_height=ground)
-                    self.sequence += 1
-                    self.counts['acp_state'] += 1
-                    self.last_published = now
+                    # Match the 50 Hz policy, retaining 100 Hz pose/gate checks.
+                    # Advance a deadline to avoid drifting down to 33 Hz on jitter.
+                    if now >= self.next_state_publish:
+                        self.state_writer.write(
+                            pelvis_pos_w=pos, pelvis_quat_w=quat, captured_at=stamp,
+                            pose_captured_at=stamp, terrain_captured_at=stamp,
+                            sequence=self.sequence, ground_height=ground)
+                        self.sequence += 1
+                        self.counts['acp_state'] += 1
+                        self.last_published = now
+                        self.next_state_publish += .02
+                        if self.next_state_publish <= now:
+                            self.next_state_publish = now+.02
             except (ValueError, KeyError, OSError) as error:
                 self.error = str(error)
                 self.stage_errors['odom'] = self.error
                 # Immediate invalidation; never let a bad callback renew an old valid packet.
                 if args.publish_acp:
                     (directory / 'acp-state.npz').unlink(missing_ok=True)
+                    self.next_state_publish = 0.
 
         def status(self):
             now = time.monotonic()
@@ -274,7 +283,7 @@ def main():
                            registration_receive_age_s=self.registration_receive_age,
                            raw_cloud_max_gap_s=self.max_raw_gap,
                            registered_cloud_max_gap_s=self.max_registered_gap,
-                           status_period_s=.02, blas_threads=1)
+                           status_period_s=.02, acp_publish_hz=50, blas_threads=1)
             if self.pose is not None:
                 payload.update(pelvis_pos_w=self.pose[0].tolist(), pelvis_quat_w=self.pose[1].tolist())
             atomic_json(directory / 'acp-dlio-status.json', payload)

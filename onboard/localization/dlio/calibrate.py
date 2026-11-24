@@ -5,6 +5,9 @@ from pathlib import Path
 import sys
 import time
 
+if __name__ == '__main__':
+    os.environ['OPENBLAS_NUM_THREADS'] = '1'
+    os.environ['MKL_NUM_THREADS'] = '1'
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 from onboard.localization.dlio.core import atomic_json, read_json
 from policy.acp.state_ipc import boot_id

@@ -36,15 +36,19 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', required=True)
     parser.add_argument('--points', type=int, default=1600)
-    parser.add_argument('--cloud-age-ms', type=float, default=120., help='Age of first point when generating each 100 ms cloud')
+    parser.add_argument('--cloud-age-ms', type=float, default=120., help='Age of first point when generating each cloud')
+    parser.add_argument('--cloud-hz', type=int, default=10, choices=[10, 20])
     parser.add_argument('--duration', type=float, default=14.)
+    parser.add_argument('--check-cli', action='store_true', help='Run independent check.py and goal.py against synthetic IPC')
     args = parser.parse_args()
     if not 1600 <= args.points <= 100000:
         parser.error('--points must be between 1600 and 100000')
-    if not 90 <= args.cloud_age_ms <= 200:
-        parser.error('--cloud-age-ms must be between 90 and 200')
+    if not 900/args.cloud_hz <= args.cloud_age_ms <= 200:
+        parser.error('--cloud-age-ms must be between 90% of the scan period and 200 ms')
     if not 14 <= args.duration <= 60:
         parser.error('--duration must be between 14 and 60 seconds')
+    if args.check_cli and args.duration < 24:
+        parser.error('--check-cli needs --duration >= 24')
     if os.environ.get('ROS_LOCALHOST_ONLY') != '1' or os.environ.get('ROS_DOMAIN_ID') != '78':
         parser.error('Use ROS_LOCALHOST_ONLY=1 ROS_DOMAIN_ID=78 (isolated offline domain)')
     import rclpy
@@ -69,6 +73,7 @@ def main():
                              stdout=relay_log, stderr=subprocess.STDOUT, start_new_session=True)
     result = dict(hardware_started=False, directory=str(directory), passed=False,
                   points_per_cloud=args.points, source_cloud_age_ms=args.cloud_age_ms,
+                  source_cloud_hz=args.cloud_hz,
                   duration_s=args.duration, kernel_rmem_max=int(Path('/proc/sys/net/core/rmem_max').read_text()),
                   cyclone_config=os.environ.get('CYCLONEDDS_URI', '(default)'))
     rclpy.init()
@@ -82,7 +87,7 @@ def main():
             self.history, self.tick, self.poses = WaistHistory(), 0, []
             self.cloud_enabled = self.imu_enabled = True
             self.create_timer(.005, self.imu)
-            self.create_timer(.1, self.cloud)
+            self.create_timer(1./args.cloud_hz, self.cloud)
             mount = compute_mid360_to_base_transform()
             self.accel_g = mount[:3, :3].T @ [0., 0., 1.]
             rng = np.random.RandomState(42)
@@ -121,7 +126,7 @@ def main():
             if not self.cloud_enabled:
                 return
             first = time.time()-args.cloud_age_ms/1000
-            self.points['timestamp'] = (first+np.linspace(0., .09, len(self.points)))*1e9
+            self.points['timestamp'] = (first+np.linspace(0., .9/args.cloud_hz, len(self.points)))*1e9
             message = PointCloud2()
             self.stamp(message.header, first)
             message.width, message.height = len(self.points), 1
@@ -139,6 +144,7 @@ def main():
             self.poses.append([time.monotonic(), p.x, p.y, p.z, q.w, q.x, q.y, q.z])
 
     node = Synthetic()
+    cli_checks = []
     try:
         started, calibrated = time.monotonic(), False
         valid_frames = 0
@@ -148,6 +154,16 @@ def main():
             rclpy.spin_once(node, timeout_sec=.005)
             if native.poll() is not None or relay.poll() is not None:
                 raise RuntimeError('DLIO or relay exited; see logs')
+            if args.check_cli:
+                for label, after, script, options in [
+                        ('check', 8., 'check.py', ['--duration', '10']),
+                        ('goal', 20., 'goal.py', ['--stop'])]:
+                    if time.monotonic()-started >= after and not any(c[0] == label for c in cli_checks):
+                        stream = (directory/(label+'.log')).open('w')
+                        process = subprocess.Popen(['/usr/bin/python3', str(here/script),
+                                                    '--ipc-dir', str(directory)]+options,
+                                                   stdout=stream, stderr=subprocess.STDOUT)
+                        cli_checks.append((label, process, stream))
             try:
                 status = read_json(directory/'acp-dlio-status.json')
                 if status['pose_valid'] and not calibrated:
@@ -197,6 +213,12 @@ def main():
     except Exception as error:
         result['error'] = str(error)
     finally:
+        for label, process, stream in cli_checks:
+            if process.poll() is None:
+                process.terminate()
+                process.wait(timeout=5)
+            stream.close()
+            result[label+'_cli'] = dict(returncode=process.returncode, output=(directory/(label+'.log')).read_text())
         node.destroy_node()
         rclpy.shutdown()
         for process in (relay, native):

@@ -1,0 +1,90 @@
+{
+  "date": "2026-11-24",
+  "platform": "G1 Ubuntu 20.04 ROS2 Foxy",
+  "physical_sensor_started": false,
+  "robot_control_started": false,
+  "isolated_ros_domain": 78,
+  "same_synthetic_point_throughput_per_s": 200000,
+  "acp_state_write_hz": 50,
+  "age_and_jump_limits_unchanged": true,
+  "regression_tests_passed": 57,
+  "runs": [
+    {
+      "hardware_started": false,
+      "passed": true,
+      "points_per_cloud": 20000,
+      "source_cloud_hz": 10,
+      "source_cloud_age_ms": 100.0,
+      "duration_s": 30.0,
+      "cloud_stall_invalidated": true,
+      "host_udp_counter_delta": {
+        "InDatagrams": 51190,
+        "NoPorts": 72219,
+        "InErrors": 0,
+        "OutDatagrams": 51164,
+        "RcvbufErrors": 0,
+        "SndbufErrors": 0,
+        "InCsumErrors": 0,
+        "IgnoredMulti": 89
+      },
+      "producer_status_observation": {
+        "distinct_status_samples": 1101,
+        "fresh_pelvis_fraction": 1.0,
+        "acp_output_fraction": 0.9800181653042689,
+        "status_interval_p99_s": 0.020698206560116433,
+        "blocking_stages": {
+          "ready": 1075,
+          "registration": 11,
+          "acp_state": 15
+        }
+      },
+      "independent_checker": {
+        "window": "Window 10.00 s: {'ready': 461, 'registration': 27, 'acp_state': 2}; fresh pelvis 100.0% (490 samples)",
+        "stage_samples": {
+          "ready": 461,
+          "registration": 27,
+          "acp_state": 2
+        },
+        "returncode": 0
+      },
+      "goal_cli_returncode": 0
+    },
+    {
+      "hardware_started": false,
+      "passed": true,
+      "points_per_cloud": 10000,
+      "source_cloud_hz": 20,
+      "source_cloud_age_ms": 50.0,
+      "duration_s": 30.0,
+      "cloud_stall_invalidated": true,
+      "host_udp_counter_delta": {
+        "InDatagrams": 51363,
+        "NoPorts": 72252,
+        "InErrors": 0,
+        "OutDatagrams": 51336,
+        "RcvbufErrors": 0,
+        "SndbufErrors": 0,
+        "InCsumErrors": 0,
+        "IgnoredMulti": 74
+      },
+      "producer_status_observation": {
+        "distinct_status_samples": 1101,
+        "fresh_pelvis_fraction": 1.0,
+        "acp_output_fraction": 1.0,
+        "status_interval_p99_s": 0.02049021361015093,
+        "blocking_stages": {
+          "ready": 1101
+        }
+      },
+      "independent_checker": {
+        "window": "Window 10.00 s: {'ready': 489}; fresh pelvis 100.0% (489 samples)",
+        "stage_samples": {
+          "ready": 489
+        },
+        "returncode": 0
+      },
+      "goal_cli_returncode": 0
+    }
+  ],
+  "scope": "One sequential synthetic A/B pair including independent CLI consumers. No real LiDAR, RViz load or robot control. Field acceptance remains pending."
+}

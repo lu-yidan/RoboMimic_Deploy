@@ -22,9 +22,12 @@ def generate_launch_description():
     config = site_file.with_name('MID360_config.json')
     if json.loads(config.read_text()) != driver_config(site):
         raise RuntimeError('MID360 JSON/site mismatch, including driver extrinsic transform')
+    publish_hz = float(os.environ.get('ACP_LIDAR_HZ', '20'))
+    if publish_hz not in (10., 20.):
+        raise ValueError('ACP_LIDAR_HZ must be 10 or 20')
     driver = Node(package='livox_ros_driver2', executable='livox_ros_driver2_node',
                   name='acp_livox_driver', output='both', parameters=[dict(
-                      xfer_format=0, multi_topic=0, data_src=0, publish_freq=10.,
+                      xfer_format=0, multi_topic=0, data_src=0, publish_freq=publish_hz,
                       output_data_type=0, frame_id='livox_frame', user_config_path=str(config),
                       cmdline_input_bd_code='livox0000000001')])
     odom = Node(package='direct_lidar_inertial_odometry', executable='dlio_odom_node',

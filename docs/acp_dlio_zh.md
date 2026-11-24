@@ -75,7 +75,7 @@ DLIO/RViz 通过独立 Cyclone DDS XML 显式请求 8 MiB 接收缓存，仍使�
 | 右下 | 可选 RViz，需 G1 图形桌面或有显示的远程桌面 |
 | monitor | 预填当前位置停车目标；也可在此输入新的打点命令 |
 
-第一轮先启动左上、右上、右中、左下。机器人保持静止至少 6 秒完成 IMU 检查和校准，
+第一轮先启动左上、右上、右中、左下。机器人保持静止至少 10 秒完成 IMU 检查和校准，
 再观察移动/转向时的位姿。原 `onboard/perception/lidar/run.sh` 不要同时启动：
 它也会占用同一个雷达，退出时还会全局清理驱动。
 本入口只停止自身启动的进程；发现已有 Livox 驱动会拒绝重复启动。
@@ -84,7 +84,7 @@ DLIO/RViz 通过独立 Cyclone DDS XML 显式请求 8 MiB 接收缓存，仍使�
 
 ```bash
 cd /home/unitree/RoboMimic_Deploy
-/usr/bin/python3 onboard/localization/dlio/check.py --duration 5
+/usr/bin/python3 onboard/localization/dlio/check.py --duration 10
 ```
 
 `Blocking stage: relay` 表示定位进程已经停止或状态文件过期；
@@ -94,13 +94,19 @@ cd /home/unitree/RoboMimic_Deploy
 `imu/raw_cloud/registration/pelvis` 分别指向 IMU、原始点云、DLIO 配准、腰部/骨盆转换。
 先修复这些状态；`pose_valid=true` 后才做下方实测平地标定。
 例如配准点云年龄超过 250 ms 时不会接受当前位姿，不要通过放宽时效阈值跳过。
-`--duration 5` 连续观察五秒，分别报告各阻塞阶段的采样次数和新鲜骨盆位姿比例，
+`--duration 10` 连续观察十秒，分别报告各阻塞阶段的采样次数和新鲜骨盆位姿比例，
 最后再打印当前一帧。单帧恢复不代表间歇超时已经解决。
 中转状态每 20 ms 更新一次；检查器仍按真实采集时间计算年龄。
 `Cloud ages AT ARRIVAL` 区分点云抵达中转时已有的延迟与后续断流，
 `max arrival gaps` 是当前中转会话累计的最大间隔，包含初始化阶段。
 Python 中转与腰部导出限制 BLAS 为单线程，DLIO 的 OpenMP 设置保持独立。
 更新这些 Python 文件不需要重编 C++；需由操作者重启右中与右上对应进程才会生效。
+
+默认点云分帧改为 20 Hz，每帧约积累 50 ms 数据，减少等待整帧造成的采集年龄。
+单位时间的原始雷达点数不因此增加。可用 `ACP_LIDAR_HZ=10` 做原 10 Hz 对照；
+门限仍为配准 250 ms、骨盆 150 ms，没有用放宽门限消除告警。
+中转保留每次里程计回调的有效性检查与骨盆输出，ACP 状态文件按策略所需的 50 Hz 写入，
+避免每秒约 100 次重复创建 writer/打包 NPZ。失效仍立即撤销文件，保留采集时间戳。
 
 左中打印缺少 `/dev/shm/robomimic-1000/acp-state.npz`，表示定位/标定尚未就绪，
 不是缺少模型。Python 可以保持只读等待；只有定位新鲜且本会话标定完成才生成该文件。
@@ -136,6 +142,9 @@ read -r -p '实测骨盆原点到平地的高度(m): ' PELVIS_HEIGHT_M
 左中只读策略 → `goal.py --stop` → B → Y。仅切入检查先用当前点停车目标，
 确认后再发送短距离目标。`Need a fresh DLIO pelvis pose in the current host/session`
 表示打点时位姿不新鲜或命令运行在其他主机，目标会被拒绝。
+新版错误同时显示骨盆/状态年龄及跳变锁定原因，CLI 不自动重试或使用旧位姿替代。
+策略读取目标时在每次文件读取后取时间，避免生产者在读取期间更新文件而被误判为未来。
+目标缓存的文件标识与内容来自同一个已打开的文件，避免原子替换期间误报重复目标。
 
 ## 进入 ACP 后实时打点
 
@@ -183,7 +192,7 @@ ssh g1-wifi 'cd /home/unitree/RoboMimic_Deploy && /usr/bin/python3 onboard/local
 
 ## 已完成验证与下一份日志
 
-55 项 ACP/DLIO 回归通过，其中针对性检查 24 项，覆盖动态腰部补偿、g/SI、时间映射、重复 tick、定位重启、
+57 项 ACP/DLIO 回归通过，覆盖动态腰部补偿、g/SI、时间映射、重复 tick、定位重启、
 目标坐标和策略接收等。G1 Foxy 上的离线整链测试使用真实 DLIO 二进制和合成点云/IMU，
 收到 951 帧骨盆输出；末段静止位置范围最大约 `3.1e-7 m`，只证明合成输入接线正确，
 不代表真实雷达精度。停止点云后 ACP 文件被撤销。没有运行真实雷达驱动或控制实验。
@@ -203,6 +212,14 @@ ssh g1-wifi 'cd /home/unitree/RoboMimic_Deploy && /usr/bin/python3 onboard/local
 两次点云断流撤销均通过，骨盆位姿末段新鲜率均为 100%。
 这是单组合成对照，UDP 计数是主机全局增量；仍有输出失效，现场稳定性尚待复核。
 结果保存在 `docs/validation/dlio_udp_20261124.json`。
+
+再以相同每秒 200,000 个合成点比较 10 Hz/20 Hz 分帧（20,000/10,000 点每帧，
+首点生成年龄 100/50 ms），两组均使用 50 Hz 状态写入和 8 MiB DDS 缓存。
+独立运行与现场相同的 `check.py --duration 10`：10 Hz 为 461/490 次 ready，
+仍有 27 次 registration、2 次 acp_state；20 Hz 为 489/489 次 ready。
+两组 `goal.py --stop` 均成功，停止点云后的状态撤销均通过。
+20 Hz 的生产端末段 1,101 次状态采样也全部有效；这是单组隔离对照，未包含真实雷达或 RViz 负载。
+结果在 `docs/validation/dlio_scan_rate_20261124.json`，真实现场仍需按新版入口复核。
 
 现场结束后保留策略 `logs/` 中的普通日志、`.acp_trace.npz`，
 当前 `site.json`、`MID360_config.json`、`acp-dlio-status.json`、标定与目标 JSON，

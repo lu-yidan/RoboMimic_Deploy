@@ -12,12 +12,16 @@ from policy.acp.observations import yaw
 from policy.acp.state_ipc import boot_id
 
 
-def read_packet(path):
+def read_packet(path, *, with_key=False):
     with Path(path).expanduser().open() as stream:
+        stat = os.fstat(stream.fileno()) if with_key else None
         raw = stream.read(8193)
     if len(raw) > 8192:
         raise ValueError('Oversized goal/status IPC')
-    return json.loads(raw)
+    packet = json.loads(raw)
+    if with_key:
+        return packet, (stat.st_ino, stat.st_mtime_ns, stat.st_size)
+    return packet
 
 
 def write_goal(directory, status, target, heading, now=None):
@@ -40,11 +44,16 @@ def write_goal(directory, status, target, heading, now=None):
 
 
 def validate_status(status, now):
+    status_age = now-float(status.get('sampled_at', 0.))
+    pose_age = now-float(status.get('pose_captured_at', 0.))
     if (status.get('schema') != 1 or status.get('boot_id') != boot_id() or not status.get('pose_valid')
+            or status.get('localization_fault')
             or not status.get('session') or status.get('frame_id') != 'acp_odom'
-            or not 0 <= now-float(status['sampled_at']) <= .25
-            or not 0 <= now-float(status['pose_captured_at']) <= .15):
-        raise ValueError('Need a fresh DLIO pelvis pose in the current host/session')
+            or not 0 <= status_age <= .25 or not 0 <= pose_age <= .15):
+        raise ValueError('Need a fresh DLIO pelvis pose in the current host/session '
+                         '(pose_valid=%s, pose_age=%.1f ms, status_age=%.1f ms, fault=%s)' % (
+                             status.get('pose_valid'), 1000*pose_age, 1000*status_age,
+                             status.get('localization_fault') or 'none'))
 
 
 def relative_goal(status, forward, left, heading_delta):
@@ -61,23 +70,27 @@ class GoalReader:
         self.target = self.heading = None
 
     def read(self, now=None):
-        now = time.monotonic() if now is None else now
         status = read_packet(self.directory / 'acp-dlio-status.json')
-        validate_status(status, now)
+        # A producer can replace the file during the read. Sample the clock
+        # afterwards so that this genuinely fresh packet is not called future.
+        observed_at = time.monotonic() if now is None else now
+        validate_status(status, observed_at)
         if self.session is None:
             self.session = status['session']
         if self.session != status['session']:
             raise ValueError('DLIO restarted: restart policy and set a new goal')
         path = self.directory / 'acp-goal.json'
-        stat = path.stat()
-        key = (stat.st_ino, stat.st_mtime_ns, stat.st_size)
+        # Match the cache identity to the actual open file, even if the writer
+        # replaces the path between operations.
+        packet, key = read_packet(path, with_key=True)
         if key != self.key:
-            packet = read_packet(path)
+            observed_at = time.monotonic() if now is None else now
+            validate_status(status, observed_at)
             target = np.asarray(packet['target_position'], dtype=np.float32)
             heading = float(packet['target_heading'])
             if (packet.get('schema') != 1 or packet.get('boot_id') != boot_id()
                     or packet.get('session') != self.session or packet.get('frame_id') != 'acp_odom'
-                    or not 0 <= now-float(packet['captured_at']) <= 2.
+                    or not 0 <= observed_at-float(packet['captured_at']) <= 2.
                     or not isinstance(packet.get('request_id'), str) or not packet['request_id']
                     or target.shape != (2,) or not np.isfinite(target).all() or not math.isfinite(heading)):
                 raise ValueError('Invalid/stale goal or goal from a different localization session')

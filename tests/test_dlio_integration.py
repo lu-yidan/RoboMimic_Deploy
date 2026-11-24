@@ -15,6 +15,7 @@ from onboard.perception.lidar.mid360_to_base import compute_mid360_to_base_trans
 from policy.acp.observations import rotation
 from policy.acp.state_ipc import StateWriter, StateReader, boot_id
 from policy.acp.goal_ipc import GoalReader, relative_goal, write_goal
+import policy.acp.goal_ipc as goal_ipc
 
 
 def test_bringup_diagnosis_distinguishes_missing_calibration_from_stale_pose():
@@ -150,3 +151,51 @@ def test_live_goal_latches_world_point_and_rejects_other_session(tmp_path):
         reader.read(now=now+3.)
     with pytest.raises(ValueError, match='different localization session'):
         GoalReader(tmp_path).read(now=now+3.)
+
+
+def test_live_goal_clock_is_sampled_after_each_ipc_read(tmp_path, monkeypatch):
+    status = dict(schema=1, boot_id=boot_id(), session='live', frame_id='acp_odom',
+                  pose_valid=True, pose_captured_at=100., sampled_at=100.005)
+    packet = dict(schema=1, boot_id=boot_id(), session='live', frame_id='acp_odom',
+                  request_id='goal-1', captured_at=100.015, target_position=[1., 2.], target_heading=.2)
+    atomic_json(tmp_path/'acp-dlio-status.json', status)
+    atomic_json(tmp_path/'acp-goal.json', packet)
+    clock, original_read = [100.], goal_ipc.read_packet
+
+    def concurrent_read(path, **kwargs):
+        # Producer writes during a read, after the reader's previous clock sample.
+        clock[0] += .01
+        return original_read(path, **kwargs)
+
+    monkeypatch.setattr(goal_ipc, 'read_packet', concurrent_read)
+    monkeypatch.setattr(goal_ipc.time, 'monotonic', lambda: clock[0])
+    reader = GoalReader(tmp_path)
+    np.testing.assert_allclose(reader.read()[0], [1., 2.])
+    status['localization_fault'] = 'latched jump'
+    atomic_json(tmp_path/'acp-dlio-status.json', status)
+    with pytest.raises(ValueError, match='latched jump'):
+        reader.read()
+    status['localization_fault'] = ''
+    atomic_json(tmp_path/'acp-dlio-status.json', status)
+    clock[0] = 100.3
+    with pytest.raises(ValueError, match='fresh DLIO'):
+        reader.read()
+
+
+def test_goal_replacement_caches_the_key_of_the_actual_packet(tmp_path, monkeypatch):
+    status = dict(schema=1, boot_id=boot_id(), session='live', frame_id='acp_odom',
+                  pose_valid=True, pose_captured_at=100., sampled_at=100.)
+    atomic_json(tmp_path/'acp-dlio-status.json', status)
+    write_goal(tmp_path, status, [1., 0.], 0., now=100.)
+    original_read, replaced = goal_ipc.read_packet, [False]
+
+    def concurrent_read(path, **kwargs):
+        if path.name == 'acp-goal.json' and not replaced[0]:
+            replaced[0] = True
+            write_goal(tmp_path, status, [2., 0.], 0., now=100.01)
+        return original_read(path, **kwargs)
+
+    monkeypatch.setattr(goal_ipc, 'read_packet', concurrent_read)
+    reader = GoalReader(tmp_path)
+    np.testing.assert_allclose(reader.read(now=100.02)[0], [2., 0.])
+    np.testing.assert_allclose(reader.read(now=100.03)[0], [2., 0.])

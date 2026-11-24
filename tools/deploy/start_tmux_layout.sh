@@ -11,6 +11,16 @@ SESSION_NAME="${1:-robomimic}"
 DETACH="${2:-}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="${REPO_DIR:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
+ACP_DLIO="${ACP_DLIO:-0}"
+if [[ "$ACP_DLIO" == 1 ]]; then
+  LYD_DEPLOY_CONFIG="${LYD_DEPLOY_CONFIG:-${REPO_DIR}/config/deploy_acp_dlio.yaml}"
+  LYD_DEPLOY_READ_ONLY="${LYD_DEPLOY_READ_ONLY:-1}"
+else
+  LYD_DEPLOY_READ_ONLY="${LYD_DEPLOY_READ_ONLY:-0}"
+fi
+[[ "$ACP_DLIO" =~ ^[01]$ && "$LYD_DEPLOY_READ_ONLY" =~ ^[01]$ ]] || { echo 'ACP_DLIO and LYD_DEPLOY_READ_ONLY must be 0 or 1' >&2; exit 1; }
+POLICY_READ_ONLY_ARG=""
+[[ "$LYD_DEPLOY_READ_ONLY" == 0 ]] || POLICY_READ_ONLY_ARG=" --read-only"
 printf -v TMUX_SHELL 'bash --noprofile --rcfile %q -i' "${REPO_DIR}/tools/deploy/tmux.bashrc"
 if [[ -z "${ROBOT_IFACE:-}" ]]; then
   # Use the canonical sysfs name. Some G1 boards expose enP8p1s0 only as
@@ -103,16 +113,27 @@ printf -v cpp_uri_q '%q' "${BRIDGE_CYCLONEDDS_URI}"
 printf -v py_uri_q '%q' "${PY_BRIDGE_CYCLONEDDS_URI}"
 printf -v iface_q '%q' "${ROBOT_IFACE}"
 # Literal prefill only; no Enter and no process-killing or device cleanup.
-tmux send-keys -t "${LEFT_TOP}" -l "cd ${repo_q} && cmake -S bridge -B bridge/build -DUNITREE_SDK2_DIR=${sdk_q} -DCYCLONEDDS_IDLC=${idlc_q} && cmake --build bridge/build -j2 && LD_LIBRARY_PATH=${cpp_lib_q}:\${LD_LIBRARY_PATH:-} CYCLONEDDS_URI=${cpp_uri_q} BRIDGE_NETWORK_INTERFACE=${iface_q} bridge/build/cpp_bridge_main"
-tmux send-keys -t "${LEFT_MID}" -l "cd ${repo_q} && LYD_DEPLOY_CONFIG=${config_q} LD_LIBRARY_PATH=${py_lib_q}:\${LD_LIBRARY_PATH:-} CYCLONEDDS_URI=${py_uri_q} ROS_LOCALHOST_ONLY=0 ${python_q} bridge/python/deploy_policy.py"
+tmux send-keys -t "${LEFT_TOP}" -l "cd ${repo_q} && cmake -S bridge -B bridge/build -DUNITREE_SDK2_DIR=${sdk_q} -DCYCLONEDDS_IDLC=${idlc_q} && cmake --build bridge/build -j2 && BRIDGE_READ_ONLY=${LYD_DEPLOY_READ_ONLY} LD_LIBRARY_PATH=${cpp_lib_q}:\${LD_LIBRARY_PATH:-} CYCLONEDDS_URI=${cpp_uri_q} BRIDGE_NETWORK_INTERFACE=${iface_q} bridge/build/cpp_bridge_main"
+tmux send-keys -t "${LEFT_MID}" -l "cd ${repo_q} && LYD_DEPLOY_CONFIG=${config_q} LD_LIBRARY_PATH=${py_lib_q}:\${LD_LIBRARY_PATH:-} CYCLONEDDS_URI=${py_uri_q} ROS_LOCALHOST_ONLY=0 ${python_q} bridge/python/deploy_policy.py${POLICY_READ_ONLY_ARG}"
+if [[ "$ACP_DLIO" == 1 ]]; then
+tmux send-keys -t "${LEFT_BOTTOM}" -l "watch -n 0.5 cat /dev/shm/robomimic-\$(id -u)/acp-dlio-status.json"
+tmux send-keys -t "${RIGHT_TOP}" -l "cd ${repo_q} && LD_LIBRARY_PATH=${py_lib_q}:\${LD_LIBRARY_PATH:-} CYCLONEDDS_URI=${py_uri_q} ${python_q} onboard/localization/dlio/export_waist.py"
+tmux send-keys -t "${RIGHT_MID}" -l "cd ${repo_q} && env -u CONDA_PREFIX -u LD_LIBRARY_PATH -u PYTHONPATH ACP_DLIO_PUBLISH=1 bash onboard/localization/dlio/run.sh"
+tmux send-keys -t "${RIGHT_BOTTOM}" -l "cd ${repo_q} && env -u CONDA_PREFIX -u LD_LIBRARY_PATH -u PYTHONPATH bash onboard/localization/dlio/view.sh"
+else
 tmux send-keys -t "${LEFT_BOTTOM}" -l "cd ${repo_q} && LYD_DEPLOY_CONFIG=${config_q} LD_LIBRARY_PATH=${py_lib_q}:\${LD_LIBRARY_PATH:-} CYCLONEDDS_URI=${py_uri_q} ${python_q} onboard/perception/debug/sensor_dashboard.py"
 tmux send-keys -t "${RIGHT_TOP}" -l "cd ${repo_q} && LYD_DEPLOY_CONFIG=${config_q} LD_LIBRARY_PATH=${py_lib_q}:\${LD_LIBRARY_PATH:-} CYCLONEDDS_URI=${py_uri_q} ${python_q} tools/capture/run_camera.py"
 tmux send-keys -t "${RIGHT_MID}" -l "cd ${repo_q} && ./onboard/perception/lidar/run.sh --show --base-y-bias 0.00 --dds-topic rt/lidar_ball_state"
 tmux send-keys -t "${RIGHT_BOTTOM}" -l "cd ${repo_q} && bash onboard/perception/run_ball_fuser.sh"
+fi
 
 # Existing extra monitoring window (the main window still has six panes).
 tmux new-window -d -t "${SESSION_NAME}" -n monitor -c "${REPO_DIR}" "${TMUX_SHELL}"
+if [[ "$ACP_DLIO" == 1 ]]; then
+tmux send-keys -t "${SESSION_NAME}:1.0" -l "cd ${repo_q} && /usr/bin/python3 onboard/localization/dlio/goal.py --stop"
+else
 tmux send-keys -t "${SESSION_NAME}:1.0" -l "cd ${repo_q} && LD_LIBRARY_PATH=${py_lib_q}:\${LD_LIBRARY_PATH:-} CYCLONEDDS_URI=${py_uri_q} ${python_q} tools/diagnostics/check_ball_state.py"
+fi
 
 # Stable pane-local labels: terminal title escape sequences cannot overwrite them.
 label_pane() {
@@ -125,6 +146,15 @@ label_pane "${RIGHT_TOP}" '右上 Camera | gray / php_depth'
 label_pane "${RIGHT_MID}" '右中 LiDAR | 雷达球检测'
 label_pane "${RIGHT_BOTTOM}" '右下 Fuser | 球位置融合'
 label_pane "${SESSION_NAME}:1.0" 'Monitor | 最终球状态（DDS）'
+if [[ "$ACP_DLIO" == 1 ]]; then
+  label_pane "${LEFT_TOP}" "Bridge | read-only=${LYD_DEPLOY_READ_ONLY}"
+  label_pane "${LEFT_MID}" "ACP | read-only=${LYD_DEPLOY_READ_ONLY}"
+  label_pane "${LEFT_BOTTOM}" 'DLIO | 骨盆定位与数据时效'
+  label_pane "${RIGHT_TOP}" 'Waist | 只读腰部状态'
+  label_pane "${RIGHT_MID}" 'MID360 + DLIO | 定位'
+  label_pane "${RIGHT_BOTTOM}" 'RViz | 2D Goal Pose 实时打点'
+  label_pane "${SESSION_NAME}:1.0" 'Goal | 固定当前位姿停车；可改实时目标'
+fi
 for window in "${SESSION_NAME}:0" "${SESSION_NAME}:1"; do
   tmux set-option -w -t "${window}" pane-border-status top
   tmux set-option -w -t "${window}" pane-border-format ' #{pane_index} | #{@purpose} '

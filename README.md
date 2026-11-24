@@ -228,6 +228,9 @@ The [integration report](docs/validation/lyd_deploy_20261025.json) records model
 
 Based on [ccrpRepo/RoboMimic_Deploy](https://github.com/ccrpRepo/RoboMimic_Deploy) and [OpenDriveLab/RoboNaldo_Deploy](https://github.com/OpenDriveLab/RoboNaldo_Deploy). Training: [RoboNaldo](https://github.com/opendrivelab/RoboNaldo). ScaleBFM: [official source](https://github.com/zengweishuai/ScaleBFM) and [weights](https://huggingface.co/WeishuaiZeng/ScaleBFM/tree/main). Upstream licenses and attribution are retained.
 
+ACP G1: [interactive MuJoCo, B → Y](docs/acp_interactive_zh.md) and
+[DLIO localization, dual read-only bring-up and live goal selection](docs/acp_dlio_zh.md).
+
 ## PHP Parkour (lyd-php-parkour branch)
 
 PHP now lives alongside the other policies in `policy/php_parkour/` and uses the same MuJoCo process and FSM. Configure `php.enabled` and the external `php.model_dir` in `config/deploy.yaml`. No separate Holosoma launcher or depth shared-memory server is needed.

@@ -54,12 +54,17 @@ class PolicyRuntime:
         self._acp_error = None
         self._acp_last_tick = None
         self._acp_tick_time = time.monotonic()
+        self._acp_goal_reader = None
         if self.acp_enabled:
             from policy.acp.state_ipc import StateReader
             if self.num_joints != 29 or abs(self.control_dt-.02) > 1e-9:
                 raise ValueError('ACP bridge requires 29 joints and 50 Hz control')
             if acp_source is None:
                 self.acp_source = StateReader(self.acp_config)
+            if self.acp_config.get('real', {}).get('require_live_goal', False):
+                from policy.acp.goal_ipc import GoalReader
+                from policy.acp.state_ipc import state_path
+                self._acp_goal_reader = GoalReader(state_path(self.acp_config).parent)
         if self.php_enabled:
             from policy.php_parkour.real_depth import DepthBuffer
             from policy.php_parkour.depth_ipc import DepthReader
@@ -361,6 +366,20 @@ class PolicyRuntime:
                 robot_stamps.append(received)
             if any(abs(stamp-sample.pose_captured_at) > skew for stamp in robot_stamps):
                 error = 'ACP localization and robot state timestamps disagree'
+        if not error and getattr(self, '_acp_goal_reader', None) is not None:
+            try:
+                reader = self._acp_goal_reader
+                if sample.frame_id != 'acp_odom':
+                    raise ValueError('DLIO goals and localization must both use acp_odom')
+                old_request = reader.request_id
+                target, heading = reader.read()
+                self.FSM_controller.acp_policy.target = target
+                self.FSM_controller.acp_policy.heading = heading
+                if reader.request_id != old_request and self._logger is not None:
+                    self._logger.event('acp_goal', request_id=reader.request_id,
+                                       target=target.tolist(), heading=heading, frame_id=sample.frame_id)
+            except (ValueError, KeyError, OSError) as failure:
+                error = 'ACP live goal: ' + str(failure)
         if not error:
             s.pelvis_pos_w = np.asarray(sample.pelvis_pos_w, dtype=np.float32).copy()
             s.pelvis_quat_w = np.asarray(sample.pelvis_quat_w, dtype=np.float32).copy()

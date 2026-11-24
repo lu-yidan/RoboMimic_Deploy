@@ -1,0 +1,23 @@
+# Explicit real ACP preset. First use ONLY with C++ and Python read-only modes.
+scalebfm:
+  enabled: false
+amp:
+  profile: amp_0309_1
+smp:
+  profile: v34_balanced4_hard19000
+php:
+  enabled: false
+acp:
+  enabled: true
+  entry_mode: loco
+  model_dir: policy/acp/models
+  max_age_s: 0.15
+  max_sync_skew_s: 0.04
+  max_tilt_rad: 0.7
+  min_clearance: 0.3
+  real:
+    enabled: true
+    frame_id: acp_odom
+    require_live_goal: true
+    trace_enabled: true
+    trace_max_frames: 3000

@@ -14,9 +14,43 @@ from common.remote_controller import KeyMap
 from common.utils import FSMCommand, FSMStateName
 from deploy_real.scalebfm_input import RealPolicyInput
 from policy.acp.state_ipc import StateReader, StateWriter
+from policy.acp.goal_ipc import GoalReader, write_goal
+from onboard.localization.dlio.core import atomic_json
+from policy.acp.state_ipc import boot_id
 
 
 class ACPBridgeTest(unittest.TestCase):
+    def test_live_goal_missing_blocks_acp_and_new_goal_uses_same_policy(self):
+        runtime, state = self.fixture(), self.state()
+        runtime.acp_config['real']['frame_id'] = 'acp_odom'
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder)/'state.npz'
+            stamp = state._local_received_monotonic
+            StateWriter(path, 'acp_odom').write(pelvis_pos_w=[0, 0, .78], pelvis_quat_w=[1, 0, 0, 0],
+                                          captured_at=stamp, sequence=1, ground_height=0.)
+            runtime.acp_source = StateReader(runtime.acp_config, path)
+            runtime.acp_source.poll()
+            runtime._acp_goal_reader = GoalReader(folder)
+            status = dict(schema=1, boot_id=boot_id(), session='live', frame_id='acp_odom',
+                          pose_valid=True, pose_captured_at=stamp, sampled_at=stamp)
+            atomic_json(Path(folder)/'acp-dlio-status.json', status)
+            runtime._apply_acp_state(state)
+            self.assertFalse(runtime.state_cmd.acp_pose_valid)
+            policy = runtime.FSM_controller.acp_policy
+            write_goal(folder, status, [1, .2], .3)
+            runtime._apply_acp_state(state)
+            self.assertTrue(runtime.state_cmd.acp_pose_valid)
+            np.testing.assert_allclose(policy.target, [1, .2])
+            write_goal(folder, status, [.5, -.4], -.2)
+            runtime._apply_acp_state(state)
+            self.assertTrue(runtime.state_cmd.acp_pose_valid)
+            np.testing.assert_allclose(policy.target, [.5, -.4])
+            policy.enter.assert_not_called()
+            status['session'] = 'restarted'
+            atomic_json(Path(folder)/'acp-dlio-status.json', status)
+            runtime._apply_acp_state(state)
+            self.assertFalse(runtime.state_cmd.acp_pose_valid)
+
     def fixture(self):
         runtime = PolicyRuntime.__new__(PolicyRuntime)
         runtime.state_cmd, runtime.policy_output = StateAndCmd(29), PolicyOutput(29)

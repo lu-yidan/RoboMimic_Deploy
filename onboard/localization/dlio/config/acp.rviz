@@ -1,0 +1,54 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+Visualization Manager:
+  Class: ""
+  Global Options:
+    Fixed Frame: acp_odom
+    Frame Rate: 20
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Name: Grid
+      Enabled: true
+      Cell Size: 1
+    - Class: rviz_default_plugins/PointCloud2
+      Name: DLIO registered cloud
+      Enabled: true
+      Topic:
+        Value: /dlio/odom_node/pointcloud/deskewed
+        Reliability Policy: Best Effort
+        Durability Policy: Volatile
+        Depth: 1
+      Size (Pixels): 2
+      Style: Points
+      Color Transformer: AxisColor
+    - Class: rviz_default_plugins/Odometry
+      Name: Pelvis
+      Enabled: true
+      Topic:
+        Value: /acp/pelvis/odom
+        Reliability Policy: Best Effort
+        Durability Policy: Volatile
+        Depth: 5
+    - Class: rviz_default_plugins/Path
+      Name: DLIO path
+      Enabled: true
+      Topic:
+        Value: /dlio/odom_node/path
+        Reliability Policy: Best Effort
+        Durability Policy: Volatile
+        Depth: 1
+  Tools:
+    - Class: rviz_default_plugins/Interact
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/SetGoal
+      Topic: /acp/goal_pose
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Distance: 6
+      Pitch: 0.7
+      Yaw: 0.7
+Window Geometry:
+  Width: 1100
+  Height: 750

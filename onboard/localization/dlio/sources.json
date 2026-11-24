@@ -1,0 +1,12 @@
+{
+  "dlio": {
+    "url": "https://github.com/vectr-ucla/direct_lidar_inertial_odometry.git",
+    "ref": "feature/ros2",
+    "commit": "c8acc37100e349d70a9d8432d656cbce7e5072cd"
+  },
+  "livox": {
+    "url": "https://github.com/Livox-SDK/livox_ros_driver2.git",
+    "ref": "1.2.4",
+    "commit": "b6ff7d1c8b210a96b74e919823771e1e32249758"
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "date": "2026-11-24",
+  "platform": "G1 aarch64 Ubuntu 20.04 ROS2 Foxy",
+  "physical_sensor_started": false,
+  "robot_control_started": false,
+  "upstream": {
+    "dlio": {
+      "url": "https://github.com/vectr-ucla/direct_lidar_inertial_odometry.git",
+      "ref": "feature/ros2",
+      "commit": "c8acc37100e349d70a9d8432d656cbce7e5072cd"
+    },
+    "livox": {
+      "url": "https://github.com/Livox-SDK/livox_ros_driver2.git",
+      "ref": "1.2.4",
+      "commit": "b6ff7d1c8b210a96b74e919823771e1e32249758"
+    }
+  },
+  "build": {
+    "passed": true,
+    "duration_s": 173,
+    "workspace": "~/acp_dlio_ws",
+    "sdk": "existing Livox SDK 3.1.1"
+  },
+  "synthetic_ros_check": {
+    "passed": true,
+    "pelvis_messages": 951,
+    "stationary_last100_range_m": [
+      1.1579076771017771e-07,
+      1.2377732638699294e-07,
+      3.028472417287986e-07
+    ],
+    "cloud_stall_invalidated": true
+  },
+  "targeted_tests": {
+    "passed": 23
+  },
+  "field_validation": "pending: live IMU/cloud, mount/waist chain, floor measurement, localization direction/drift/timing, wrist posture/gains, dual read-only ACP trace"
+}

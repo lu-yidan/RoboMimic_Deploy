@@ -11,11 +11,45 @@ from onboard.localization.dlio.core import (HostClock, PoseGate, WaistHistory, a
                                            imu_si, pelvis_pose, quaternion_wxyz)
 from onboard.localization.dlio.relay import point_times
 from onboard.localization.dlio.check import assess
+from onboard.localization.dlio.calibrate import validate_calibration
 from onboard.perception.lidar.mid360_to_base import compute_mid360_to_base_transform, Rz, Ry
 from policy.acp.observations import rotation
 from policy.acp.state_ipc import StateWriter, StateReader, boot_id
 from policy.acp.goal_ipc import GoalReader, relative_goal, write_goal
 import policy.acp.goal_ipc as goal_ipc
+
+
+def test_calibration_requires_fresh_sources_and_explains_motion_limits():
+    status = dict(schema=1, boot_id=boot_id(), session='live', frame_id='acp_odom',
+                  pose_valid=True, sampled_at=100., pose_captured_at=99.99,
+                  imu_age_s=.005, raw_cloud_age_s=.06, registration_age_s=.08,
+                  speed_mps=.01, turn_rate_rps=.02)
+    validate_calibration(status, .78, 100.01)
+    status['speed_mps'] = .08
+    with pytest.raises(ValueError, match='speed=0.0800'):
+        validate_calibration(status, .78, 100.01)
+    status.update(speed_mps=.01, turn_rate_rps=.15)
+    with pytest.raises(ValueError, match='turn_rate=0.1500'):
+        validate_calibration(status, .78, 100.01)
+    status.update(turn_rate_rps=.02, registration_age_s=.245)
+    with pytest.raises(ValueError, match='registration not fresh'):
+        validate_calibration(status, .78, 100.01)
+
+
+def test_calibration_rejects_jump_even_if_previous_pose_is_recent():
+    status = dict(schema=1, boot_id=boot_id(), session='live', frame_id='acp_odom',
+                  pose_valid=True, sampled_at=100., pose_captured_at=99.99,
+                  imu_age_s=.005, raw_cloud_age_s=.06, registration_age_s=.08,
+                  speed_mps=.01, turn_rate_rps=.02, localization_fault='latched jump')
+    with pytest.raises(ValueError, match='latched jump'):
+        validate_calibration(status, .78, 100.01)
+    status['localization_fault'] = ''
+    for height in (.2, 1.3, float('nan')):
+        with pytest.raises(ValueError, match='height must be'):
+            validate_calibration(status, height, 100.01)
+    status['speed_mps'] = float('nan')
+    with pytest.raises(ValueError, match='nonfinite'):
+        validate_calibration(status, .78, 100.01)
 
 
 def test_bringup_diagnosis_distinguishes_missing_calibration_from_stale_pose():

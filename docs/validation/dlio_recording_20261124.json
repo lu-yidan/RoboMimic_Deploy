@@ -1,0 +1,26 @@
+{
+  "date": "2026-11-24",
+  "platform": "G1 Ubuntu 20.04 ROS2 Foxy",
+  "physical_sensor_started": false,
+  "robot_control_started": false,
+  "isolated_ros_domain": 78,
+  "regression_tests_passed": 59,
+  "recorder_check": {
+    "passed": true,
+    "configured_duration_s": 5,
+    "topic": "/livox/imu",
+    "synthetic_messages_read_back": 89,
+    "sqlite_database_and_metadata_closed": true,
+    "qos": "best_effort",
+    "real_pointcloud_throughput_tested": false
+  },
+  "calibration_guards": {
+    "speed_limit_mps": 0.05,
+    "turn_rate_limit_rps": 0.1,
+    "reject_latched_localization_fault": true,
+    "reject_nonfinite_motion": true,
+    "sensor_age_limits_unchanged": true
+  },
+  "physical_localization_discontinuity_fixed": false,
+  "next_evidence_needed": "A stationary real LiDAR/IMU recording including startup and a discontinuity, for isolated offline replay."
+}

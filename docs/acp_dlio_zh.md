@@ -129,6 +129,8 @@ read -r -p '实测骨盆原点到平地的高度(m): ' PELVIS_HEIGHT_M
 ```
 
 标定只对当前 relay 会话有效；重启定位后要重新确认世界系与平地高度。
+标定保留速度 `<=0.05 m/s`、角速度 `<=0.1 rad/s` 的静止要求。
+拒绝时打印具体超限数值、数据年龄或跳变原因；不会通过平均掉跳变来强行标定。
 状态 `pose_valid=true` 表示定位几何链已更新，
 `acp_output_valid=true` 还要求本会话标定完成、点云/IMU/腰部新鲜同步。
 缺失标定时不会给 ACP 伪造有效状态。定位姿态与 bridge 状态仍要满足 40 ms 同步要求。
@@ -192,7 +194,7 @@ ssh g1-wifi 'cd /home/unitree/RoboMimic_Deploy && /usr/bin/python3 onboard/local
 
 ## 已完成验证与下一份日志
 
-57 项 ACP/DLIO 回归通过，覆盖动态腰部补偿、g/SI、时间映射、重复 tick、定位重启、
+59 项 ACP/DLIO 回归通过，覆盖动态腰部补偿、g/SI、时间映射、重复 tick、定位重启、
 目标坐标和策略接收等。G1 Foxy 上的离线整链测试使用真实 DLIO 二进制和合成点云/IMU，
 收到 951 帧骨盆输出；末段静止位置范围最大约 `3.1e-7 m`，只证明合成输入接线正确，
 不代表真实雷达精度。停止点云后 ACP 文件被撤销。没有运行真实雷达驱动或控制实验。
@@ -225,15 +227,24 @@ ssh g1-wifi 'cd /home/unitree/RoboMimic_Deploy && /usr/bin/python3 onboard/local
 当前 `site.json`、`MID360_config.json`、`acp-dlio-status.json`、标定与目标 JSON，
 以及 `logs/acp-dlio/relay-*.jsonl` 和最近一次 `~/.ros/log/` 的启动目录。
 新版自动保存各阶段计数、时效和独立错误；ROS 节点 stdout/stderr 同时显示与落盘。
-需复现点云问题时，在独立 ROS/system 终端记录：
+遇到持续新鲜但定位跳变时，先保持策略关闭，做一次 90 秒定位录包。
+左上 bridge 和右上腰部导出保持运行，右中 DLIO 先停止。
+在另一个 G1 终端先启动录包：
 
 ```bash
-source /opt/ros/foxy/setup.bash
-source onboard/localization/dlio/transport_env.sh && \
-ros2 bag record -o "$HOME/acp_dlio_bag_$(date +%Y%m%d_%H%M%S)" \
-  /livox/lidar /livox/imu /acp/livox/imu_si \
-  /dlio/odom_node/odom /dlio/odom_node/pointcloud/deskewed /acp/pelvis/odom /acp/goal_pose
+cd /home/unitree/RoboMimic_Deploy
+env -u CONDA_PREFIX -u LD_LIBRARY_PATH -u PYTHONPATH \
+  bash onboard/localization/dlio/record.sh 90
 ```
+
+显示 `Listening for topics` 后，在右中按原命令启动 DLIO，机器人保持吊臂下静止。
+本轮不运行标定、目标或 ACP 策略；若发生 `localization_reset`，保留定位进程直到录包自动结束。
+录包只创建传感器/里程计订阅，不启动或停止雷达、bridge 或电机程序。
+使用 best-effort QoS，避免要求实时发布者等待诊断录制器。
+输出目录在 `logs/acp-dlio/record-*/`，包含原始/checked 点云、raw/SI IMU、
+DLIO 与骨盆输出的 ROS bag、起止状态、配置、commit 与同会话诊断轨迹。
+在 G1 Foxy 的隔离 domain 78 上验证了 5 秒自动录制/关闭，保存并读回 89 条合成 IMU；
+此验证仅覆盖录包工具，不表示修复了真实点云的定位跳变。
 
 只读通过后，才有现场证据决定是否进入已有防跌流程下的 B → Y 短距离闭环。
 现有 MuJoCo 动态转向切入失败仍保留，未通过提高倾角阈值掩盖。

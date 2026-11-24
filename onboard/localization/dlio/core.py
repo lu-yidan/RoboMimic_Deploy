@@ -172,6 +172,8 @@ class PoseGate:
                 self.failed = 'DLIO discontinuity/reset; restart and recalibrate world/targets'
                 self.failure_details = dict(stamp=stamp, previous_stamp=old_t, dt_s=dt,
                                             translation_m=distance, rotation_rad=angle,
+                                            previous_position_w=old_p.tolist(), position_w=position.tolist(),
+                                            translation_delta_w=(position-old_p).tolist(),
                                             translation_limit_m=.03+3*dt, rotation_limit_rad=.05+8*dt)
                 raise ValueError(self.failed)
         self.previous = (stamp, position.copy(), r)

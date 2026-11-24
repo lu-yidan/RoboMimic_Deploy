@@ -1,0 +1,16 @@
+# Do not make live sensor writers wait for the diagnostic recorder.
+/livox/lidar: &cloud
+  history: keep_last
+  depth: 5
+  reliability: best_effort
+  durability: volatile
+/acp/livox/points_checked: *cloud
+/dlio/odom_node/pointcloud/deskewed: *cloud
+/livox/imu: &state
+  history: keep_last
+  depth: 200
+  reliability: best_effort
+  durability: volatile
+/acp/livox/imu_si: *state
+/dlio/odom_node/odom: *state
+/acp/pelvis/odom: *state

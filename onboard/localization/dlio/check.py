@@ -88,6 +88,8 @@ def main():
                     registration=delay+status.get('registration_age_s', 0), pose=now-status.get('pose_captured_at', 0))
         print('Age (ms): ' + ', '.join(k+'='+('n/a' if v is None else '%.1f' % (1000*v)) for k, v in ages.items()))
         print('pose_valid=%s acp_output_valid=%s' % (status.get('pose_valid'), status.get('acp_output_valid')))
+        print('Motion estimate: speed=%s m/s (calibration <=0.05), turn_rate=%s rad/s (<=0.10)' % (
+            status.get('speed_mps'), status.get('turn_rate_rps')))
         try:
             waist = read_json(directory/'acp-waist.json')
             waist_now = time.monotonic()  # Sample after reading: the exporter can update during the read.

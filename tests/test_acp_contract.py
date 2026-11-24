@@ -3,6 +3,7 @@ import hashlib
 import json
 from pathlib import Path
 import time
+from types import SimpleNamespace
 
 import mujoco
 import numpy as np
@@ -166,6 +167,32 @@ def test_policy_rejects_external_weights_even_with_matching_graph_hash(bundle):
     (directory / 'manifest.json').write_text(json.dumps(manifest))
     with pytest.raises(ValueError, match='self-contained'):
         make_policy(bundle)
+
+
+def test_arm_probability_roundoff_is_clipped_without_changing_actions(bundle):
+    policy = make_policy(bundle)
+    values = [bundle[3][key].copy() for key in ('actions','contacts','occupancy')]
+    values[2][0, 0, 0] = -5.960464477539063e-8
+    values[2][0, 1, 0] = 1+np.finfo(np.float32).eps
+    policy.session = SimpleNamespace(run=lambda *args: values)
+    result = policy._infer(np.zeros((1, 939), np.float32))
+    assert result[2].min() == 0 and result[2].max() == 1
+    np.testing.assert_array_equal(result[0], bundle[3]['actions'])
+    np.testing.assert_array_equal(result[1], bundle[3]['contacts'])
+    assert policy.last_occupancy_range[0] < 0 and policy.last_occupancy_range[1] > 1
+
+
+@pytest.mark.parametrize('value', [-1e-4, 1.001, np.nan])
+def test_real_probability_errors_still_damp(bundle, value):
+    policy = make_policy(bundle)
+    values = [bundle[3][key].copy() for key in ('actions','contacts','occupancy')]
+    values[2][0, 0, 0] = value
+    policy.session = SimpleNamespace(run=lambda *args: values)
+    s = fresh(policy)
+    policy.enter()
+    policy.run()
+    assert policy.failed and s.skill_cmd == FSMCommand.PASSIVE
+    np.testing.assert_array_equal(policy.policy_output.kps, 0)
 
 
 def test_real_fsm_entry_ramp_reset_and_same_tick_damping(bundle):

@@ -218,6 +218,7 @@ class PolicyRuntime:
             observation_gyro=s.acp_ang_vel.copy(),
             robot_sample_captured_at=s.acp_robot_time, robot_sample_tick=s.acp_robot_tick,
             inference_ms=float(getattr(policy, 'last_inference_ms', float('nan'))),
+            raw_occupancy_range=np.asarray(getattr(policy, 'last_occupancy_range', [float('nan')]*2)),
             pelvis_pos_w=s.pelvis_pos_w.copy(), pelvis_quat_w=s.pelvis_quat_w.copy(),
             pose_captured_at=s.acp_pose_time, terrain_captured_at=s.acp_terrain_time,
             robot_received_at=getattr(bridge_state, '_local_received_monotonic', float('nan')),

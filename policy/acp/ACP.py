@@ -96,6 +96,7 @@ class ACP(FSMState):
         self.last_observation = None
         self.last_raw_action = None
         self.last_inference_ms = float('nan')
+        self.last_occupancy_range = None
 
     def error(self):
         s, now = self.state_cmd, time.monotonic()
@@ -173,8 +174,14 @@ class ACP(FSMState):
         self.last_inference_ms = (time.perf_counter()-started)*1000
         if [x.shape for x in result] != [(1,23),(1,9,3),(1,9,1)] or not all(np.isfinite(x).all() for x in result):
             raise ValueError('Invalid ACP inference output')
-        if np.any(result[2] < 0) or np.any(result[2] > 1):
+        # ARM ORT's sigmoid can undershoot zero by ~6e-8. Reject meaningful
+        # range errors, retaining the raw bounds for diagnosis, then clip only
+        # this diagnostic probability output. Actions/contacts are untouched.
+        self.last_occupancy_range = np.array([result[2].min(), result[2].max()], dtype=np.float32)
+        epsilon = 4*np.finfo(np.float32).eps
+        if np.any(result[2] < -epsilon) or np.any(result[2] > 1+epsilon):
             raise ValueError('Invalid ACP occupancy probability')
+        result[2] = np.clip(result[2], 0., 1.)
         return result
 
     def run(self):

@@ -12,8 +12,5 @@ if [[ "$DISPLAY" == localhost:* || "$DISPLAY" == 127.0.0.1:* ]]; then
   export __GLX_VENDOR_LIBRARY_NAME=mesa
 fi
 source /opt/ros/foxy/setup.bash
-unset CYCLONEDDS_URI
-export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
-export ROS_DOMAIN_ID="${ACP_ROS_DOMAIN_ID:-37}"
-export ROS_LOCALHOST_ONLY=1
+source "$HERE/transport_env.sh"
 exec rviz2 -d "$HERE/config/acp.rviz"

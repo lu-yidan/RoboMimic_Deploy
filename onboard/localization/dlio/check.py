@@ -19,6 +19,8 @@ def assess(status, now, host_boot):
     delay = now-float(status.get('sampled_at', 0.))
     if not 0 <= delay <= .5:
         return 'relay', 'Status is old: the right-middle DLIO/relay process has stopped or stalled.'
+    if status.get('localization_fault') or 'DLIO discontinuity/reset' in str(status.get('stage_errors', {}).get('odom', '')):
+        return 'localization_reset', 'DLIO jump/reset is latched. Restart right-middle DLIO; review the fault details. Recalibrate ground/targets only after stable fresh poses.'
     pose_fresh = status.get('pose_valid') and 0 <= now-float(status.get('pose_captured_at', 0.)) <= .15
     counts = status.get('counts', {})
     if counts and not counts.get('raw_imu', 0):
@@ -74,6 +76,8 @@ def main():
         print('Blocking stage: ' + stage + '\nNext: ' + action)
         print('Error: ' + str(status.get('error', '')))
         print('Stage errors: ' + str(status.get('stage_errors', {})))
+        if status.get('localization_fault_details'):
+            print('First localization fault: ' + str(status['localization_fault_details']))
         print('Counts: ' + str(status.get('counts', {})))
         delay = now-status['sampled_at']
         ages = dict(status=delay, IMU=delay+status.get('imu_age_s', 0),

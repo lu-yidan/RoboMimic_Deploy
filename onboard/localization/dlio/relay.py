@@ -265,6 +265,8 @@ def main():
                            waist_skew_s=self.waist_skew, counts=self.counts.copy(),
                            stage_errors=self.stage_errors.copy(),
                            calibration_ready=self.calibration is not None,
+                           localization_fault=self.gate.failed,
+                           localization_fault_details=self.gate.failure_details,
                            diagnostic_trace=str(self.trace))
             payload.update(raw_cloud_arrival_age_s=now-self.last_raw_arrival if self.last_raw_arrival else None,
                            registered_cloud_arrival_age_s=now-self.last_registered_arrival if self.last_registered_arrival else None,

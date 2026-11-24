@@ -31,6 +31,9 @@ def test_bringup_diagnosis_distinguishes_missing_calibration_from_stale_pose():
     assert assess(status, 100.02, 'host')[0] == 'registration'
     status.update(imu_age_s=.14)
     assert assess(status, 100.02, 'host')[0] == 'imu'
+    # Recovering the point stream must not hide an already latched world reset.
+    status['stage_errors'] = dict(odom='DLIO discontinuity/reset; restart and recalibrate world/targets')
+    assert assess(status, 100.02, 'host')[0] == 'localization_reset'
 
 
 def test_articulated_head_is_not_pelvis_odometry():
@@ -87,8 +90,13 @@ def test_waist_session_skew_and_pose_reset_are_rejected():
     assert not gate.check(100., [0, 0, 0], [1, 0, 0, 0], 'acp_odom', 'acp_lidar_base')
     with pytest.raises(ValueError, match='discontinuity'):
         gate.check(100.01, [2, 0, 0], [1, 0, 0, 0], 'acp_odom', 'acp_lidar_base')
+    fault = gate.failure_details.copy()
+    assert fault['translation_m'] == 2.
+    assert fault['dt_s'] == pytest.approx(.01)
+    assert fault['translation_m'] > fault['translation_limit_m']
     with pytest.raises(ValueError, match='discontinuity'):
         gate.check(100.02, [0, 0, 0], [1, 0, 0, 0], 'acp_odom', 'acp_lidar_base')
+    assert gate.failure_details == fault
 
 
 def test_point_timestamp_ns_seconds_and_row_padding():

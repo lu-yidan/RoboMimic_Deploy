@@ -48,6 +48,20 @@ ACP_DLIO=1 bash tools/deploy/start_tmux_layout.sh acp-dlio-readonly
 # 也可使用原别名：rb，然后 ACP_DLIO=1 sr acp-dlio-readonly
 ```
 
+启动右中 DLIO 前，主机的 UDP 接收缓存上限需至少 8 MiB：
+
+```bash
+sudo sysctl -w net.core.rmem_max=8388608
+```
+
+此设置本次启动有效，重启主机后需重设。脚本只检查，不自动执行 sudo 或写永久系统配置。
+DLIO/RViz 通过独立 Cyclone DDS XML 显式请求 8 MiB 接收缓存，仍使用本机 domain 37；
+配置使用 G1 ROS Foxy/Cyclone DDS 0.7 支持的 `MinimumSocketReceiveBufferSize` 字段。
+只提高内核上限而不重启这些 ROS 进程，不会扩大它们已经打开的 socket。
+该 XML 仅用于定位、RViz 和 ROS 录制终端；bridge/腰部 DDS 继续使用原配置。
+依据为 [ROS 2 Foxy DDS 调优文档](https://github.com/ros2/ros2_documentation/blob/foxy/source/How-To-Guides/DDS-tuning.rst)
+与 [Cyclone DDS 0.7 配置源码](https://github.com/eclipse-cyclonedds/cyclonedds/blob/0.7.0/src/core/ddsi/include/dds/ddsi/ddsi_cfgelems.h)。
+
 所有命令只预填，按回车才运行。已有同名会话只会重新连接，不会替换旧命令。
 机器人调试模式由操作者在启动这些程序前手动进入，程序不接管这个步骤。
 
@@ -74,6 +88,9 @@ cd /home/unitree/RoboMimic_Deploy
 ```
 
 `Blocking stage: relay` 表示定位进程已经停止或状态文件过期；
+`localization_reset` 表示已经锁定定位跳变，需重启右中 DLIO，稳定后重新标定地面和目标；
+此时即使点云恢复也不会自动解锁。`First localization fault` 保存首次触发时的时间差、
+位移、角度及对应限值，后续回调不会覆盖证据。
 `imu/raw_cloud/registration/pelvis` 分别指向 IMU、原始点云、DLIO 配准、腰部/骨盆转换。
 先修复这些状态；`pose_valid=true` 后才做下方实测平地标定。
 例如配准点云年龄超过 250 ms 时不会接受当前位姿，不要通过放宽时效阈值跳过。
@@ -180,6 +197,13 @@ ssh g1-wifi 'cd /home/unitree/RoboMimic_Deploy && /usr/bin/python3 onboard/local
 状态更新间隔 P99 分别为 25.4/21.5 ms；未放宽任何时效阈值。
 合成发布器修正前的失败记录也保留在 `docs/validation/dlio_timing_20261124.json`。
 
+随后在隔离 domain 78 上做一组顺序缓存对照：同样每帧 20,000 点、点云年龄 100 ms、
+各运行 30 秒。默认缓存新增 41 次主机 UDP 接收缓存丢包，8 MiB 配置为 0 次；
+原始点云最大到达间隔为 194/104 ms，ACP 输出有效率为 91.9%/97.4%。
+两次点云断流撤销均通过，骨盆位姿末段新鲜率均为 100%。
+这是单组合成对照，UDP 计数是主机全局增量；仍有输出失效，现场稳定性尚待复核。
+结果保存在 `docs/validation/dlio_udp_20261124.json`。
+
 现场结束后保留策略 `logs/` 中的普通日志、`.acp_trace.npz`，
 当前 `site.json`、`MID360_config.json`、`acp-dlio-status.json`、标定与目标 JSON，
 以及 `logs/acp-dlio/relay-*.jsonl` 和最近一次 `~/.ros/log/` 的启动目录。
@@ -188,8 +212,7 @@ ssh g1-wifi 'cd /home/unitree/RoboMimic_Deploy && /usr/bin/python3 onboard/local
 
 ```bash
 source /opt/ros/foxy/setup.bash
-unset CYCLONEDDS_URI
-export ROS_DOMAIN_ID=37 ROS_LOCALHOST_ONLY=1 RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+source onboard/localization/dlio/transport_env.sh && \
 ros2 bag record -o "$HOME/acp_dlio_bag_$(date +%Y%m%d_%H%M%S)" \
   /livox/lidar /livox/imu /acp/livox/imu_si \
   /dlio/odom_node/odom /dlio/odom_node/pointcloud/deskewed /acp/pelvis/odom /acp/goal_pose

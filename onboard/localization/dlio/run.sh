@@ -15,9 +15,6 @@ set +u
 source /opt/ros/foxy/setup.bash
 source "$WS/install/setup.bash"
 set -u
-unset CYCLONEDDS_URI
-export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
-export ROS_DOMAIN_ID="${ACP_ROS_DOMAIN_ID:-37}"
-export ROS_LOCALHOST_ONLY=1
+source "$HERE/transport_env.sh"
 export OMP_NUM_THREADS="${ACP_OMP_THREADS:-2}"
 exec ros2 launch "$HERE/acp.launch.py"

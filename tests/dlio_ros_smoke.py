@@ -19,8 +19,17 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from onboard.localization.dlio.core import atomic_json, read_json, WaistHistory
+from onboard.localization.dlio.check import assess
 from onboard.perception.lidar.mid360_to_base import compute_mid360_to_base_transform
 from policy.acp.state_ipc import boot_id
+
+
+def udp_counters():
+    lines = Path('/proc/net/snmp').read_text().splitlines()
+    for header, values in zip(lines, lines[1:]):
+        if header.startswith('Udp:') and values.startswith('Udp:'):
+            return dict(zip(header.split()[1:], map(int, values.split()[1:])))
+    raise RuntimeError('No Linux UDP counters')
 
 
 def main():
@@ -28,11 +37,14 @@ def main():
     parser.add_argument('--output', required=True)
     parser.add_argument('--points', type=int, default=1600)
     parser.add_argument('--cloud-age-ms', type=float, default=120., help='Age of first point when generating each 100 ms cloud')
+    parser.add_argument('--duration', type=float, default=14.)
     args = parser.parse_args()
     if not 1600 <= args.points <= 100000:
         parser.error('--points must be between 1600 and 100000')
     if not 90 <= args.cloud_age_ms <= 200:
         parser.error('--cloud-age-ms must be between 90 and 200')
+    if not 14 <= args.duration <= 60:
+        parser.error('--duration must be between 14 and 60 seconds')
     if os.environ.get('ROS_LOCALHOST_ONLY') != '1' or os.environ.get('ROS_DOMAIN_ID') != '78':
         parser.error('Use ROS_LOCALHOST_ONLY=1 ROS_DOMAIN_ID=78 (isolated offline domain)')
     import rclpy
@@ -41,6 +53,7 @@ def main():
     from sensor_msgs.msg import Imu, PointCloud2, PointField
     from nav_msgs.msg import Odometry
     directory = Path(tempfile.mkdtemp(prefix='acp-dlio-synthetic-'))
+    udp_before = udp_counters()
     here = ROOT/'onboard/localization/dlio'
     native_log = (directory/'dlio.log').open('w')
     relay_log = (directory/'relay.log').open('w')
@@ -55,7 +68,9 @@ def main():
                               '--ipc-dir', str(directory), '--publish-acp'],
                              stdout=relay_log, stderr=subprocess.STDOUT, start_new_session=True)
     result = dict(hardware_started=False, directory=str(directory), passed=False,
-                  points_per_cloud=args.points, source_cloud_age_ms=args.cloud_age_ms)
+                  points_per_cloud=args.points, source_cloud_age_ms=args.cloud_age_ms,
+                  duration_s=args.duration, kernel_rmem_max=int(Path('/proc/sys/net/core/rmem_max').read_text()),
+                  cyclone_config=os.environ.get('CYCLONEDDS_URI', '(default)'))
     rclpy.init()
 
     class Synthetic(Node):
@@ -129,7 +144,7 @@ def main():
         valid_frames = 0
         steady_status = []
         last_sampled = 0.
-        while time.monotonic()-started < 14.:
+        while time.monotonic()-started < args.duration:
             rclpy.spin_once(node, timeout_sec=.005)
             if native.poll() is not None or relay.poll() is not None:
                 raise RuntimeError('DLIO or relay exited; see logs')
@@ -164,6 +179,11 @@ def main():
             acp_output_fraction=float(np.mean([s['acp_output_valid'] for s in steady_status])),
             status_interval_p99_s=float(np.percentile(np.diff([s['sampled_at'] for s in steady_status]), 99)),
             last_status=steady_status[-1])
+        stages = {}
+        for sample in steady_status:
+            stage = assess(sample, sample['sampled_at'], boot_id())[0]
+            stages[stage] = stages.get(stage, 0)+1
+        result['steady_observation']['blocking_stages'] = stages
         node.cloud_enabled = False
         then = time.monotonic()
         while time.monotonic()-then < .7:
@@ -189,6 +209,7 @@ def main():
                     process.wait(timeout=5)
         native_log.close()
         relay_log.close()
+        result['host_udp_counter_delta'] = {key:value-udp_before[key] for key,value in udp_counters().items()}
         Path(args.output).write_text(json.dumps(result, indent=2) + '\n')
     print(json.dumps(result, indent=2))
     return 0 if result['passed'] else 1

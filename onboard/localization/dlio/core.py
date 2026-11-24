@@ -150,6 +150,7 @@ class PoseGate:
         self.frame, self.child = frame, child
         self.previous = None
         self.failed = ''
+        self.failure_details = None
 
     def check(self, stamp, position, quat, frame, child):
         if self.failed:
@@ -166,8 +167,12 @@ class PoseGate:
             if dt == 0:
                 return False  # DLIO timer can re-publish the same IMU stamp.
             angle = math.acos(float(np.clip((np.trace(old_r.T @ r)-1)/2, -1, 1)))
-            if dt < 0 or dt > .5 or np.linalg.norm(position-old_p) > .03+3*dt or angle > .05+8*dt:
+            distance = float(np.linalg.norm(position-old_p))
+            if dt < 0 or dt > .5 or distance > .03+3*dt or angle > .05+8*dt:
                 self.failed = 'DLIO discontinuity/reset; restart and recalibrate world/targets'
+                self.failure_details = dict(stamp=stamp, previous_stamp=old_t, dt_s=dt,
+                                            translation_m=distance, rotation_rad=angle,
+                                            translation_limit_m=.03+3*dt, rotation_limit_rad=.05+8*dt)
                 raise ValueError(self.failed)
         self.previous = (stamp, position.copy(), r)
         return True

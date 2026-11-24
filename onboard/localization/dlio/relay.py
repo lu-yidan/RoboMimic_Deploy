@@ -76,6 +76,17 @@ def main():
             self.speed = self.turn_rate = None
             self.last_published = 0.
             self.error = 'Waiting for Livox and DLIO'
+            self.stage_errors = {}
+            self.counts = dict(raw_imu=0, si_imu=0, raw_cloud=0, checked_cloud=0,
+                               registered_cloud=0, odom=0, pelvis=0, acp_state=0)
+            self.last_waist_stamp = 0.
+            self.waist_skew = None
+            self.imu_norm = None
+            self.trace = (Path(__file__).resolve().parents[3] / 'logs' / 'acp-dlio' /
+                          ('relay-' + self.session + '.jsonl'))
+            self.trace.parent.mkdir(parents=True, exist_ok=True)
+            self.last_trace = 0.
+            print('[ACP DLIO] Diagnostic trace: ' + str(self.trace), flush=True)
             self.initial_imu, self.imu_ready = [], False
             self.calibration = None
             self.imu_pub = self.create_publisher(Imu, '/acp/livox/imu_si', qos_profile_sensor_data)
@@ -102,6 +113,7 @@ def main():
                 self.get_logger().warning('Goal rejected: ' + str(error))
 
         def imu(self, raw):
+            self.counts['raw_imu'] += 1
             try:
                 stamp = self.clock_map.convert(stamp_seconds(raw.header))
                 if raw.header.frame_id != 'livox_frame' or stamp <= self.last_imu:
@@ -109,6 +121,7 @@ def main():
                 accel, gyro = imu_si([raw.linear_acceleration.x, raw.linear_acceleration.y, raw.linear_acceleration.z],
                                      [raw.angular_velocity.x, raw.angular_velocity.y, raw.angular_velocity.z],
                                      site['acceleration_unit'])
+                self.imu_norm = float(np.linalg.norm(accel))
                 if not self.imu_ready:
                     if abs(np.linalg.norm(accel)-9.80665) > 1.5 or np.linalg.norm(gyro) > .15:
                         self.initial_imu = []
@@ -125,10 +138,14 @@ def main():
                 if site['acceleration_unit'] == 'g' and msg.linear_acceleration_covariance[0] != -1:
                     msg.linear_acceleration_covariance = [float(v)*9.80665**2 for v in msg.linear_acceleration_covariance]
                 self.imu_pub.publish(msg)
+                self.counts['si_imu'] += 1
+                self.stage_errors.pop('imu', None)
             except (ValueError, KeyError) as error:
                 self.error = str(error)
+                self.stage_errors['imu'] = self.error
 
         def points(self, msg):
+            self.counts['raw_cloud'] += 1
             try:
                 if msg.header.frame_id != 'livox_frame':
                     raise ValueError('Unexpected raw LiDAR frame; disable driver extrinsic transforms')
@@ -139,8 +156,11 @@ def main():
                     raise ValueError('Repeated/reordered raw cloud')
                 self.last_raw_cloud = stamp
                 self.points_pub.publish(msg)
+                self.counts['checked_cloud'] += 1
+                self.stage_errors.pop('raw_cloud', None)
             except (ValueError, KeyError) as error:
                 self.error = str(error)
+                self.stage_errors['raw_cloud'] = self.error
 
         def cloud(self, msg):
             try:
@@ -148,10 +168,14 @@ def main():
                 if msg.header.frame_id != 'acp_odom' or msg.width*msg.height <= 64 or stamp <= self.last_cloud:
                     raise ValueError('Invalid/reordered DLIO registration heartbeat')
                 self.last_cloud = stamp
+                self.counts['registered_cloud'] += 1
+                self.stage_errors.pop('registration', None)
             except ValueError as error:
                 self.error = str(error)
+                self.stage_errors['registration'] = self.error
 
         def odom(self, msg):
+            self.counts['odom'] += 1
             try:
                 now = time.monotonic()
                 stamp = self.clock_map.convert(stamp_seconds(msg.header))
@@ -162,6 +186,7 @@ def main():
                     raise ValueError('IMU, raw cloud, or registered DLIO cloud stale/not initialized')
                 self.waist.load(read_json(directory / 'acp-waist.json'), now)
                 waist, joint_stamp = self.waist.nearest(stamp, now)
+                self.last_waist_stamp, self.waist_skew = joint_stamp, joint_stamp-stamp
                 pos, quat = pelvis_pose([p.x, p.y, p.z], [q.w, q.x, q.y, q.z], waist, *angles)
                 if self.pose is not None and stamp > self.last_pose:
                     dt = stamp-self.last_pose
@@ -178,7 +203,9 @@ def main():
                 derived.twist = Odometry().twist
                 derived.twist.covariance[0] = -1.
                 self.pelvis_pub.publish(derived)
+                self.counts['pelvis'] += 1
                 self.error = ''
+                self.stage_errors.pop('odom', None)
                 if args.publish_acp:
                     calibration = read_json(directory / 'acp-dlio-calibration.json')
                     ground = float(calibration['ground_height'])
@@ -192,9 +219,11 @@ def main():
                         pose_captured_at=stamp, terrain_captured_at=stamp,
                         sequence=self.sequence, ground_height=ground)
                     self.sequence += 1
+                    self.counts['acp_state'] += 1
                     self.last_published = now
             except (ValueError, KeyError, OSError) as error:
                 self.error = str(error)
+                self.stage_errors['odom'] = self.error
                 # Immediate invalidation; never let a bad callback renew an old valid packet.
                 if args.publish_acp:
                     (directory / 'acp-state.npz').unlink(missing_ok=True)
@@ -210,9 +239,20 @@ def main():
                            error=self.error or ('' if pose_fresh else 'Pelvis pose stale'),
                            speed_mps=self.speed, turn_rate_rps=self.turn_rate,
                            mount_angles_rad=angles.tolist())
+            payload.update(imu_ready=self.imu_ready, imu_accel_norm_mps2=self.imu_norm,
+                           raw_cloud_age_s=now-self.last_raw_cloud if self.last_raw_cloud else None,
+                           waist_age_s=now-self.last_waist_stamp if self.last_waist_stamp else None,
+                           waist_skew_s=self.waist_skew, counts=self.counts.copy(),
+                           stage_errors=self.stage_errors.copy(),
+                           calibration_ready=self.calibration is not None,
+                           diagnostic_trace=str(self.trace))
             if self.pose is not None:
                 payload.update(pelvis_pos_w=self.pose[0].tolist(), pelvis_quat_w=self.pose[1].tolist())
             atomic_json(directory / 'acp-dlio-status.json', payload)
+            if now-self.last_trace >= .2:
+                with self.trace.open('a') as stream:
+                    stream.write(json.dumps(payload, allow_nan=False) + '\n')
+                self.last_trace = now
             # Missing clouds/IMU must stop output even if odometry keeps propagating.
             if args.publish_acp and (not pose_fresh or self.error):
                 (directory / 'acp-state.npz').unlink(missing_ok=True)

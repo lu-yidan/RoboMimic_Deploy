@@ -145,6 +145,9 @@ class StateReader:
                 array.setflags(write=False)
             self.previous = (sequence, stamp)
             sample = StateSample(position, quat, terrain, stamp, pose_stamp, terrain_stamp, sequence, frame, '')
+        except FileNotFoundError:
+            sample = StateSample(error='ACP localization not ready: no acp-state.npz; '
+                                 'check fresh DLIO pelvis pose and calibrate the floor first')
         except Exception as error:
             sample = StateSample(error='ACP state IPC: ' + str(error))
         with self.lock:

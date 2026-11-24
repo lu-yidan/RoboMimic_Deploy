@@ -23,12 +23,12 @@ def generate_launch_description():
     if json.loads(config.read_text()) != driver_config(site):
         raise RuntimeError('MID360 JSON/site mismatch, including driver extrinsic transform')
     driver = Node(package='livox_ros_driver2', executable='livox_ros_driver2_node',
-                  name='acp_livox_driver', output='screen', parameters=[dict(
+                  name='acp_livox_driver', output='both', parameters=[dict(
                       xfer_format=0, multi_topic=0, data_src=0, publish_freq=10.,
                       output_data_type=0, frame_id='livox_frame', user_config_path=str(config),
                       cmdline_input_bd_code='livox0000000001')])
     odom = Node(package='direct_lidar_inertial_odometry', executable='dlio_odom_node',
-                name='dlio_odom_node', output='screen', parameters=[str(HERE / 'config/dlio.yaml')],
+                name='dlio_odom_node', output='both', parameters=[str(HERE / 'config/dlio.yaml')],
                 remappings=[('pointcloud', '/acp/livox/points_checked'), ('imu', '/acp/livox/imu_si'),
                             ('odom', '/dlio/odom_node/odom'), ('pose', '/dlio/odom_node/pose'),
                             ('path', '/dlio/odom_node/path'), ('kf_pose', '/dlio/odom_node/keyframes'),
@@ -37,7 +37,7 @@ def generate_launch_description():
     command = ['/usr/bin/python3', '-u', str(HERE / 'relay.py'), '--site', str(site_file)]
     if os.environ.get('ACP_DLIO_PUBLISH') == '1':
         command.append('--publish-acp')
-    relay = ExecuteProcess(cmd=command, output='screen')
+    relay = ExecuteProcess(cmd=command, output='both')
     actions = [driver, odom, relay]
     for process in (driver, odom, relay):
         actions.append(RegisterEventHandler(OnProcessExit(target_action=process, on_exit=[

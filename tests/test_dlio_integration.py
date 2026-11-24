@@ -10,10 +10,27 @@ import pytest
 from onboard.localization.dlio.core import (HostClock, PoseGate, WaistHistory, atomic_json,
                                            imu_si, pelvis_pose, quaternion_wxyz)
 from onboard.localization.dlio.relay import point_times
+from onboard.localization.dlio.check import assess
 from onboard.perception.lidar.mid360_to_base import compute_mid360_to_base_transform, Rz, Ry
 from policy.acp.observations import rotation
 from policy.acp.state_ipc import StateWriter, StateReader, boot_id
 from policy.acp.goal_ipc import GoalReader, relative_goal, write_goal
+
+
+def test_bringup_diagnosis_distinguishes_missing_calibration_from_stale_pose():
+    status = dict(boot_id='host', sampled_at=100., pose_captured_at=99.99, pose_valid=True,
+                  imu_age_s=.01, registration_age_s=.08, acp_output_enabled=True,
+                  acp_output_valid=False, calibration_ready=False)
+    assert assess(status, 100.01, 'host')[0] == 'calibration'
+    assert assess(status, 100.01, 'other')[0] == 'host'
+    assert assess(status, 101., 'host')[0] == 'relay'
+    status.update(acp_output_valid=True, calibration_ready=True)
+    assert assess(status, 100.01, 'host')[0] == 'ready'
+    # The checker must account for time since the status file was sampled.
+    status.update(pose_valid=False, registration_age_s=.24)
+    assert assess(status, 100.02, 'host')[0] == 'registration'
+    status.update(imu_age_s=.14)
+    assert assess(status, 100.02, 'host')[0] == 'imu'
 
 
 def test_articulated_head_is_not_pelvis_odometry():

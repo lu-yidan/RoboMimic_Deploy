@@ -2,7 +2,7 @@
 
 已接入 `MID360 PointCloud2 + 雷达内置 IMU → DLIO → 腰部补偿 → 骨盆位姿 → ACP`。
 真机系统实际为 Ubuntu 20.04 / ROS2 Foxy，已在 G1 独立的 `~/acp_dlio_ws` 编译通过。
-当前阶段是现场定位/策略**双侧只读**验收，尚未采集真实雷达数据，也未完成 ACP 真机闭环。
+当前阶段是现场定位/策略**双侧只读**验收，已开始现场定位检查，尚未完成定位稳定性与 ACP 真机闭环验收。
 `deploy/acp-g1` 已替换现场 `under-the-table` 工作分支；原 SMP 配置修改按用户要求丢弃。
 
 [ACP 论文](https://arxiv.org/html/2610.31608v1) 使用 DLIO 提供根位姿与去畸变点云，
@@ -49,6 +49,7 @@ ACP_DLIO=1 bash tools/deploy/start_tmux_layout.sh acp-dlio-readonly
 ```
 
 所有命令只预填，按回车才运行。已有同名会话只会重新连接，不会替换旧命令。
+机器人调试模式由操作者在启动这些程序前手动进入，程序不接管这个步骤。
 
 | 窗口 | 内容与操作 |
 | --- | --- |
@@ -65,6 +66,21 @@ ACP_DLIO=1 bash tools/deploy/start_tmux_layout.sh acp-dlio-readonly
 它也会占用同一个雷达，退出时还会全局清理驱动。
 本入口只停止自身启动的进程；发现已有 Livox 驱动会拒绝重复启动。
 
+在**已经 SSH 进入 G1 的终端**检查下一步，先不启动右下 RViz：
+
+```bash
+cd /home/unitree/RoboMimic_Deploy
+/usr/bin/python3 onboard/localization/dlio/check.py
+```
+
+`Blocking stage: relay` 表示定位进程已经停止或状态文件过期；
+`imu/raw_cloud/registration/pelvis` 分别指向 IMU、原始点云、DLIO 配准、腰部/骨盆转换。
+先修复这些状态；`pose_valid=true` 后才做下方实测平地标定。
+例如配准点云年龄超过 250 ms 时不会接受当前位姿，不要通过放宽时效阈值跳过。
+
+左中打印缺少 `/dev/shm/robomimic-1000/acp-state.npz`，表示定位/标定尚未就绪，
+不是缺少模型。Python 可以保持只读等待；只有定位新鲜且本会话标定完成才生成该文件。
+
 先核对相对移动方向、转腰时骨盆位姿是否稳定、静止漂移及时间戳。
 DLIO 的 `acp_odom` 是每次启动建立的局部坐标系，原点不在地面，初始 yaw 也不保证为零。
 地面 z 可能是负值。雷达内置 IMU 与雷达是刚性关系，不能改接骨盆 IMU 代替。
@@ -75,9 +91,11 @@ MID360 内置 IMU 在雷达系的位置 `[0.011,0.02329,-0.04412] m` 来自
 确认安装链、腰部符号并测量骨盆坐标原点相对平地的高度后，在静止站姿执行：
 
 ```bash
-# 替换为现场测量值；不提供默认高度。
+# 确认安装链并测量后，输入实际高度，不提供默认值。
+read -r -p '实测骨盆原点到平地的高度(m): ' PELVIS_HEIGHT_M
 /usr/bin/python3 onboard/localization/dlio/calibrate.py \
-  --pelvis-height <实测高度_米> --confirm-mount
+  --pelvis-height "$PELVIS_HEIGHT_M" --confirm-mount
+/usr/bin/python3 onboard/localization/dlio/check.py
 ```
 
 标定只对当前 relay 会话有效；重启定位后要重新确认世界系与平地高度。
@@ -89,6 +107,11 @@ MID360 内置 IMU 在雷达系的位置 `[0.011,0.02329,-0.04412] m` 来自
 **START 仍是原 FSM 复位/准备姿态，B 是 LocoMode，Y 从 LocoMode 切 ACP**。
 只读模式的 START/B/Y 仅改变推理侧 FSM，不驱动真实机器人复位或行走。
 后续闭环保留相同操作顺序；闭环命令在本轮只读日志核查后提供。
+
+具体顺序为：`pose_valid=true` → 实测标定 → `acp_output_valid=true` →
+左中只读策略 → `goal.py --stop` → B → Y。仅切入检查先用当前点停车目标，
+确认后再发送短距离目标。`Need a fresh DLIO pelvis pose in the current host/session`
+表示打点时位姿不新鲜或命令运行在其他主机，目标会被拒绝。
 
 ## 进入 ACP 后实时打点
 
@@ -109,6 +132,26 @@ cd /home/unitree/RoboMimic_Deploy
 /usr/bin/python3 onboard/localization/dlio/goal.py --stop
 ```
 
+本地电脑无需安装 ROS/RViz，可以在**本地 Linux 图形桌面的终端**执行：
+
+```bash
+cd "/home/yujy/Documents/ChatGPT/G1 locomotion/RoboMimic_Deploy_acp"
+bash onboard/localization/dlio/view_remote.sh g1-wifi
+```
+
+这使用 `ssh -Y` 将 G1 上的 RViz 窗口显示到本地；ROS 进程仍在 G1 的 domain 37，
+保留 `ROS_LOCALHOST_ONLY=1`。已在本机/G1 实测窗口启动（8 秒），
+不等于当时已验证真实点云与打点。请先确认定位时效，再打开图形窗口。
+普通 SSH/tmux 未设置 `DISPLAY` 时，右下会提示使用此入口，不再直接启动后 abort。
+脚本强制新建 X11 连接，避免复用没有图形转发的旧 SSH master。
+如果是直接在本地启动本地安装的 RViz，则还需另行配置跨主机 DDS，当前入口未启用。
+
+只想从本地终端发目标，明确让命令在 G1 上执行：
+
+```bash
+ssh g1-wifi 'cd /home/unitree/RoboMimic_Deploy && /usr/bin/python3 onboard/localization/dlio/goal.py --relative 0.5 0'
+```
+
 相对目标只在打点时转换一次，随后固定在世界系中，不会跟着机器人向前滑。
 更新目标不重置动作历史，也不切换 FSM。目标记录带定位会话 ID；旧会话目标不能复用。
 `--stop` 是策略到点停车指令，紧急退出仍用原阻尼抢占操作。
@@ -116,15 +159,18 @@ cd /home/unitree/RoboMimic_Deploy
 
 ## 已完成验证与下一份日志
 
-54 项 ACP/DLIO 回归通过，其中本轮针对性检查 23 项，覆盖动态腰部补偿、g/SI、时间映射、重复 tick、定位重启、
+55 项 ACP/DLIO 回归通过，其中针对性检查 24 项，覆盖动态腰部补偿、g/SI、时间映射、重复 tick、定位重启、
 目标坐标和策略接收等。G1 Foxy 上的离线整链测试使用真实 DLIO 二进制和合成点云/IMU，
 收到 951 帧骨盆输出；末段静止位置范围最大约 `3.1e-7 m`，只证明合成输入接线正确，
 不代表真实雷达精度。停止点云后 ACP 文件被撤销。没有运行真实雷达驱动或控制实验。
+上述为离线验证范围；用户随后已自行启动真实定位链路，其现场时效和地面标定仍需验收。
 结果摘要在 `docs/validation/dlio_foxy_20261124.json`。
 
 现场结束后保留策略 `logs/` 中的普通日志、`.acp_trace.npz`，
 当前 `site.json`、`MID360_config.json`、`acp-dlio-status.json`、标定与目标 JSON，
-以及 DLIO 控制台输出。需复现点云问题时，在独立 ROS/system 终端记录：
+以及 `logs/acp-dlio/relay-*.jsonl` 和最近一次 `~/.ros/log/` 的启动目录。
+新版自动保存各阶段计数、时效和独立错误；ROS 节点 stdout/stderr 同时显示与落盘。
+需复现点云问题时，在独立 ROS/system 终端记录：
 
 ```bash
 source /opt/ros/foxy/setup.bash

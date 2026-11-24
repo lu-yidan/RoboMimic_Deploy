@@ -1,0 +1,67 @@
+{
+  "source_log": "20261124_224210_real_policies",
+  "source_commit": "208b635f7a7e469f0b65c17b2e6fdb0e0a5feffb",
+  "git_dirty": false,
+  "read_only": true,
+  "log_frames": 2782,
+  "executed_fsm_states": {
+    "1": 493,
+    "2": 1,
+    "4": 2288
+  },
+  "acp_frames": 0,
+  "acp_trace_exists": false,
+  "current_session": "e7a5ce1a-d638-42c7-9abd-76b8ac0fa855",
+  "goal_session": "f8eb4007-cdb9-49f6-b8e8-d62d73468ef9",
+  "current_session_goal_set": false,
+  "localization_fault": "DLIO discontinuity/reset; restart and recalibrate world/targets",
+  "localization_fault_details": {
+    "stamp": 9472.373433828354,
+    "previous_stamp": 9472.369225025177,
+    "dt_s": 0.004208803176879883,
+    "translation_m": 0.10196791916296015,
+    "rotation_rad": 0.04418040038715646,
+    "previous_position_w": [
+      -0.0024857851676642895,
+      0.006778564304113388,
+      0.0014384427340701222
+    ],
+    "position_w": [
+      -0.011397019028663635,
+      0.027274316176772118,
+      0.10092698782682419
+    ],
+    "translation_delta_w": [
+      -0.008911233860999346,
+      0.02049575187265873,
+      0.09948854509275407
+    ],
+    "translation_limit_m": 0.04262640953063965,
+    "rotation_limit_rad": 0.08367042541503907
+  },
+  "fault_first_report_monotonic": 9472.571288002,
+  "last_relay_monotonic": 9527.610942468,
+  "protection": "Discontinuity was latched; ACP state file withdrawn; ACP refused entry.",
+  "acceptance": {
+    "sustained_acp": false,
+    "active_dlio_stop": false,
+    "timing": false,
+    "overall_readonly": false
+  },
+  "shutdown": {
+    "dlio_clean_exit": true,
+    "relay_clean_exit": true,
+    "livox_exit_code": -11
+  },
+  "next_action": "Restart stopped right-middle DLIO, keep still, confirm stable fresh localization, recalibrate current session, explicitly execute goal.py --stop, then start readonly policy and START/wait/B/Y. Confirm actual ACP entry before motion and shutdown test.",
+  "hashes": {
+    "acp-dlio-status.json": "8ff984329da88f0a6fde9445727347bfdc07e1da8a2d1bac9dc4486c23001960",
+    "20261124_224210_real_policies.bin": "57ce4eada32bdcfd3a6566c15978d84a07caec847707ad26fc2ccaaa5e04914e",
+    "20261124_224210_real_policies.json": "153cc1bde75df146f7c6c144925a410f3047c159c3e721ae2688b669ba57293a",
+    "20261124_224210_real_policies.events.jsonl": "5e013e804f0aba076749bfc71efffd5d2900106e25f5693d5a6f8eafda55d819",
+    "acp-goal.json": "6ebfa191126eb675fae91dc96bd56e6c20561cbddd2693b45d62e05c65853d71",
+    "acp-dlio-calibration.json": "82c84a32871e9c0b217ae52c2a25362ce986918a8b4c4b0617ec2e7e4707a723",
+    "acp-dlio/relay-e7a5ce1a-d638-42c7-9abd-76b8ac0fa855.jsonl": "75035e9ec78b2512cf4529a406427f1b6b373bdc6816e6ed8faf374957f4c88a",
+    "ros_logs/2026-11-24-22-41-29-571350-ubuntu-266100/launch.log": "188cd9d16c03b9767af2c8419b670285558efafc135606a4c3724de6dd5b1d4d"
+  }
+}

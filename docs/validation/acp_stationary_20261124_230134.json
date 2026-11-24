@@ -1,0 +1,42 @@
+{
+  "record_directory": "/home/unitree/RoboMimic_Deploy/logs/acp-dlio/record-20261124_230134-xv60W5",
+  "message_counts": {
+    "/livox/lidar": 1242,
+    "/livox/imu": 12441,
+    "/acp/livox/points_checked": 1224,
+    "/acp/livox/imu_si": 12057,
+    "/dlio/odom_node/pointcloud/deskewed": 1144,
+    "/dlio/odom_node/odom": 5718,
+    "/acp/pelvis/odom": 5716
+  },
+  "odom_unique": 5717,
+  "pose_span_s": 57.17608594894409,
+  "duplicate_stamps": 1,
+  "maximum_step_m": 0.007890031189522568,
+  "maximum_rotation_rad": 0.0032724476384103285,
+  "gate_violations": 0,
+  "first_fault": null,
+  "position_range_m": [
+    0.012499979697167873,
+    0.012003515614196658,
+    0.005123420851305127
+  ],
+  "imu_norm_range": [
+    9.76455157125817,
+    10.010582664662307
+  ],
+  "analysis_note": "Direct SQLite/CDR read only; no ROS node or DDS participant created. All consecutive odometry steps checked, including after the live gate latched.",
+  "record_window_s": 90,
+  "bag_duration_s": 61.186,
+  "bag_sha256": "5499ce447c433406ea4b310fd49781304245006d8f491ad7d818490ed5316137",
+  "source_commit": "208b635f7a7e469f0b65c17b2e6fdb0e0a5feffb",
+  "read_only_bridge": true,
+  "policy_started": false,
+  "shutdown": {
+    "dlio_clean_exit": true,
+    "relay_clean_exit": true,
+    "livox_exit_code": -11
+  },
+  "conclusion": "Stationary jump not reproduced; does not validate ACP timing, motion, or fault exit. Native memory and shutdown issues remain open.",
+  "next_step": "Use existing raw capture for offline diagnosis; next ACP experiment requires current-session calibration, explicit goal after policy startup, and operator movement."
+}

@@ -1,0 +1,412 @@
+{
+  "date": "2026-11-24",
+  "source_log": "20261124_202814_real_policies",
+  "source_commit": "5c83b1b4e3081c5013f2de19e8da0c7c62ceac99",
+  "read_only": true,
+  "recorded_frames": 1792,
+  "executed_states": {
+    "FIXEDPOSE": 1,
+    "LOCOMODE": 1791
+  },
+  "acp_executed_frames": 0,
+  "acp_trace_generated": false,
+  "original_readonly_acceptance_passed": false,
+  "event_counts": {
+    "acp_state_status": 1665,
+    "acp_goal": 1,
+    "fsm_execution": 2,
+    "keyboard_interrupt": 1
+  },
+  "state_status_transition_counts": {
+    "ACP state producer not started": 1,
+    "ACP live goal: [Errno 2] No such file or directory: '/dev/shm/robomimic-1000/acp-goal.json'": 62,
+    "ACP localization and robot state timestamps disagree": 831,
+    "": 770,
+    "ACP state stream stalled/stale": 1
+  },
+  "hashes": {
+    "20261124_202814_real_policies.bin": "8495b46a05a0c0a8c736ae00afcca3791a3a553713c57a3d8d8bb401f96935e4",
+    "20261124_202814_real_policies.events.jsonl": "b782ad46cd1d4aff5c1a11d12429d83563b0657f84b166b1f21b2529d03ed389",
+    "20261124_202814_real_policies.json": "0c5845dfe48a0de0786fb6655a6261c953a520d3aa90b14ad40e3833ba50bff8"
+  },
+  "original_logged_mode_timing_ms": {
+    "loop_period_ms": {
+      "p50": 20.08217430114746,
+      "p99": 27.418879585266083,
+      "max": 37.020103454589844
+    },
+    "runtime_compute_ms": {
+      "p50": 11.292943000793457,
+      "p99": 26.11266286849974,
+      "max": 36.22504806518555
+    },
+    "state_age_ms": {
+      "p50": 1.5809620022773743,
+      "p99": 9.590265026092528,
+      "max": 12.638707160949707
+    }
+  },
+  "passive_probe": {
+    "read_only": true,
+    "motor_publishers_created": false,
+    "duration_s": 20.063004070000034,
+    "rows": 965,
+    "cached_errors": 2,
+    "direct_errors": 0,
+    "cached": {
+      "valid_samples": 963,
+      "pose_age_ms": [
+        16.01124830244771,
+        54.184886097573326,
+        87.3837104923496,
+        106.84125427161234,
+        136.58983646610068
+      ],
+      "receipt_skew_ms": [
+        9.865496039765276,
+        52.0757403985499,
+        85.54178398603656,
+        105.37031220266726,
+        136.56730746629364
+      ],
+      "current_runtime_sync_pass_fraction": 0.2772585669781931
+    },
+    "direct": {
+      "valid_samples": 965,
+      "pose_age_ms": [
+        9.010826718849785,
+        44.36487394627875,
+        76.92939528437819,
+        92.20647002101033,
+        102.40036057143698
+      ],
+      "receipt_skew_ms": [
+        1.5355021944287728,
+        42.88661653299641,
+        75.74520734146972,
+        91.0479155784742,
+        102.23546157158125
+      ],
+      "current_runtime_sync_pass_fraction": 0.37927461139896373
+    }
+  },
+  "history_timing_replay": {
+    "cached": {
+      "frames": 965,
+      "passed": 962,
+      "post_warmup_passed": 955,
+      "post_warmup_frames": 955,
+      "failures": [
+        "reader error",
+        "reader error",
+        "ACP localization has no synchronized robot history sample"
+      ],
+      "skew_ms_p50_p99_max": [
+        4.174688193643306,
+        12.548454305033374,
+        34.94350844857763
+      ]
+    },
+    "direct": {
+      "frames": 965,
+      "passed": 964,
+      "post_warmup_passed": 955,
+      "post_warmup_frames": 955,
+      "failures": [
+        "ACP localization has no synchronized robot history sample"
+      ],
+      "skew_ms_p50_p99_max": [
+        4.411969805005356,
+        12.320529092669405,
+        34.94350844857763
+      ]
+    }
+  },
+  "arm_fixed_frame_parity": {
+    "ort_version": "1.19.2",
+    "offline_only": true,
+    "cases": [
+      {
+        "mode": "default",
+        "index": 0,
+        "occupancy_min": -5.960464477539063e-08,
+        "occupancy_max": 0.48358580470085144,
+        "occupancy_values": [
+          -5.960464477539063e-08,
+          -5.960464477539063e-08,
+          -5.960464477539063e-08,
+          0.48358580470085144,
+          0.4680112898349762,
+          -5.960464477539063e-08,
+          -5.960464477539063e-08,
+          -5.960464477539063e-08,
+          -5.960464477539063e-08
+        ],
+        "max_abs_error": {
+          "actions": 0.0,
+          "contacts": 0.0,
+          "occupancy": 1.5497207641601562e-06
+        }
+      },
+      {
+        "mode": "default",
+        "index": 1,
+        "occupancy_min": 1.1920928955078125e-07,
+        "occupancy_max": 0.6581132411956787,
+        "occupancy_values": [
+          2.086162567138672e-07,
+          1.1920928955078125e-07,
+          2.086162567138672e-07,
+          0.6092327237129211,
+          0.6581132411956787,
+          1.1920928955078125e-07,
+          3.8743019104003906e-07,
+          2.682209014892578e-07,
+          2.086162567138672e-07
+        ],
+        "max_abs_error": {
+          "actions": 0.0,
+          "contacts": 0.0,
+          "occupancy": 1.3113021850585938e-06
+        }
+      },
+      {
+        "mode": "default",
+        "index": 2,
+        "occupancy_min": 8.940696716308594e-08,
+        "occupancy_max": 0.780412495136261,
+        "occupancy_values": [
+          1.7881393432617188e-07,
+          1.1920928955078125e-07,
+          2.384185791015625e-07,
+          0.780412495136261,
+          0.15157157182693481,
+          8.940696716308594e-08,
+          2.086162567138672e-07,
+          1.4901161193847656e-07,
+          1.7881393432617188e-07
+        ],
+        "max_abs_error": {
+          "actions": 0.0,
+          "contacts": 0.0,
+          "occupancy": 6.556510925292969e-07
+        }
+      },
+      {
+        "mode": "default",
+        "index": 3,
+        "occupancy_min": 5.960464477539063e-08,
+        "occupancy_max": 0.7623001337051392,
+        "occupancy_values": [
+          2.980232238769531e-07,
+          1.7881393432617188e-07,
+          1.1920928955078125e-07,
+          0.7623001337051392,
+          0.14853760600090027,
+          5.960464477539063e-08,
+          2.682209014892578e-07,
+          2.086162567138672e-07,
+          1.1920928955078125e-07
+        ],
+        "max_abs_error": {
+          "actions": 0.0,
+          "contacts": 0.0,
+          "occupancy": 9.5367431640625e-07
+        }
+      },
+      {
+        "mode": "disabled",
+        "index": 0,
+        "occupancy_min": -5.960464477539063e-08,
+        "occupancy_max": 0.48358580470085144,
+        "occupancy_values": [
+          -5.960464477539063e-08,
+          -5.960464477539063e-08,
+          -5.960464477539063e-08,
+          0.48358580470085144,
+          0.4680112898349762,
+          -5.960464477539063e-08,
+          -5.960464477539063e-08,
+          -5.960464477539063e-08,
+          -5.960464477539063e-08
+        ],
+        "max_abs_error": {
+          "actions": 0.0,
+          "contacts": 0.0,
+          "occupancy": 1.5497207641601562e-06
+        }
+      },
+      {
+        "mode": "disabled",
+        "index": 1,
+        "occupancy_min": 1.1920928955078125e-07,
+        "occupancy_max": 0.6581132411956787,
+        "occupancy_values": [
+          2.086162567138672e-07,
+          1.1920928955078125e-07,
+          2.086162567138672e-07,
+          0.6092327237129211,
+          0.6581132411956787,
+          1.1920928955078125e-07,
+          3.8743019104003906e-07,
+          2.682209014892578e-07,
+          2.086162567138672e-07
+        ],
+        "max_abs_error": {
+          "actions": 0.0,
+          "contacts": 0.0,
+          "occupancy": 1.3113021850585938e-06
+        }
+      },
+      {
+        "mode": "disabled",
+        "index": 2,
+        "occupancy_min": 8.940696716308594e-08,
+        "occupancy_max": 0.780412495136261,
+        "occupancy_values": [
+          1.7881393432617188e-07,
+          1.1920928955078125e-07,
+          2.384185791015625e-07,
+          0.780412495136261,
+          0.15157157182693481,
+          8.940696716308594e-08,
+          2.086162567138672e-07,
+          1.4901161193847656e-07,
+          1.7881393432617188e-07
+        ],
+        "max_abs_error": {
+          "actions": 0.0,
+          "contacts": 0.0,
+          "occupancy": 6.556510925292969e-07
+        }
+      },
+      {
+        "mode": "disabled",
+        "index": 3,
+        "occupancy_min": 5.960464477539063e-08,
+        "occupancy_max": 0.7623001337051392,
+        "occupancy_values": [
+          2.980232238769531e-07,
+          1.7881393432617188e-07,
+          1.1920928955078125e-07,
+          0.7623001337051392,
+          0.14853760600090027,
+          5.960464477539063e-08,
+          2.682209014892578e-07,
+          2.086162567138672e-07,
+          1.1920928955078125e-07
+        ],
+        "max_abs_error": {
+          "actions": 0.0,
+          "contacts": 0.0,
+          "occupancy": 9.5367431640625e-07
+        }
+      }
+    ]
+  },
+  "local_captured_state_inference": {
+    "offline_only": true,
+    "motor_publishers_created": false,
+    "hardware_started": false,
+    "policy_sha256": "2a85ea0312bbdff8b681dabe659c8f9c68b1d55221c4f9ec41284dd674e310e8",
+    "input_frames": 965,
+    "timing_ready_frames": 964,
+    "successful_inference_frames": 964,
+    "failures": [
+      {
+        "time": 1654.458320291,
+        "error": "ACP localization has no synchronized robot history sample"
+      }
+    ],
+    "failure_count": 1,
+    "max_sync_skew_ms": 34.94350844857763,
+    "inference_ms_p50_p99_max": [
+      3.1860496383160353,
+      3.679086766205728,
+      4.550534766167402
+    ],
+    "pose_age_ms_p50_p99_max": [
+      49.1463930811733,
+      96.83736807201058,
+      127.05724919214845
+    ],
+    "all_outputs_finite": true,
+    "pd_torque_bounded_using_latest_state": true,
+    "observation_shape": [
+      964,
+      939
+    ],
+    "real_fsm_entry_tested": false,
+    "physical_closed_loop_tested": false
+  },
+  "g1_captured_state_inference": {
+    "offline_only": true,
+    "motor_publishers_created": false,
+    "hardware_started": false,
+    "policy_sha256": "2a85ea0312bbdff8b681dabe659c8f9c68b1d55221c4f9ec41284dd674e310e8",
+    "input_frames": 965,
+    "timing_ready_frames": 964,
+    "successful_inference_frames": 964,
+    "failures": [
+      {
+        "time": 1654.458320291,
+        "error": "ACP localization has no synchronized robot history sample"
+      }
+    ],
+    "failure_count": 1,
+    "max_sync_skew_ms": 34.94350844857763,
+    "inference_ms_p50_p99_max": [
+      4.763546499816584,
+      4.9193068301610765,
+      5.014914000184945
+    ],
+    "pose_age_ms_p50_p99_max": [
+      52.743022617733004,
+      100.4743093738216,
+      110.78773757117233
+    ],
+    "all_outputs_finite": true,
+    "pd_torque_bounded_using_latest_state": true,
+    "observation_shape": [
+      964,
+      939
+    ],
+    "real_fsm_entry_tested": false,
+    "physical_closed_loop_tested": false
+  },
+  "regression_tests_passed": 92,
+  "all_964_frames_arm_vs_local_max_abs_error": {
+    "obs": 0.0,
+    "actions": 0.0,
+    "contacts": 0.0,
+    "occupancy": 4.231929779052734e-06,
+    "q_des": 0.0
+  },
+  "offline_target_review": {
+    "first_frame_max_target_minus_current_rad": 0.7883259057998657,
+    "all_frames_max_target_minus_current_rad": 1.0005453824996948,
+    "note": "Captured physical posture was unchanged by read-only FSM. This is not the posture reached under closed-loop B/LocoMode; first-frame entry and six fixed wrists remain to be reviewed before closed-loop use."
+  },
+  "fixes": {
+    "history_commit": "5b18812",
+    "arm_roundoff_commit": "af903eb",
+    "matched_robot_state_max_age_s": 0.15,
+    "max_sync_skew_s": 0.04,
+    "latest_robot_state_used_for_remote_and_pd_bounds": true,
+    "history_uses_original_local_dds_receipt_times": true,
+    "interpolation_or_extrapolation": false,
+    "duplicate_ticks_do_not_renew_samples": true,
+    "tick_or_time_reset_latches": true,
+    "occupancy_probability_roundoff_tolerance": 4.76837158203125e-07,
+    "occupancy_only_clipped_to_unit_interval": true
+  },
+  "limitations": [
+    "The original live readonly run never entered ACP. No live 939-input or ACP outputs exist for that run.",
+    "Captured-state inference used an offline clock replay and real 1k weights. It did not create DDS participants, motor publishers or an actual FSM transition.",
+    "Both matching modes pass all 955 rows after the first ten startup rows; early reader/history availability failures remain explicit.",
+    "Bridge timing is host-local DDS receipt time rather than a calibrated hardware acquisition clock.",
+    "Original 15 cm DLIO jump remains unexplained; its latch and timing/pose guards remain in force.",
+    "The right-middle DLIO was already stopped at the final onsite read-only status check; operator must restart it and calibrate the new session before retrying.",
+    "No protected closed-loop experiment was performed or accepted."
+  ]
+}

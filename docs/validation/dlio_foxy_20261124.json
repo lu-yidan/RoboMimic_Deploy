@@ -34,5 +34,44 @@
   "targeted_tests": {
     "passed": 23
   },
-  "field_validation": "pending: live IMU/cloud, mount/waist chain, floor measurement, localization direction/drift/timing, wrist posture/gains, dual read-only ACP trace"
+  "field_validation": "pending: live IMU/cloud, mount/waist chain, floor measurement, localization direction/drift/timing, wrist posture/gains, dual read-only ACP trace",
+  "acp_regression_tests": {
+    "passed": 54
+  },
+  "g1_bundle": {
+    "hashes_match": true,
+    "onnxruntime": "1.19.2",
+    "input_shape": [
+      1,
+      939
+    ],
+    "finite_output_shapes": [
+      [
+        1,
+        23
+      ],
+      [
+        1,
+        9,
+        3
+      ],
+      [
+        1,
+        9,
+        1
+      ]
+    ]
+  },
+  "foxy_launch_arguments_only_check": true,
+  "final_relay_ros_recheck": {
+    "passed": true,
+    "pelvis_messages": 941,
+    "cloud_stall_invalidated": true,
+    "hardware_started": false,
+    "stationary_last100_range_m": [
+      1.2103653944384174e-07,
+      1.1687995707415321e-07,
+      3.1860330457211816e-07
+    ]
+  }
 }

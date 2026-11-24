@@ -119,6 +119,7 @@ def main():
                     self.imu_ready = True
                 self.last_imu = stamp
                 msg = copy.deepcopy(raw)
+                msg.header.frame_id = 'acp_livox_imu'
                 msg.linear_acceleration.x, msg.linear_acceleration.y, msg.linear_acceleration.z = map(float, accel)
                 # Raw acceleration covariance, if supplied, is in squared input units.
                 if site['acceleration_unit'] == 'g' and msg.linear_acceleration_covariance[0] != -1:

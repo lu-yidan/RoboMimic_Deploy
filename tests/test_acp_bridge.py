@@ -175,6 +175,66 @@ class ACPBridgeTest(unittest.TestCase):
         self.assertIsNone(runtime.state_cmd.acp_imu_quat_wxyz)
         self.assertIn('gravity disagrees', runtime._acp_error)
 
+    def test_control_loop_poll_uses_new_packet_instead_of_delayed_worker_cache(self):
+        runtime, state = self.fixture(), self.state()
+        stamp = state._local_received_monotonic
+        sample = StateSample(np.array([0., 0., .78]), np.array([1., 0., 0., 0.]),
+                             np.zeros((187, 3)), stamp, stamp, stamp, 8, 'map', '')
+        runtime._acp_poll_in_step = True
+        runtime.acp_source = MagicMock()
+        runtime.acp_source.latest.return_value = StateSample(error='old worker cache')
+        runtime.acp_source.poll.return_value = sample
+        runtime._apply_acp_state(state)
+        self.assertTrue(runtime.state_cmd.acp_pose_valid)
+        runtime.acp_source.poll.assert_called_once()
+        runtime.acp_source.latest.assert_not_called()
+
+    def test_fsm_handled_failure_is_logged_with_original_reason_and_ages(self):
+        runtime = self.fixture()
+        runtime._logger = MagicMock()
+        runtime.FSM_controller.cur_policy.name = FSMStateName.PASSIVE
+        runtime.policy_output.executed_fsm_state = FSMStateName.PASSIVE.value
+        runtime.FSM_controller.acp_policy.last_error = 'ACP synchronized robot sample stale or misaligned'
+        runtime.state_cmd.acp_pose_time = time.monotonic()-.14
+        runtime.state_cmd.acp_robot_time = time.monotonic()-.16
+        self.assertTrue(runtime._guard_acp_output(was_active=True))
+        args, values = runtime._logger.event.call_args
+        self.assertEqual(args, ('acp_damping',))
+        self.assertIn('synchronized robot', values['reason'])
+        self.assertTrue(values['handled_by_fsm'])
+        self.assertGreater(values['matched_robot_age_ms'], 150)
+
+    def test_synchronous_reader_bypasses_stalled_cache_and_still_rejects_stopped_producer(self):
+        runtime = self.fixture()
+        runtime._acp_poll_in_step = True
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder)/'state.npz'
+            writer = StateWriter(path)
+            runtime.acp_source = StateReader(runtime.acp_config, path)
+            with patch('time.monotonic', return_value=100.):
+                writer.write(pelvis_pos_w=[0, 0, .78], pelvis_quat_w=[1, 0, 0, 0],
+                             captured_at=100., sequence=1, ground_height=0.)
+                runtime.acp_source.poll()
+            with patch('time.monotonic', return_value=100.2):
+                self.assertIn('stale', runtime.acp_source.latest().error)
+                writer.write(pelvis_pos_w=[0, 0, .78], pelvis_quat_w=[1, 0, 0, 0],
+                             captured_at=100.2, sequence=2, ground_height=0.)
+                runtime._acp_tick_time = 100.2
+                runtime._apply_acp_state(self.state(2))
+                self.assertTrue(runtime.state_cmd.acp_pose_valid)
+                self.assertEqual(runtime.state_cmd.acp_pose_time, 100.2)
+            with patch('time.monotonic', return_value=100.36):
+                runtime._acp_tick_time = 100.36
+                runtime._apply_acp_state(self.state(3))
+                self.assertFalse(runtime.state_cmd.acp_pose_valid)
+                self.assertIn('stale', runtime._acp_error)
+            path.unlink()
+            with patch('time.monotonic', return_value=100.38):
+                runtime._acp_tick_time = 100.38
+                runtime._apply_acp_state(self.state(4))
+                self.assertFalse(runtime.state_cmd.acp_pose_valid)
+                self.assertIn('no acp-state.npz', runtime._acp_error)
+
     def test_invalid_output_requests_same_tick_damping(self):
         runtime = self.fixture()
         runtime.policy_output.kps, runtime.policy_output.kds = np.full(29, 50.), np.full(29, 2.)

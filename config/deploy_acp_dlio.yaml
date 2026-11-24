@@ -20,5 +20,6 @@ acp:
     enabled: true
     frame_id: acp_odom
     require_live_goal: true
+    poll_state_in_control_loop: true
     trace_enabled: true
     trace_max_frames: 3000

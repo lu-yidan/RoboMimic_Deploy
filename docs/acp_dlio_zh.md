@@ -1,5 +1,15 @@
 # G1 ACP：DLIO 定位与实时打点
 
+2026-11-24 状态读取修正：DLIO 预设启用 `poll_state_in_control_loop`，
+每周期读取当前原子替换的状态文件，避免依赖后台读取线程的旧缓存。
+150 ms 年龄与 40 ms 同步门限保持原值；停更、文件撤销和错误输入仍使 ACP 退出。
+补丁同时记录 FSM 内触发的 `acp_damping` 原因与年龄，保留 PASSIVE 阶段日志。
+仅需重启左中 Python 策略，不需要重编 bridge 或 DLIO。
+G1 私有 IPC + 真模型 30 秒测试完成 1,485 帧，停更后约 133 ms 请求阻尼；
+详见 `docs/validation/acp_state_poll_20261124.json`。这是合成输入的部分运行时测试，
+完整现场周期、持续运动与运行中停止 DLIO 仍需双侧只读复测。
+DLIO 内存修正不包含在这次状态读取补丁中。
+
 已接入 `MID360 PointCloud2 + 雷达内置 IMU → DLIO → 腰部补偿 → 骨盆位姿 → ACP`。
 真机系统实际为 Ubuntu 20.04 / ROS2 Foxy，已在 G1 独立的 `~/acp_dlio_ws` 编译通过。
 当前阶段是现场定位/策略**双侧只读**验收，已开始现场定位检查，尚未完成定位稳定性与 ACP 真机闭环验收。

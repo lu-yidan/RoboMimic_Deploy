@@ -103,6 +103,9 @@ class StateReader:
                 if sum(item.file_size for item in archive.infolist()) > 65536:
                     raise ValueError('Oversized expanded ACP state packet')
             with np.load(BytesIO(packet), allow_pickle=False, max_header_size=1024) as data:
+                # NpzFile membership calls __getitem__ and decodes the array.
+                # Inspect names directly so optional fields are decoded once.
+                fields = set(data.files)
                 if int(data['schema_version'].item()) != 1 or str(data['boot_id'].item()) != self.boot:
                     raise ValueError('ACP protocol or host boot mismatch')
                 frame = str(data['frame_id'].item())
@@ -113,8 +116,8 @@ class StateReader:
                     raise ValueError('Invalid ACP state sequence')
                 sequence = int(sequence_raw)
                 stamp = float(data['captured_at'].item())
-                pose_stamp = float(data['pose_captured_at'].item()) if 'pose_captured_at' in data else stamp
-                terrain_stamp = float(data['terrain_captured_at'].item()) if 'terrain_captured_at' in data else stamp
+                pose_stamp = float(data['pose_captured_at'].item()) if 'pose_captured_at' in fields else stamp
+                terrain_stamp = float(data['terrain_captured_at'].item()) if 'terrain_captured_at' in fields else stamp
                 stamps = np.array([stamp, pose_stamp, terrain_stamp])
                 if (not np.isfinite(stamps).all() or np.any(time.monotonic()-stamps < 0)
                         or np.any(time.monotonic()-stamps > self.max_age)
@@ -128,7 +131,7 @@ class StateReader:
                         or not np.isfinite(position).all() or not np.isfinite(quat).all()
                         or abs(np.linalg.norm(quat)-1) > .01):
                     raise ValueError('Invalid ACP pelvis localization')
-                mode = str(data['terrain_mode'].item()) if 'terrain_mode' in data else 'grid'
+                mode = str(data['terrain_mode'].item()) if 'terrain_mode' in fields else 'grid'
                 if mode == 'plane':
                     ground = float(data['ground_height'].item())
                     if not np.isfinite(ground):

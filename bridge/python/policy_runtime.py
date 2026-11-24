@@ -56,6 +56,9 @@ class PolicyRuntime:
         self._acp_tick_time = time.monotonic()
         self._acp_goal_reader = None
         self._acp_robot_history = None
+        self._acp_poll_in_step = self.acp_config.get('real', {}).get('poll_state_in_control_loop', False)
+        if type(self._acp_poll_in_step) is not bool:
+            raise ValueError('ACP poll_state_in_control_loop must be boolean')
         if self.acp_enabled:
             from policy.acp.state_ipc import StateReader
             from policy.acp.robot_history import RobotHistory
@@ -65,6 +68,8 @@ class PolicyRuntime:
                 raise ValueError('ACP bridge requires 29 joints and 50 Hz control')
             if acp_source is None:
                 self.acp_source = StateReader(self.acp_config)
+            if self._acp_poll_in_step and not callable(getattr(self.acp_source, 'poll', None)):
+                raise ValueError('Synchronous ACP state source must provide poll()')
             if self.acp_config.get('real', {}).get('require_live_goal', False):
                 from policy.acp.goal_ipc import GoalReader
                 from policy.acp.state_ipc import state_path
@@ -140,12 +145,15 @@ class PolicyRuntime:
         self._log_step = 0
         self._log_start = time.monotonic()
         self._log_states = {FSMStateName[s] for s in config.log_states} if config.log_enabled else set()
+        if self.acp_enabled and config.log_enabled:
+            # Preserve actual robot state after a protective ACP exit as well.
+            self._log_states.add(FSMStateName.PASSIVE)
         self._logger = (
             Logger(
                 config.log_dir,
                 config.log_tag,
                 extra_meta={"robot_type": "real_policy_bridge", "control_dt": config.control_dt,
-                    "logged_fsm_states": sorted(config.log_states),
+                    "logged_fsm_states": sorted(state.name for state in self._log_states),
                     "time_clock": "monotonic elapsed", "torque_source": "optional tick-matched motor firmware estimate",
                     "php": self.php_config,
                     "acp": self.acp_config, "read_only": bool(getattr(config, 'bridge_read_only', False)),
@@ -169,7 +177,7 @@ class PolicyRuntime:
         try:
             if self.depth_source is not None:
                 self.depth_source.start()
-            if self.acp_source is not None:
+            if self.acp_source is not None and not self._acp_poll_in_step:
                 self.acp_source.start()
             if connect:
                 self.wait_for_bridge_state()
@@ -372,7 +380,8 @@ class PolicyRuntime:
         s.acp_robot_time, s.acp_robot_tick = 0., 0
         s.acp_imu_quat_wxyz = None
         s.acp_gravity_error_rad = float('nan')
-        sample = self.acp_source.latest()
+        sample = (self.acp_source.poll() if getattr(self, '_acp_poll_in_step', False)
+                  else self.acp_source.latest())
         error = sample.error
         matched = None
         try:
@@ -450,7 +459,16 @@ class PolicyRuntime:
         fixed_executed = executed_state == FSMStateName.FIXEDPOSE.value
         if not (active or executed or fixed_executed):
             # FSM already handled an ACP failure in this same tick.
-            return was_active and self.FSM_controller.cur_policy.name == FSMStateName.PASSIVE
+            damping = was_active and self.FSM_controller.cur_policy.name == FSMStateName.PASSIVE
+            if damping and self._logger is not None:
+                policy = self.FSM_controller.acp_policy
+                now = time.monotonic()
+                self._logger.event('acp_damping', reason=policy.last_error or policy.error() or 'ACP transitioned to damping',
+                                   seq=self._cmd_seq, sampled_at=now,
+                                   pose_age_ms=(now-self.state_cmd.acp_pose_time)*1000,
+                                   matched_robot_age_ms=(now-self.state_cmd.acp_robot_time)*1000,
+                                   handled_by_fsm=True)
+            return damping
         policy = self.FSM_controller.acp_policy
         if active or executed:
             error = policy.error()

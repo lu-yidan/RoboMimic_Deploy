@@ -1,0 +1,67 @@
+{
+  "synthetic": true,
+  "hardware_started": false,
+  "ros_dds_started": false,
+  "motor_control_started": false,
+  "mode": "sync",
+  "requested_duration_s": 30.0,
+  "frames": 1485,
+  "failures": [],
+  "stopped_producer": {
+    "after_stop_s": 0.1330197670013149,
+    "reason": "Pelvis localization unavailable",
+    "source_error": "ACP state stream stalled/stale",
+    "passive_requested": true,
+    "zero_kp": true,
+    "damping_kd": true
+  },
+  "limitations": "Synthetic inputs and partial runtime; excludes full FSM, DDS, live localization, normal logging and physical motion.",
+  "percentiles": [
+    50,
+    90,
+    99,
+    100
+  ],
+  "timing_ms": {
+    "state_apply": [
+      4.822464999961085,
+      5.047935999391484,
+      5.324294319507318,
+      8.072931001152028
+    ],
+    "compute": [
+      11.481194000225514,
+      11.731721999603906,
+      12.394249399294496,
+      19.895826000720263
+    ],
+    "pose_age": [
+      43.29839800084301,
+      51.525646800291725,
+      54.00211668042175,
+      58.487081001658225
+    ],
+    "inference": [
+      4.728031999547966,
+      4.801423399840132,
+      5.050360639797874,
+      8.5023480005475
+    ]
+  },
+  "compute_over_20ms_fraction": 0.0,
+  "passed": true,
+  "base_commit": "b17b2c39f0463f32e4b372f3116d647ca0ed7a4e",
+  "regression_tests_passed": 49,
+  "scope": "Synchronous latest-file polling, reduced duplicate NPZ decoding, structured ACP damping logs and PASSIVE logging.",
+  "hypothesis": "Reader worker/cache delay can make a current producer appear stale. Recent relay samples stayed fresh around the observed exit, but the exact live stall was not captured.",
+  "unchanged_limits": {
+    "max_age_s": 0.15,
+    "max_sync_skew_s": 0.04
+  },
+  "pending": [
+    "Full live readonly control-loop timing and sustained movement",
+    "Stop live DLIO while ACP remains active",
+    "DLIO/Livox native memory or shutdown faults are not fixed by this patch"
+  ],
+  "network_scope": "Single user-authorized SSH host g1-wifi. Test itself uses private files/processes and no ROS/DDS or motor communication."
+}

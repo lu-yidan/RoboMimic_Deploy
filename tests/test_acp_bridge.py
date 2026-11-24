@@ -203,6 +203,12 @@ class ACPBridgeTest(unittest.TestCase):
         self.assertIn('synchronized robot', values['reason'])
         self.assertTrue(values['handled_by_fsm'])
         self.assertGreater(values['matched_robot_age_ms'], 150)
+        runtime._acp_error = 'Bridge state tick stalled'
+        runtime.state_cmd.acp_robot_time = 0.
+        runtime._guard_acp_output(was_active=True)
+        values = runtime._logger.event.call_args.kwargs
+        self.assertEqual(values['source_error'], 'Bridge state tick stalled')
+        self.assertIsNone(values['matched_robot_age_ms'])
 
     def test_synchronous_reader_bypasses_stalled_cache_and_still_rejects_stopped_producer(self):
         runtime = self.fixture()

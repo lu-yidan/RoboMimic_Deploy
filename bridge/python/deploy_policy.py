@@ -5,10 +5,12 @@ sys.path.append(str(Path(__file__).resolve().parents[2]))
 
 import time
 import argparse
+from contextlib import ExitStack
 
 from bridge.python.bridge_cmd_dds import BridgeCmdPublisher
 from deploy_real.config import Config
 from bridge.python.policy_runtime import PolicyRuntime
+from bridge.python.control_gc import pause_cyclic_gc
 
 
 def main(argv=None):
@@ -19,15 +21,17 @@ def main(argv=None):
     config = Config()
     config.bridge_read_only = args.read_only
     runtime = PolicyRuntime(config)
-    cmd_pub = None if args.read_only else BridgeCmdPublisher(
-        domain_id=config.bridge_domain_id,
-        topic_name=config.bridge_cmd_topic,
-    )
-    if args.read_only:
-        print('[Bridge] Read-only policy: inference/logging only; no BridgeCmd publisher. '
-              'The C++ bridge must also use BRIDGE_READ_ONLY=1.')
-
+    loop_resources = ExitStack()
+    cmd_pub = None
     try:
+        loop_resources.enter_context(pause_cyclic_gc(runtime.acp_enabled))
+        cmd_pub = None if args.read_only else BridgeCmdPublisher(
+            domain_id=config.bridge_domain_id,
+            topic_name=config.bridge_cmd_topic,
+        )
+        if args.read_only:
+            print('[Bridge] Read-only policy: inference/logging only; no BridgeCmd publisher. '
+                  'The C++ bridge must also use BRIDGE_READ_ONLY=1.')
         while True:
             loop_start = time.time()
             frame = runtime.step()
@@ -58,15 +62,18 @@ def main(argv=None):
         try:
             runtime.close()
         finally:
-            if cmd_pub is not None:
-                cmd_pub.publish(
-                    seq=0,
-                    q_des=[0.0] * config.num_joints,
-                    kp=[0.0] * config.num_joints,
-                    kd=[8.0] * config.num_joints,
-                    request_damping=True,
-                    exit_requested=True,
-                )
+            try:
+                if cmd_pub is not None:
+                    cmd_pub.publish(
+                        seq=0,
+                        q_des=[0.0] * config.num_joints,
+                        kp=[0.0] * config.num_joints,
+                        kd=[8.0] * config.num_joints,
+                        request_damping=True,
+                        exit_requested=True,
+                    )
+            finally:
+                loop_resources.close()
         print("Exit")
 
 

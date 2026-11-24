@@ -1,0 +1,82 @@
+{
+  "source_log": "20261124_223229_real_policies",
+  "source_commit": "5acb479e3fa77c73e608277c76c6fabf07aa2348",
+  "read_only": true,
+  "live_acp_frames": 334,
+  "live_duration_s": 6.716606837000654,
+  "live_rate_hz": 49.5786054002088,
+  "live_failure": "156.6 ms step after the bridge sample had been fetched; state aged out before ACP inference.",
+  "live_failing_step_ms": 156.56942749023438,
+  "live_stop_dlio_while_active_verified": false,
+  "gc_measurements": {
+    "offline": true,
+    "dds_construction_blocked": true,
+    "motor_control_started": false,
+    "measurements": [
+      {
+        "generation": 0,
+        "milliseconds": 0.31655100065108854,
+        "collected": 3
+      },
+      {
+        "generation": 1,
+        "milliseconds": 0.9580400001141243,
+        "collected": 0
+      },
+      {
+        "generation": 2,
+        "milliseconds": 146.62222500010103,
+        "collected": 10
+      },
+      {
+        "generation": 2,
+        "milliseconds": 143.21004500015988,
+        "collected": 0
+      },
+      {
+        "generation": 2,
+        "milliseconds": 130.70218299981207,
+        "collected": 0
+      }
+    ],
+    "limitation": "Explicit garbage collection latency is measured; this does not prove GC caused the live stall."
+  },
+  "full_runtime_candidate": {
+    "gc_enabled_after_cleanup": true,
+    "mode": "paused",
+    "full_runtime": true,
+    "dds_forbidden": true,
+    "synthetic_input": true,
+    "frames": 1744,
+    "failure": null,
+    "gc_events": [
+      {
+        "generation": 2,
+        "duration_ms": 146.4786879987514,
+        "phase": "initializing",
+        "at": 9275.923158884
+      }
+    ],
+    "compute_ms_p50_p99_max": [
+      12.692455999967933,
+      14.175332970298768,
+      19.062251998548163
+    ],
+    "over20_fraction": 0.0,
+    "limitations": "No live DDS, real robot or perception calls. Includes all deployed models, FSM, normal logging, trace and state IPC."
+  },
+  "local_regression_passed": 54,
+  "changes": [
+    "Collect cyclic garbage before ACP command loop and pause automatic collection until cleanup; restore prior GC state.",
+    "Log phase durations for ACP control steps exceeding 50 ms.",
+    "Preserve state-reader error at damping; unavailable robot age is null."
+  ],
+  "limitations": [
+    "Live GC causation is a hypothesis; live GC events were not captured.",
+    "Unmodified full offline runtime also ran for 35 seconds without a natural generation-2 collection.",
+    "Candidate test includes all models/FSM/logging/trace, but excludes DDS/perception/live motion.",
+    "Continuous-motion, active DLIO-stop and full live timing acceptance still pending.",
+    "DLIO and Livox native shutdown/memory faults remain separate."
+  ],
+  "network": "Only the designated existing SSH connection; offline diagnostics forbade DDS participants/writers; no port scan or monitoring changes."
+}

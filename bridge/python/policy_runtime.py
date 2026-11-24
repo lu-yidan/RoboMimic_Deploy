@@ -465,8 +465,11 @@ class PolicyRuntime:
                 now = time.monotonic()
                 self._logger.event('acp_damping', reason=policy.last_error or policy.error() or 'ACP transitioned to damping',
                                    seq=self._cmd_seq, sampled_at=now,
-                                   pose_age_ms=(now-self.state_cmd.acp_pose_time)*1000,
-                                   matched_robot_age_ms=(now-self.state_cmd.acp_robot_time)*1000,
+                                   source_error=self._acp_error,
+                                   pose_age_ms=((now-self.state_cmd.acp_pose_time)*1000
+                                                if self.state_cmd.acp_pose_time > 0 else None),
+                                   matched_robot_age_ms=((now-self.state_cmd.acp_robot_time)*1000
+                                                         if self.state_cmd.acp_robot_time > 0 else None),
                                    handled_by_fsm=True)
             return damping
         policy = self.FSM_controller.acp_policy
@@ -596,8 +599,10 @@ class PolicyRuntime:
         if self._was_stale and self._logger is not None:
             self._logger.event("state_resumed", time_s=started-self._log_start)
         self._was_stale = False
+        state_checked_at = time.monotonic()
         self._set_remote_from_bridge(bridge_state)
         self._apply_robot_state(bridge_state)
+        robot_applied_at = time.monotonic()
         self.state_cmd.telemetry = {
             "state_tick_words": [int(bridge_state.tick) & 65535, (int(bridge_state.tick) >> 16) & 65535],
             "command_seq_words": [self._cmd_seq & 65535, (self._cmd_seq >> 16) & 65535],
@@ -607,8 +612,10 @@ class PolicyRuntime:
         if self.connect:
             apply_diagnostics(self.state_cmd, self.diagnostics_sub.matching(bridge_state.tick))
             self._apply_perception_state()
+        perception_done_at = time.monotonic()
         self._apply_php_depth()
         self._apply_acp_state(bridge_state)
+        inputs_done_at = time.monotonic()
         self._apply_remote_commands()
         acp_was_active = self.FSM_controller.cur_policy.name == FSMStateName.SKILL_ACP
         if (self.acp_enabled and self.state_cmd.skill_cmd == FSMCommand.CMD_ACP
@@ -616,11 +623,22 @@ class PolicyRuntime:
                 and self.FSM_controller.acp_policy.ready()):
             acp_was_active = True
         self.FSM_controller.run()
+        fsm_done_at = time.monotonic()
         php_damping = self._guard_php_output() if self.php_enabled else False
         acp_damping = self._guard_acp_output(acp_was_active) if self.acp_enabled else False
         self._record_acp_trace(bridge_state)
-
-        self.state_cmd.telemetry["runtime_compute_ms"] = (time.monotonic()-started)*1000
+        output_done_at = time.monotonic()
+        compute_ms = (output_done_at-started)*1000
+        self.state_cmd.telemetry["runtime_compute_ms"] = compute_ms
+        if self.acp_enabled and compute_ms > 50 and self._logger is not None:
+            self._logger.event('slow_control_step', seq=self._cmd_seq, runtime_compute_ms=compute_ms,
+                               phases_ms=dict(state_check=(state_checked_at-started)*1000,
+                                              robot_apply=(robot_applied_at-state_checked_at)*1000,
+                                              perception=(perception_done_at-robot_applied_at)*1000,
+                                              input_read=(inputs_done_at-perception_done_at)*1000,
+                                              remote_and_fsm=(fsm_done_at-inputs_done_at)*1000,
+                                              guard_and_trace=(output_done_at-fsm_done_at)*1000),
+                               source_error=self._acp_error)
         if self._logger is not None and (self.FSM_controller.cur_policy.name in self._log_states or
                 getattr(self.policy_output, "executed_fsm_state", -1) in {s.value for s in self._log_states}):
             t = time.monotonic() - self._log_start

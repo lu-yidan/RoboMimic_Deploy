@@ -49,7 +49,34 @@ def assess(status, now, host_boot):
         return 'acp_state', 'ACP state is blocked; inspect current error and state file.'
     if not status.get('acp_output_enabled'):
         return 'diagnostic_only', 'Pose-only relay: ACP_DLIO_PUBLISH=1 is needed for the read-only policy test.'
-    return 'ready', 'Fresh ACP state available. Start left-middle READ-ONLY policy, set --stop, then B -> Y.'
+    return 'ready', 'Localization ready. Start left-middle READ-ONLY policy, execute goal.py --stop, confirm goal acceptance, then START -> wait >=2 s -> B -> Y.'
+
+
+def assess_goal(status, goal, now, host_boot):
+    """Inspect goal identity only; acceptance belongs to the running policy reader.
+
+    A reader keeps an accepted fixed world goal beyond two seconds, but a newly
+    started reader requires a fresh request. Never label an old file accepted.
+    """
+    if goal is None:
+        return 'missing', 'Execute goal.py --stop after starting the read-only policy.'
+    if (goal.get('boot_id') != host_boot or goal.get('session') != status.get('session')
+            or goal.get('frame_id') != status.get('frame_id')):
+        return 'wrong_session', 'Goal belongs to another host/session/frame. Execute goal.py --stop after starting the read-only policy.'
+    try:
+        age = now-float(goal['captured_at'])
+        target = goal['target_position']
+        valid = (goal.get('schema') == 1 and isinstance(goal.get('request_id'), str)
+                 and bool(goal['request_id']) and math.isfinite(age) and age >= 0
+                 and len(target) == 2 and all(math.isfinite(float(x)) for x in target)
+                 and math.isfinite(float(goal['target_heading'])))
+    except (KeyError, TypeError, ValueError, OverflowError):
+        valid = False
+    if not valid:
+        return 'invalid', 'Invalid goal packet. Execute goal.py --stop with fresh localization.'
+    if age > 2.:
+        return 'current_session_existing', 'Current-session goal is %.1f s old; valid only if already accepted by this policy. After policy restart, execute goal.py --stop again.' % age
+    return 'current_session_fresh', 'Fresh current-session goal; confirm acp_goal acceptance in the policy log before Y.'
 
 
 def main():
@@ -77,6 +104,14 @@ def main():
             print('Window %.2f s: %s; fresh pelvis %.1f%% (%d samples)' % (
                 now-started, dict(stages), 100*fresh_poses/sum(stages.values()), sum(stages.values())))
         print('Blocking stage: ' + stage + '\nNext: ' + action)
+        try:
+            goal = read_json(directory/'acp-goal.json')
+            goal_stage, goal_action = assess_goal(status, goal, time.monotonic(), host)
+        except FileNotFoundError:
+            goal_stage, goal_action = assess_goal(status, None, time.monotonic(), host)
+        except (OSError, ValueError, TypeError, AttributeError) as error:
+            goal_stage, goal_action = 'unreadable', str(error)
+        print('Goal: ' + goal_stage + '\nGoal next: ' + goal_action)
         print('Error: ' + str(status.get('error', '')))
         print('Stage errors: ' + str(status.get('stage_errors', {})))
         if status.get('localization_fault_details'):

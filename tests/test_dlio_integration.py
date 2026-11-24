@@ -10,7 +10,7 @@ import pytest
 from onboard.localization.dlio.core import (HostClock, PoseGate, WaistHistory, atomic_json,
                                            imu_si, pelvis_pose, quaternion_wxyz)
 from onboard.localization.dlio.relay import point_times
-from onboard.localization.dlio.check import assess
+from onboard.localization.dlio.check import assess, assess_goal
 from onboard.localization.dlio.calibrate import validate_calibration
 from onboard.perception.lidar.mid360_to_base import compute_mid360_to_base_transform, Rz, Ry
 from policy.acp.observations import rotation
@@ -233,3 +233,17 @@ def test_goal_replacement_caches_the_key_of_the_actual_packet(tmp_path, monkeypa
     reader = GoalReader(tmp_path)
     np.testing.assert_allclose(reader.read(now=100.02)[0], [2., 0.])
     np.testing.assert_allclose(reader.read(now=100.03)[0], [2., 0.])
+
+
+def test_goal_diagnosis_does_not_confuse_session_identity_with_policy_acceptance():
+    status = dict(session='new', frame_id='acp_odom')
+    goal = dict(schema=1, boot_id='host', session='old', frame_id='acp_odom',
+                captured_at=100., request_id='request', target_position=[0., 0.], target_heading=0.)
+    assert assess_goal(status, None, 100.1, 'host')[0] == 'missing'
+    assert assess_goal(status, goal, 100.1, 'host')[0] == 'wrong_session'
+    goal['session'] = 'new'
+    assert assess_goal(status, goal, 100.1, 'host')[0] == 'current_session_fresh'
+    assert assess_goal(status, goal, 103., 'host')[0] == 'current_session_existing'
+    assert assess_goal(status, goal, 99., 'host')[0] == 'invalid'
+    goal['target_position'] = [float('nan'), 0.]
+    assert assess_goal(status, goal, 100.1, 'host')[0] == 'invalid'

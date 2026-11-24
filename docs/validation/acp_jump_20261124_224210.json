@@ -1,0 +1,107 @@
+{
+  "source": "20261124_224210",
+  "native_stdout_positions": [
+    {
+      "wall_time": 1795531331.5518267,
+      "position_w": [
+        -0.002,
+        0.0062,
+        0.0025
+      ]
+    },
+    {
+      "wall_time": 1795531331.5994742,
+      "position_w": [
+        -0.0027,
+        0.0084,
+        0.0013
+      ]
+    },
+    {
+      "wall_time": 1795531331.6519635,
+      "position_w": [
+        -0.0023,
+        0.0067,
+        0.0015
+      ]
+    },
+    {
+      "wall_time": 1795531331.7028418,
+      "position_w": [
+        -0.0113,
+        0.0271,
+        0.0999
+      ]
+    },
+    {
+      "wall_time": 1795531331.756845,
+      "position_w": [
+        -0.0097,
+        0.0236,
+        0.0886
+      ]
+    },
+    {
+      "wall_time": 1795531331.7973204,
+      "position_w": [
+        -0.0108,
+        0.0317,
+        0.083
+      ]
+    },
+    {
+      "wall_time": 1795531331.8528914,
+      "position_w": [
+        -0.009,
+        0.0284,
+        0.0726
+      ]
+    },
+    {
+      "wall_time": 1795531331.898778,
+      "position_w": [
+        -0.0058,
+        0.0424,
+        0.0608
+      ]
+    },
+    {
+      "wall_time": 1795531331.9581795,
+      "position_w": [
+        -0.0044,
+        0.0385,
+        0.0511
+      ]
+    },
+    {
+      "wall_time": 1795531331.9975097,
+      "position_w": [
+        -0.0023,
+        0.0343,
+        0.0411
+      ]
+    },
+    {
+      "wall_time": 1795531332.0525048,
+      "position_w": [
+        -0.0014,
+        0.031,
+        0.0315
+      ]
+    },
+    {
+      "wall_time": 1795531332.0964305,
+      "position_w": [
+        -0.0004,
+        0.0285,
+        0.0248
+      ]
+    }
+  ],
+  "findings": [
+    "Native DLIO stdout also shows the height jump followed by gradual return; not solely a relay transform artifact.",
+    "publishPose reads state and imu_stamp without geo.mtx, while updateState and propagateState use geo.mtx. A concurrency risk exists, but this does not establish the cause of the recorded jump.",
+    "No raw sensor bag exists for this session; a new stationary capture is required to distinguish registration correction from state publication races."
+  ],
+  "gate_thresholds_changed": false
+}

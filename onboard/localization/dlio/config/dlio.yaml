@@ -19,8 +19,10 @@
     odom/imu/bufferSize: 5000
     odom/preprocessing/cropBoxFilter/size: 0.3
     odom/preprocessing/voxelFilter/res: 0.1
-    odom/keyframe/threshD: 1.0
-    odom/keyframe/threshR: 45.0
+    # G1 preparation changes the MID360 view before travelling 1 m / turning 45 deg.
+    # Refresh the local map at this smaller scale; keep registration rejection intact.
+    odom/keyframe/threshD: 0.1
+    odom/keyframe/threshR: 5.0
     odom/submap/keyframe/knn: 10
     odom/submap/keyframe/kcv: 10
     odom/submap/keyframe/kcc: 10

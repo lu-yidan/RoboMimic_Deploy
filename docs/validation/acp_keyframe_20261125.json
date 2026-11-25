@@ -1,0 +1,266 @@
+{
+  "date": "2026-11-25",
+  "input_recording": "record-20261125_201338-pzVw7P",
+  "input_duration_s": 54.785,
+  "input_messages": 28328,
+  "empty_recording_excluded": "record-20261125_201049-qxMBqY",
+  "operator_action": "START/B during recording",
+  "deployed_commit": "b663786",
+  "native_sha256": "4fe47b62005e2875cb81f046157bca476c6a8c04876d5c468a826fbacf56c8b0",
+  "isolation": {
+    "ros_domain_id": 78,
+    "localhost_only": true,
+    "dds_interface": "lo",
+    "dds_peer": "127.0.0.1",
+    "hardware_started": false,
+    "motor_control_started": false,
+    "deployment_changed": false
+  },
+  "configuration_changes": {
+    "odom/keyframe/threshD": {
+      "before": 1.0,
+      "after": 0.1
+    },
+    "odom/keyframe/threshR": {
+      "before": 45.0,
+      "after": 5.0
+    }
+  },
+  "unchanged": [
+    "20 Hz source clouds",
+    "native estimator binary",
+    "registration injection limits 0.03 m / 0.05 rad",
+    "ACP freshness and synchronization limits"
+  ],
+  "evidence": {
+    "live_rejection_stamp": 1795608855.6883605,
+    "live_proposed_position_step_m": 0.040638,
+    "baseline_reproduced_same_stamp": true,
+    "initial_keyframe_header_stamp": 1795608830.5649126,
+    "initial_cloud_plane_within_5cm_fraction": 0.938,
+    "initial_cloud_covariance_eigenvalues": [
+      0.0057,
+      2.41846,
+      2.54872
+    ],
+    "next_cloud_plane_within_5cm_fraction": 0.03,
+    "inference": "Sparse keyframe refresh leaves insufficient local-map coverage after the preparation motion; denser keyframes remove the recorded failure. This is not a proof that all registration failures have the same cause."
+  },
+  "cases": {
+    "baseline": {
+      "hardware_started": false,
+      "motor_control_started": false,
+      "ros_domain": 78,
+      "timestamps_rewritten": false,
+      "uses_acp_relay": false,
+      "input_directory": "/home/unitree/acp_dlio_diagnostics/registration_20261125/baseline",
+      "completed": true,
+      "input_counts": {
+        "cloud": 1036,
+        "imu": 10130,
+        "registered": 501
+      },
+      "odom_messages": 2507,
+      "duplicate_stamps": 135,
+      "pose_span_s": 25.06046199798584,
+      "position_range_m": [
+        0.25227843783795834,
+        0.2443049643188715,
+        0.16655304352752864
+      ],
+      "maximum_step_m": 0.01925053857900202,
+      "maximum_step_angle_rad": 0.0379763375499026,
+      "gate_violations": 0,
+      "first_fault": null,
+      "registration_rejections": [
+        "[ERROR] [1795609973.696097728] [acp_offline_native]: ACP_REGISTRATION_REJECT stamp=1795608855.688360453 dt=0.046849 position_step=0.039967 angle_step=0.012026 residual_xyz=0.066387,0.177574,-0.000371; restart required"
+      ],
+      "estimator_passed": false
+    },
+    "instrumented-run": {
+      "hardware_started": false,
+      "motor_control_started": false,
+      "ros_domain": 78,
+      "timestamps_rewritten": false,
+      "uses_acp_relay": false,
+      "input_directory": "/home/unitree/acp_dlio_diagnostics/registration_20261125/instrumented-run",
+      "completed": true,
+      "input_counts": {
+        "cloud": 1036,
+        "imu": 10131,
+        "registered": 501
+      },
+      "odom_messages": 2507,
+      "duplicate_stamps": 125,
+      "pose_span_s": 25.06050992012024,
+      "position_range_m": [
+        0.2521198494359851,
+        0.24588818568736315,
+        0.1667877999279881
+      ],
+      "maximum_step_m": 0.01705852285312537,
+      "maximum_step_angle_rad": 0.03797553524176614,
+      "gate_violations": 0,
+      "first_fault": null,
+      "registration_rejections": [
+        "[ERROR] [1795610228.653059178] [acp_offline_native]: ACP_REGISTRATION_REJECT stamp=1795608855.688360453 dt=0.046849 position_step=0.042687 angle_step=0.011188 residual_xyz=0.053758,0.195211,0.000041; restart required"
+      ],
+      "estimator_passed": false
+    },
+    "paired10-phase0": {
+      "hardware_started": false,
+      "motor_control_started": false,
+      "ros_domain": 78,
+      "timestamps_rewritten": false,
+      "uses_acp_relay": false,
+      "input_directory": "/home/unitree/acp_dlio_diagnostics/registration_20261125/paired10-phase0",
+      "completed": true,
+      "input_counts": {
+        "cloud": 518,
+        "imu": 10131,
+        "registered": 145
+      },
+      "odom_messages": 1452,
+      "duplicate_stamps": 93,
+      "pose_span_s": 14.510014295578003,
+      "position_range_m": [
+        0.16301362961530685,
+        0.1250922461040318,
+        0.16162776401324663
+      ],
+      "maximum_step_m": 0.01499137938101558,
+      "maximum_step_angle_rad": 0.03797609699837557,
+      "gate_violations": 0,
+      "first_fault": null,
+      "registration_rejections": [
+        "[ERROR] [1795610407.306612424] [acp_offline_native]: ACP_REGISTRATION_REJECT stamp=1795608845.267520189 dt=0.100023 position_step=0.030521 angle_step=0.016921 residual_xyz=0.053532,0.003090,0.041506; restart required"
+      ],
+      "estimator_passed": false
+    },
+    "paired10-phase1": {
+      "hardware_started": false,
+      "motor_control_started": false,
+      "ros_domain": 78,
+      "timestamps_rewritten": false,
+      "uses_acp_relay": false,
+      "input_directory": "/home/unitree/acp_dlio_diagnostics/registration_20261125/paired10-phase1",
+      "completed": true,
+      "input_counts": {
+        "cloud": 517,
+        "imu": 10131,
+        "registered": 146
+      },
+      "odom_messages": 1462,
+      "duplicate_stamps": 95,
+      "pose_span_s": 14.61022424697876,
+      "position_range_m": [
+        0.16367072751745582,
+        0.12927215336821973,
+        0.16487018574844114
+      ],
+      "maximum_step_m": 0.015401703840943012,
+      "maximum_step_angle_rad": 0.04091105632402795,
+      "gate_violations": 0,
+      "first_fault": null,
+      "registration_rejections": [
+        "[ERROR] [1795610464.081700331] [acp_offline_native]: ACP_REGISTRATION_REJECT stamp=1795608845.310307980 dt=0.099176 position_step=0.053386 angle_step=0.063531 residual_xyz=0.099706,0.026568,0.060515; restart required"
+      ],
+      "estimator_passed": false
+    },
+    "keyframe20": {
+      "hardware_started": false,
+      "motor_control_started": false,
+      "ros_domain": 78,
+      "timestamps_rewritten": false,
+      "uses_acp_relay": false,
+      "input_directory": "/home/unitree/acp_dlio_diagnostics/registration_20261125/keyframe20",
+      "completed": true,
+      "input_counts": {
+        "cloud": 1036,
+        "imu": 10131,
+        "registered": 954
+      },
+      "odom_messages": 4823,
+      "duplicate_stamps": 202,
+      "pose_span_s": 47.655173778533936,
+      "position_range_m": [
+        0.24466003198176622,
+        0.24339124653488398,
+        0.16638007524306886
+      ],
+      "maximum_step_m": 0.022501668798328742,
+      "maximum_step_angle_rad": 0.04420561734136045,
+      "gate_violations": 0,
+      "first_fault": null,
+      "registration_rejections": [],
+      "estimator_passed": true
+    },
+    "keyframe20-repeat": {
+      "hardware_started": false,
+      "motor_control_started": false,
+      "ros_domain": 78,
+      "timestamps_rewritten": false,
+      "uses_acp_relay": false,
+      "input_directory": "/home/unitree/acp_dlio_diagnostics/registration_20261125/keyframe20-repeat",
+      "completed": true,
+      "input_counts": {
+        "cloud": 1036,
+        "imu": 10131,
+        "registered": 954
+      },
+      "odom_messages": 4823,
+      "duplicate_stamps": 212,
+      "pose_span_s": 47.655173778533936,
+      "position_range_m": [
+        0.24613924324512482,
+        0.23615770880132914,
+        0.16364040464395657
+      ],
+      "maximum_step_m": 0.019370215739597477,
+      "maximum_step_angle_rad": 0.044204153244467706,
+      "gate_violations": 0,
+      "first_fault": null,
+      "registration_rejections": [],
+      "estimator_passed": true
+    },
+    "keyframe20-old": {
+      "hardware_started": false,
+      "motor_control_started": false,
+      "ros_domain": 78,
+      "timestamps_rewritten": false,
+      "uses_acp_relay": false,
+      "input_directory": "/home/unitree/acp_dlio_diagnostics/registration_20261125/keyframe20-old",
+      "completed": true,
+      "input_counts": {
+        "cloud": 1224,
+        "imu": 12030,
+        "registered": 1144
+      },
+      "odom_messages": 5775,
+      "duplicate_stamps": 365,
+      "pose_span_s": 57.17049598693848,
+      "position_range_m": [
+        0.01387474499642849,
+        0.012270448729395866,
+        0.005470584845170379
+      ],
+      "maximum_step_m": 0.00710123209965473,
+      "maximum_step_angle_rad": 0.0035851090704594403,
+      "gate_violations": 0,
+      "first_fault": null,
+      "registration_rejections": [],
+      "estimator_passed": true
+    }
+  },
+  "limitations": [
+    "No external ground truth for absolute localization accuracy",
+    "10 Hz inputs were constructed by pairing adjacent recorded clouds, retaining per-point timestamps; not live 10 Hz captures",
+    "Offline replay is not ACP motor-loop acceptance or live control-cycle validation",
+    "Denser keyframes may increase map memory and compute; field timing remains to be checked"
+  ],
+  "acceptance": {
+    "new_failure_recording_passed_twice": true,
+    "previous_stationary_recording_passed": true,
+    "live_retest_pending": true
+  }
+}

@@ -396,3 +396,23 @@ relay 坐标变换中出现的异常。`publishPose` 未用 `geo.mtx` 读取共�
 `logs/acp-dlio/record-20261124_230134-xv60W5/bag/`；摘要与哈希见
 `docs/validation/acp_stationary_20261124_230134.json`。DLIO/relay 正常退出，
 Livox 关闭仍为 -11。采集后已停止定位，保留只读 bridge 与腰部导出。
+
+2026-11-25 原生定位修正：补丁栈现包含 `dlio-runtime.patch` 与
+`dlio-state.patch`。前者取消共享路径/统计容器的分离线程并约束路径长度，
+后者在 `geo.mtx` 内取得状态和对应 IMU 时间戳的统一快照用于里程计发布。
+配准未收敛或包含非有限值时，不再将其应用到状态。观测器写入偏置/状态前，
+检查本次修正的平移与旋转增量；超过 0.03 m 或 0.05 rad 时锁定故障，
+记录 `ACP_REGISTRATION_REJECT`，不再更新地图、关键帧或定位心跳。
+这是拒绝异常配准的保护，不是限幅或平滑；恢复需要重启定位并重做当前会话标定/目标。
+这两个值取 relay 固定跳变余量，不能将扫描周期当作瞬时修正可用的运动时间。
+relay 原有门限保持不变。现场根因仍需带原始点云/IMU 的故障复现来最终判定。
+
+无 ROS/DDS 的观测器回归可直接编译实际补丁后方法：
+`python tools/acp/verify_dlio_observer.py /path/to/patched/src/dlio/odom.cc`。
+它验证正常微调和拒绝大跳变、NaN、异常间隔、大角度时状态/偏置不变。
+
+最终候选通过 18 项 Python 回归、7 项实际 C++ 观测器用例和补丁重复应用检查，
+ARM 原生编译成功。两份隔离回放覆盖 57.17 秒与 86.37 秒，共 2872 次有效配准，
+最大步长分别 7.51 mm、3.85 mm；无跳变和配准拒绝记录。
+见 `docs/validation/acp_dlio_state_fix_20261125.json`。这些是静止数据的回归，
+不能替代现场运动、ACP 周期和失效退出验收；Livox 关闭 -11 仍单独待处理。

@@ -1,0 +1,84 @@
+{
+  "date": "2026-11-25",
+  "changes": [
+    "coherent state/acquisition-time snapshots",
+    "snapshot reads for IMU biases, keyframes and path",
+    "reject unconverged/nonfinite registration before observer update",
+    "reject instantaneous observer correction above 0.03 m or 0.05 rad before state/bias mutation; latch and suppress output",
+    "remove detached shared-container workers and bound visualization path"
+  ],
+  "tests": {
+    "python_regressions": 18,
+    "compiled_actual_observer_cases": 7,
+    "patch_stack_repeated_application": true
+  },
+  "real_motion_acceptance": false,
+  "original_jump_reproduced": false,
+  "relay_thresholds_changed": false,
+  "offline_dds": {
+    "domain": 78,
+    "localhost_only": true,
+    "interface": "lo",
+    "peer": "127.0.0.1"
+  },
+  "replays": {
+    "candidate-new": {
+      "hardware_started": false,
+      "motor_control_started": false,
+      "ros_domain": 78,
+      "timestamps_rewritten": false,
+      "uses_acp_relay": false,
+      "input_directory": "/home/unitree/acp_dlio_diagnostics/state_jump_20261125_final_v2/candidate-new",
+      "completed": true,
+      "input_counts": {
+        "cloud": 1224,
+        "imu": 12031,
+        "registered": 1144
+      },
+      "odom_messages": 5774,
+      "duplicate_stamps": 270,
+      "pose_span_s": 57.166465044021606,
+      "position_range_m": [
+        0.012719240970909595,
+        0.012023109244182706,
+        0.005484931403771043
+      ],
+      "maximum_step_m": 0.007508306931321463,
+      "maximum_step_angle_rad": 0.0035384332971622476,
+      "gate_violations": 0,
+      "first_fault": null
+    },
+    "candidate-old": {
+      "hardware_started": false,
+      "motor_control_started": false,
+      "ros_domain": 78,
+      "timestamps_rewritten": false,
+      "uses_acp_relay": false,
+      "input_directory": "/home/unitree/acp_dlio_diagnostics/state_jump_20261125_final_v2/candidate-old",
+      "completed": true,
+      "input_counts": {
+        "cloud": 1791,
+        "imu": 17896,
+        "registered": 1728
+      },
+      "odom_messages": 8695,
+      "duplicate_stamps": 590,
+      "pose_span_s": 86.37041354179382,
+      "position_range_m": [
+        0.00810401258058846,
+        0.0072873064200393856,
+        0.007556291064247489
+      ],
+      "maximum_step_m": 0.0038508939066956025,
+      "maximum_step_angle_rad": 0.0013639944870022886,
+      "gate_violations": 0,
+      "first_fault": null
+    }
+  },
+  "source_sha256": "981fbabfa9200126f59d5d89248ca894e63e28f56633d4610d4b4a36c0756cd0",
+  "limitations": [
+    "The original 10 cm event has no raw sensor recording; its specific root cause is not proven.",
+    "Large observer corrections fail closed rather than silently clamping; dynamic motion and ACP timing need live readonly acceptance.",
+    "Livox shutdown SIGSEGV remains separate and unresolved."
+  ]
+}

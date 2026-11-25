@@ -1,0 +1,139 @@
+diff --git a/src/dlio/odom.cc b/src/dlio/odom.cc
+--- a/src/dlio/odom.cc
++++ b/src/dlio/odom.cc
+@@ -94,7 +94,8 @@
+ 
+   this->first_scan_stamp = 0.;
+   this->elapsed_time = 0.;
+-  this->length_traversed;
++  this->length_traversed = 0.;
++  this->distance_anchor = Eigen::Vector3f::Zero();
+ 
+   this->convex_hull.setDimension(3);
+   this->concave_hull.setDimension(3);
+@@ -175,7 +176,16 @@
+ 
+ }
+ 
+-dlio::OdomNode::~OdomNode() {}
++dlio::OdomNode::~OdomNode() {
++  // The only background task is owned by this future. Release its pause before
++  // any node members or ROS publishers are destroyed.
++  {
++    std::lock_guard<std::mutex> lock(this->main_loop_running_mutex);
++    this->main_loop_running = false;
++  }
++  this->submap_build_cv.notify_all();
++  if (this->submap_future.valid()) { this->submap_future.wait(); }
++}
+ 
+ void dlio::OdomNode::getParams() {
+ 
+@@ -380,8 +390,17 @@
+   p.pose.orientation.y = this->state.q.y();
+   p.pose.orientation.z = this->state.q.z();
+ 
++  // A visualization path must not grow/serialize for the full session. This
++  // function is owned by the cloud callback, never concurrent detached threads.
++  constexpr std::size_t max_path_poses = 500;
++  if (this->path_ros.poses.size() >= max_path_poses) {
++    this->path_ros.poses.erase(this->path_ros.poses.begin(), this->path_ros.poses.begin()+250);
++  }
+   this->path_ros.poses.push_back(p);
+-  this->path_pub->publish(this->path_ros);
++  if (this->last_path_publish == 0. || this->scan_stamp-this->last_path_publish >= 1.) {
++    this->path_pub->publish(this->path_ros);
++    this->last_path_publish = this->scan_stamp;
++  }
+ 
+   // transform: odom to baselink
+   geometry_msgs::msg::TransformStamped transformStamped;
+@@ -800,8 +819,9 @@
+   }
+ 
+   // Compute Metrics
+-  this->metrics_thread = std::thread( &dlio::OdomNode::computeMetrics, this );
+-  this->metrics_thread.detach();
++  // Metrics read the current scan/GICP and append shared vectors. Keep them
++  // in the scan owner, before adaptive parameters consume their results.
++  this->computeMetrics();
+ 
+   // Set Adaptive Parameters
+   if (this->adaptive_params_) {
+@@ -840,7 +860,18 @@
+   }
+ 
+   // Update trajectory
+-  this->trajectory.push_back( std::make_pair(this->state.p, this->state.q) );
++  // Preserve the 0.1 m distance accumulator without rescanning an unbounded
++  // trajectory from a racing diagnostics thread on every cloud.
++  if (!this->distance_anchor_set) {
++    this->distance_anchor = this->state.p;
++    this->distance_anchor_set = true;
++  } else {
++    const double distance = (this->state.p-this->distance_anchor).norm();
++    if (distance >= 0.1) {
++      this->length_traversed += distance;
++      this->distance_anchor = this->state.p;
++    }
++  }
+ 
+   // Update time stamps
+   this->lidar_rates.push_back( 1. / (this->scan_stamp - this->prev_scan_stamp) );
+@@ -856,17 +887,18 @@
+   }
+   // A fresh deskewed cloud is also the relay registration heartbeat.
+   if (this->gicp.hasConverged()) {
+-    this->publish_thread = std::thread( &dlio::OdomNode::publishToROS, this, published_cloud, this->T_corr );
+-    this->publish_thread.detach();
++    this->publishToROS(published_cloud, this->T_corr);
+   }
+ 
+   // Update some statistics
+   this->comp_times.push_back(this->now().seconds() - then);
+   this->gicp_hasConverged = this->gicp.hasConverged();
+ 
+-  // Debug statements and publish custom DLIO message
+-  this->debug_thread = std::thread( &dlio::OdomNode::debug, this );
+-  this->debug_thread.detach();
++  // The old per-scan debug thread raced vector reads/writes and flooded the
++  // terminal. Relay JSONL carries detailed diagnostics; log only bounded data.
++  RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
++                      "DLIO cloud: %zu points, registration converged=%d",
++                      this->current_scan->points.size(), this->gicp.hasConverged());
+ 
+   this->geo.first_opt_done = true;
+ 
+@@ -1801,8 +1833,8 @@
+     this->keyframes[i].second = transformed_keyframe;
+     this->keyframe_normals[i] = transformed_covariances;
+ 
+-    this->publish_keyframe_thread = std::thread( &dlio::OdomNode::publishKeyframe, this, this->keyframes[i], this->keyframe_timestamps[i] );
+-    this->publish_keyframe_thread.detach();
++    // The submap future owns this message and completes before destruction.
++    this->publishKeyframe(this->keyframes[i], this->keyframe_timestamps[i]);
+   }
+ 
+   lock.unlock();
+diff --git a/include/dlio/odom.h b/include/dlio/odom.h
+--- a/include/dlio/odom.h
++++ b/include/dlio/odom.h
+@@ -142,15 +142,13 @@
+   std::atomic<bool> deskew_status;
+   std::atomic<int> deskew_size;
+ 
+-  // Threads
+-  std::thread publish_thread;
+-  std::thread publish_keyframe_thread;
+-  std::thread metrics_thread;
+-  std::thread debug_thread;
+ 
+   // Trajectory
+   std::vector<std::pair<Eigen::Vector3f, Eigen::Quaternionf>> trajectory;
+   double length_traversed;
++  Eigen::Vector3f distance_anchor;
++  bool distance_anchor_set = false;
++  double last_path_publish = 0.;
+ 
+   // Keyframes
+   std::vector<std::pair<std::pair<Eigen::Vector3f, Eigen::Quaternionf>,

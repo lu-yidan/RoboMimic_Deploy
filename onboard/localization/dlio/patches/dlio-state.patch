@@ -1,0 +1,419 @@
+--- a/include/dlio/odom.h
++++ b/include/dlio/odom.h
+@@ -57,6 +57,7 @@
+   void callbackPointCloud(const sensor_msgs::msg::PointCloud2::SharedPtr pc);
+   void callbackImu(const sensor_msgs::msg::Imu::SharedPtr imu);
+ 
++  State snapshotState();
+   void publishPose();
+ 
+   void publishToROS(pcl::PointCloud<PointType>::ConstPtr published_cloud, Eigen::Matrix4f T_cloud);
+@@ -72,7 +73,7 @@
+ 
+   void initializeDLIO();
+ 
+-  void getNextPose();
++  bool getNextPose();
+   bool imuMeasFromTimeRange(double start_time, double end_time,
+                             boost::circular_buffer<ImuMeas>::reverse_iterator& begin_imu_it,
+                             boost::circular_buffer<ImuMeas>::reverse_iterator& end_imu_it);
+@@ -87,7 +88,7 @@
+   void propagateGICP();
+ 
+   void propagateState();
+-  void updateState();
++  bool updateState();
+ 
+   void setAdaptiveParams();
+   void setKeyframeCloud();
+@@ -255,7 +256,7 @@
+ 
+   // Geometric Observer
+   struct Geo {
+-    bool first_opt_done;
++    std::atomic<bool> first_opt_done;
+     std::mutex mtx;
+     double dp;
+     double dq_deg;
+@@ -286,6 +287,8 @@
+     Velocity v;
+     ImuBias b; // imu biases in body frame
+   }; State state;
++  double state_stamp = 0.; // geo.mtx: acquisition stamp of propagated state
++  std::atomic<bool> registration_fault{false};
+ 
+   struct Pose {
+     Eigen::Vector3f p; // position in world frame
+--- a/src/dlio/odom.cc
++++ b/src/dlio/odom.cc
+@@ -327,68 +327,88 @@
+ 
+ }
+ 
++dlio::OdomNode::State dlio::OdomNode::snapshotState() {
++  std::lock_guard<std::mutex> lock(this->geo.mtx);
++  return this->state;
++}
++
+ void dlio::OdomNode::publishPose() {
+-  // Do not publish the initial identity state as a valid localization.
+-  if (!this->dlio_initialized || !this->geo.first_opt_done) { return; }
++  // Publish a coherent state and acquisition stamp, never an in-flight update.
++  State snapshot;
++  double snapshot_stamp;
++  {
++    std::lock_guard<std::mutex> lock(this->geo.mtx);
++    if (this->registration_fault || this->state_stamp <= 0.) { return; }
++    snapshot = this->state;
++    snapshot_stamp = this->state_stamp;
++  }
+ 
+   // nav_msgs::msg::Odometry
+-  this->odom_ros.header.stamp = this->imu_stamp;
++  this->odom_ros.header.stamp = rclcpp::Time(static_cast<int64_t>(snapshot_stamp * 1e9));
+   this->odom_ros.header.frame_id = this->odom_frame;
+   this->odom_ros.child_frame_id = this->baselink_frame;
+ 
+-  this->odom_ros.pose.pose.position.x = this->state.p[0];
+-  this->odom_ros.pose.pose.position.y = this->state.p[1];
+-  this->odom_ros.pose.pose.position.z = this->state.p[2];
+-
+-  this->odom_ros.pose.pose.orientation.w = this->state.q.w();
+-  this->odom_ros.pose.pose.orientation.x = this->state.q.x();
+-  this->odom_ros.pose.pose.orientation.y = this->state.q.y();
+-  this->odom_ros.pose.pose.orientation.z = this->state.q.z();
+-
+-  this->odom_ros.twist.twist.linear.x = this->state.v.lin.w[0];
+-  this->odom_ros.twist.twist.linear.y = this->state.v.lin.w[1];
+-  this->odom_ros.twist.twist.linear.z = this->state.v.lin.w[2];
+-
+-  this->odom_ros.twist.twist.angular.x = this->state.v.ang.b[0];
+-  this->odom_ros.twist.twist.angular.y = this->state.v.ang.b[1];
+-  this->odom_ros.twist.twist.angular.z = this->state.v.ang.b[2];
++  this->odom_ros.pose.pose.position.x = snapshot.p[0];
++  this->odom_ros.pose.pose.position.y = snapshot.p[1];
++  this->odom_ros.pose.pose.position.z = snapshot.p[2];
++
++  this->odom_ros.pose.pose.orientation.w = snapshot.q.w();
++  this->odom_ros.pose.pose.orientation.x = snapshot.q.x();
++  this->odom_ros.pose.pose.orientation.y = snapshot.q.y();
++  this->odom_ros.pose.pose.orientation.z = snapshot.q.z();
++
++  this->odom_ros.twist.twist.linear.x = snapshot.v.lin.w[0];
++  this->odom_ros.twist.twist.linear.y = snapshot.v.lin.w[1];
++  this->odom_ros.twist.twist.linear.z = snapshot.v.lin.w[2];
++
++  this->odom_ros.twist.twist.angular.x = snapshot.v.ang.b[0];
++  this->odom_ros.twist.twist.angular.y = snapshot.v.ang.b[1];
++  this->odom_ros.twist.twist.angular.z = snapshot.v.ang.b[2];
+ 
+   this->odom_pub->publish(this->odom_ros);
+ 
+   // geometry_msgs::msg::PoseStamped
+-  this->pose_ros.header.stamp = this->imu_stamp;
++  this->pose_ros.header.stamp = rclcpp::Time(static_cast<int64_t>(snapshot_stamp * 1e9));
+   this->pose_ros.header.frame_id = this->odom_frame;
+ 
+-  this->pose_ros.pose.position.x = this->state.p[0];
+-  this->pose_ros.pose.position.y = this->state.p[1];
+-  this->pose_ros.pose.position.z = this->state.p[2];
+-
+-  this->pose_ros.pose.orientation.w = this->state.q.w();
+-  this->pose_ros.pose.orientation.x = this->state.q.x();
+-  this->pose_ros.pose.orientation.y = this->state.q.y();
+-  this->pose_ros.pose.orientation.z = this->state.q.z();
++  this->pose_ros.pose.position.x = snapshot.p[0];
++  this->pose_ros.pose.position.y = snapshot.p[1];
++  this->pose_ros.pose.position.z = snapshot.p[2];
++
++  this->pose_ros.pose.orientation.w = snapshot.q.w();
++  this->pose_ros.pose.orientation.x = snapshot.q.x();
++  this->pose_ros.pose.orientation.y = snapshot.q.y();
++  this->pose_ros.pose.orientation.z = snapshot.q.z();
+ 
+   this->pose_pub->publish(this->pose_ros);
+ 
+ }
+ 
+ void dlio::OdomNode::publishToROS(pcl::PointCloud<PointType>::ConstPtr published_cloud, Eigen::Matrix4f T_cloud) {
++  State snapshot;
++  double snapshot_stamp;
++  {
++    std::lock_guard<std::mutex> lock(this->geo.mtx);
++    snapshot = this->state;
++    snapshot_stamp = this->state_stamp;
++  }
++
+   this->publishCloud(published_cloud, T_cloud);
+ 
+   // nav_msgs::msg::Path
+-  this->path_ros.header.stamp = this->imu_stamp;
++  this->path_ros.header.stamp = rclcpp::Time(static_cast<int64_t>(snapshot_stamp * 1e9));
+   this->path_ros.header.frame_id = this->odom_frame;
+ 
+   geometry_msgs::msg::PoseStamped p;
+-  p.header.stamp = this->imu_stamp;
++  p.header.stamp = rclcpp::Time(static_cast<int64_t>(snapshot_stamp * 1e9));
+   p.header.frame_id = this->odom_frame;
+-  p.pose.position.x = this->state.p[0];
+-  p.pose.position.y = this->state.p[1];
+-  p.pose.position.z = this->state.p[2];
+-  p.pose.orientation.w = this->state.q.w();
+-  p.pose.orientation.x = this->state.q.x();
+-  p.pose.orientation.y = this->state.q.y();
+-  p.pose.orientation.z = this->state.q.z();
++  p.pose.position.x = snapshot.p[0];
++  p.pose.position.y = snapshot.p[1];
++  p.pose.position.z = snapshot.p[2];
++  p.pose.orientation.w = snapshot.q.w();
++  p.pose.orientation.x = snapshot.q.x();
++  p.pose.orientation.y = snapshot.q.y();
++  p.pose.orientation.z = snapshot.q.z();
+ 
+   // A visualization path must not grow/serialize for the full session. This
+   // function is owned by the cloud callback, never concurrent detached threads.
+@@ -405,23 +425,23 @@
+   // transform: odom to baselink
+   geometry_msgs::msg::TransformStamped transformStamped;
+ 
+-  transformStamped.header.stamp = this->imu_stamp;
++  transformStamped.header.stamp = rclcpp::Time(static_cast<int64_t>(snapshot_stamp * 1e9));
+   transformStamped.header.frame_id = this->odom_frame;
+   transformStamped.child_frame_id = this->baselink_frame;
+ 
+-  transformStamped.transform.translation.x = this->state.p[0];
+-  transformStamped.transform.translation.y = this->state.p[1];
+-  transformStamped.transform.translation.z = this->state.p[2];
+-
+-  transformStamped.transform.rotation.w = this->state.q.w();
+-  transformStamped.transform.rotation.x = this->state.q.x();
+-  transformStamped.transform.rotation.y = this->state.q.y();
+-  transformStamped.transform.rotation.z = this->state.q.z();
++  transformStamped.transform.translation.x = snapshot.p[0];
++  transformStamped.transform.translation.y = snapshot.p[1];
++  transformStamped.transform.translation.z = snapshot.p[2];
++
++  transformStamped.transform.rotation.w = snapshot.q.w();
++  transformStamped.transform.rotation.x = snapshot.q.x();
++  transformStamped.transform.rotation.y = snapshot.q.y();
++  transformStamped.transform.rotation.z = snapshot.q.z();
+ 
+   br->sendTransform(transformStamped);
+ 
+   // transform: baselink to imu
+-  transformStamped.header.stamp = this->imu_stamp;
++  transformStamped.header.stamp = rclcpp::Time(static_cast<int64_t>(snapshot_stamp * 1e9));
+   transformStamped.header.frame_id = this->baselink_frame;
+   transformStamped.child_frame_id = this->imu_frame;
+ 
+@@ -438,7 +458,7 @@
+   br->sendTransform(transformStamped);
+ 
+   // transform: baselink to lidar
+-  transformStamped.header.stamp = this->imu_stamp;
++  transformStamped.header.stamp = rclcpp::Time(static_cast<int64_t>(snapshot_stamp * 1e9));
+   transformStamped.header.frame_id = this->baselink_frame;
+   transformStamped.child_frame_id = this->lidar_frame;
+ 
+@@ -782,6 +802,7 @@
+ }
+ 
+ void dlio::OdomNode::callbackPointCloud(const sensor_msgs::msg::PointCloud2::SharedPtr pc) {
++  if (this->registration_fault) { return; }
+ 
+   std::unique_lock<decltype(this->main_loop_running_mutex)> lock(main_loop_running_mutex);
+   this->main_loop_running = true;
+@@ -836,13 +857,21 @@
+     this->initializeInputTarget();
+     this->main_loop_running = false;
+     this->submap_future =
+-      std::async( std::launch::async, &dlio::OdomNode::buildKeyframesAndSubmap, this, this->state );
++      std::async( std::launch::async, &dlio::OdomNode::buildKeyframesAndSubmap, this, this->snapshotState() );
+     this->submap_future.wait(); // wait until completion
+     return;
+   }
+ 
+   // Get the next pose via IMU + S2M + GEO
+-  this->getNextPose();
++  if (!this->getNextPose()) {
++    this->registration_fault = true;
++    {
++      std::lock_guard<std::mutex> guard(this->main_loop_running_mutex);
++      this->main_loop_running = false;
++    }
++    this->submap_build_cv.notify_all();
++    return; // No map/keyframe/heartbeat update from a rejected registration.
++  }
+ 
+   // Update current keyframe poses and map
+   this->updateKeyframes();
+@@ -851,7 +880,7 @@
+   if (this->new_submap_is_ready) {
+     this->main_loop_running = false;
+     this->submap_future =
+-      std::async( std::launch::async, &dlio::OdomNode::buildKeyframesAndSubmap, this, this->state );
++      std::async( std::launch::async, &dlio::OdomNode::buildKeyframesAndSubmap, this, this->snapshotState() );
+   } else {
+     lock.lock();
+     this->main_loop_running = false;
+@@ -860,16 +889,17 @@
+   }
+ 
+   // Update trajectory
++  const State scan_state = this->snapshotState();
+   // Preserve the 0.1 m distance accumulator without rescanning an unbounded
+   // trajectory from a racing diagnostics thread on every cloud.
+   if (!this->distance_anchor_set) {
+-    this->distance_anchor = this->state.p;
++    this->distance_anchor = scan_state.p;
+     this->distance_anchor_set = true;
+   } else {
+-    const double distance = (this->state.p-this->distance_anchor).norm();
++    const double distance = (scan_state.p-this->distance_anchor).norm();
+     if (distance >= 0.1) {
+       this->length_traversed += distance;
+-      this->distance_anchor = this->state.p;
++      this->distance_anchor = scan_state.p;
+     }
+   }
+ 
+@@ -1027,8 +1057,9 @@
+     this->imu_meas.dt = dt;
+     this->prev_imu_stamp = this->imu_meas.stamp;
+ 
+-    Eigen::Vector3f lin_accel_corrected = (this->imu_accel_sm_ * lin_accel) - this->state.b.accel;
+-    Eigen::Vector3f ang_vel_corrected = ang_vel - this->state.b.gyro;
++    const State bias_snapshot = this->snapshotState();
++    Eigen::Vector3f lin_accel_corrected = (this->imu_accel_sm_ * lin_accel) - bias_snapshot.b.accel;
++    Eigen::Vector3f ang_vel_corrected = ang_vel - bias_snapshot.b.gyro;
+ 
+     this->imu_meas.lin_accel = lin_accel_corrected;
+     this->imu_meas.ang_vel = ang_vel_corrected;
+@@ -1050,7 +1081,7 @@
+ 
+ }
+ 
+-void dlio::OdomNode::getNextPose() {
++bool dlio::OdomNode::getNextPose() {
+ 
+   // Check if the new submap is ready to be used
+   this->new_submap_is_ready = (this->submap_future.wait_for(std::chrono::seconds(0)) == std::future_status::ready);
+@@ -1074,7 +1105,13 @@
+   this->gicp.align(*aligned);
+ 
+   // Get final transformation in global frame
+-  this->T_corr = this->gicp.getFinalTransformation(); // "correction" transformation
++  const Eigen::Matrix4f correction = this->gicp.getFinalTransformation();
++  if (!this->gicp.hasConverged() || !correction.allFinite()) {
++    RCLCPP_ERROR(this->get_logger(), "ACP_REGISTRATION_REJECT stamp=%.9f converged=%d finite=%d; restart required",
++                 this->scan_stamp, this->gicp.hasConverged(), correction.allFinite());
++    return false;
++  }
++  this->T_corr = correction;
+   this->T = this->T_corr * this->T_prior;
+ 
+   // Update next global pose
+@@ -1082,7 +1119,7 @@
+   this->propagateGICP();
+ 
+   // Geometric observer update
+-  this->updateState();
++  return this->updateState();
+ 
+ }
+ 
+@@ -1349,10 +1386,11 @@
+ 
+   this->state.v.ang.b = this->imu_meas.ang_vel;
+   this->state.v.ang.w = this->state.q.toRotationMatrix() * this->state.v.ang.b;
+-
+-}
+-
+-void dlio::OdomNode::updateState() {
++  this->state_stamp = this->imu_meas.stamp;
++
++}
++
++bool dlio::OdomNode::updateState() {
+ 
+   // Lock thread to prevent state from being accessed by PropagateState
+   std::lock_guard<std::mutex> lock( this->geo.mtx );
+@@ -1384,6 +1422,23 @@
+ 
+   double abias_max = this->geo_abias_max_;
+   double gbias_max = this->geo_gbias_max_;
++
++  // Validate the proposed observer injection before mutating state or biases.
++  // Use only the relay's fixed discontinuity allowance: scan corrections are
++  // instantaneous, so a scan interval must not grant a larger IMU-step budget.
++  const double position_step = (dt * this->geo_Kp_ * err).norm();
++  Eigen::Quaternionf proposed_q = qhat;
++  proposed_q.coeffs() += dt * this->geo_Kq_ * qcorr.coeffs();
++  proposed_q.normalize();
++  const double angle_step = qhat.angularDistance(proposed_q);
++  if (!std::isfinite(dt) || dt <= 0. || dt > .5 || !pin.allFinite()
++      || !proposed_q.coeffs().allFinite() || !std::isfinite(position_step)
++      || !std::isfinite(angle_step) || position_step > .03 || angle_step > .05) {
++    RCLCPP_ERROR(this->get_logger(),
++      "ACP_REGISTRATION_REJECT stamp=%.9f dt=%.6f position_step=%.6f angle_step=%.6f residual_xyz=%.6f,%.6f,%.6f; restart required",
++      this->scan_stamp, dt, position_step, angle_step, err.x(), err.y(), err.z());
++    return false;
++  }
+ 
+   // Update accel bias
+   this->state.b.accel -= dt * this->geo_Kab_ * err_body;
+@@ -1409,6 +1464,7 @@
+   this->geo.prev_p = this->state.p;
+   this->geo.prev_q = this->state.q;
+   this->geo.prev_vel = this->state.v.lin.w;
++  return true;
+ 
+ }
+ 
+@@ -1581,6 +1637,7 @@
+ }
+ 
+ void dlio::OdomNode::updateKeyframes() {
++  const State snapshot = this->snapshotState();
+ 
+   // calculate difference in pose and rotation to all poses in trajectory
+   float closest_d = std::numeric_limits<float>::infinity();
+@@ -1592,9 +1649,9 @@
+   for (const auto& k : this->keyframes) {
+ 
+     // calculate distance between current pose and pose in keyframes
+-    float delta_d = sqrt( pow(this->state.p[0] - k.first.first[0], 2) +
+-                          pow(this->state.p[1] - k.first.first[1], 2) +
+-                          pow(this->state.p[2] - k.first.first[2], 2) );
++    float delta_d = sqrt( pow(snapshot.p[0] - k.first.first[0], 2) +
++                          pow(snapshot.p[1] - k.first.first[1], 2) +
++                          pow(snapshot.p[2] - k.first.first[2], 2) );
+ 
+     // count the number nearby current pose
+     if (delta_d <= this->keyframe_thresh_dist_ * 1.5){
+@@ -1616,19 +1673,19 @@
+   Eigen::Quaternionf closest_pose_r = this->keyframes[closest_idx].first.second;
+ 
+   // calculate distance between current pose and closest pose from above
+-  float dd = sqrt( pow(this->state.p[0] - closest_pose[0], 2) +
+-                   pow(this->state.p[1] - closest_pose[1], 2) +
+-                   pow(this->state.p[2] - closest_pose[2], 2) );
++  float dd = sqrt( pow(snapshot.p[0] - closest_pose[0], 2) +
++                   pow(snapshot.p[1] - closest_pose[1], 2) +
++                   pow(snapshot.p[2] - closest_pose[2], 2) );
+ 
+   // calculate difference in orientation using SLERP
+   Eigen::Quaternionf dq;
+ 
+-  if (this->state.q.dot(closest_pose_r) < 0.) {
++  if (snapshot.q.dot(closest_pose_r) < 0.) {
+     Eigen::Quaternionf lq = closest_pose_r;
+     lq.w() *= -1.; lq.x() *= -1.; lq.y() *= -1.; lq.z() *= -1.;
+-    dq = this->state.q * lq.inverse();
++    dq = snapshot.q * lq.inverse();
+   } else {
+-    dq = this->state.q * closest_pose_r.inverse();
++    dq = snapshot.q * closest_pose_r.inverse();
+   }
+ 
+   double theta_rad = 2. * atan2(sqrt( pow(dq.x(), 2) + pow(dq.y(), 2) + pow(dq.z(), 2) ), dq.w());

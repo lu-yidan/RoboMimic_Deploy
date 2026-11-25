@@ -1,0 +1,86 @@
+{
+  "source_commit": "4004933679b819a2df21b0c37f202706363626b8",
+  "read_only": true,
+  "acp_frames": 315,
+  "acp_duration_s": 6.32086181640625,
+  "effective_hz": 49.83497619628906,
+  "runtime_compute_ms": {
+    "p50": 16.662433624267578,
+    "p99": 21.553190231323242,
+    "max": 23.192731857299805,
+    "over_20ms_pct": 3.8095238095238098
+  },
+  "loop_period_ms": {
+    "p50": 20.072595596313477,
+    "p99": 21.970712661743164,
+    "max": 23.703847885131836,
+    "over_20ms_pct": 100.0
+  },
+  "inference_ms": {
+    "p50": 5.323708000105398,
+    "p99": 6.248132840182734,
+    "max": 7.18583200023204
+  },
+  "pose_age_ms": {
+    "p50": 36.26789972940969,
+    "p99": 47.39588109278885,
+    "max": 48.30233853726895
+  },
+  "gravity_error_deg": {
+    "p50": 1.0058040227753398,
+    "p99": 1.0491710229369131,
+    "max": 1.0520391026575842
+  },
+  "active_position_range_m": [
+    0.005495201963473239,
+    0.007239562995745991,
+    0.0019671151978366552
+  ],
+  "active_yaw_range_deg": 0.3164946337445945,
+  "relay_localization_faults": 0,
+  "relay_first_monotonic": 2512.360748225,
+  "relay_last_monotonic": 2603.366498072,
+  "damping": {
+    "event": "acp_damping",
+    "reason": "Pelvis localization unavailable",
+    "seq": 1928,
+    "sampled_at": 2603.378560784,
+    "source_error": "ACP localization not ready: no acp-state.npz; check fresh DLIO pelvis pose and calibrate the floor first",
+    "pose_age_ms": 43.539765018067556,
+    "matched_robot_age_ms": null,
+    "handled_by_fsm": true
+  },
+  "ros_ctrl_c_wall": 1795575354.6345565,
+  "slow_control_events": [],
+  "shutdown": {
+    "dlio_clean": true,
+    "livox_exit_code": -11
+  },
+  "ros_ctrl_c_monotonic_estimate": 2603.37499499321,
+  "damping_after_ctrl_c_estimate_ms": 3.565790790162282,
+  "clock_alignment_note": "Estimated from later wall/monotonic offset in same boot; not a hardware measured latency.",
+  "both_sides_read_only": true,
+  "start_to_b_s": 0.04287143500005186,
+  "acceptance": {
+    "no_jump_during_this_run": true,
+    "active_localization_stop_exit": true,
+    "sustained_30s": false,
+    "physical_motion": false,
+    "prepare_wait_2s": false,
+    "timing_20ms_all_frames": false
+  },
+  "limitations": [
+    "ACP ran only 6.32 s, not the requested approximately 30 s.",
+    "During ACP position ranges were below 8 mm and yaw range 0.32 deg; actual translation/turn acceptance is not established.",
+    "FIXEDPOSE to LOCOMODE transition took only 0.043 s; required 2 s preparation wait was not observed.",
+    "Livox shutdown SIGSEGV -11 remains unresolved."
+  ],
+  "hashes": {
+    "logs/20261125_105515_real_policies.events.jsonl": "f0ebdf88ebe07f08d9040e2cc4aae28c6b6728adbf9e363f1a2865e7bcc02a70",
+    "logs/20261125_105515_real_policies.json": "1600fafb14cb4d4331a71cf2be26412c37f81c88830d5693dcdb05e14a9fad10",
+    "logs/20261125_105515_real_policies.acp_trace.npz": "20e0100e2efa4163f3d6b9ae070fcdd7d152ecfedf8790e884be0e575f052f6a",
+    "logs/20261125_105515_real_policies.bin": "932407ccbe5525114a5f37d6db89efaa494359048abf022c728d582f0b759519",
+    ".ros/log/2026-11-25-10-54-22-936154-ubuntu-20919/launch.log": "910fc8cf424bb8520899df1a15fbfbdb2e99889a5d3c8a96f2faaba0df863e7c",
+    "logs/acp-dlio/relay-3fe9c723-b513-4d8a-9e67-17e4ac4d4f7a.jsonl": "6fd524bfa93a5c0844ca91d77497ab959b1704b92d47621d6ef9341877e2cbf3"
+  }
+}

@@ -73,6 +73,20 @@ if ! command -v tmux >/dev/null 2>&1; then
 fi
 
 if tmux has-session -t "=${SESSION_NAME}" 2>/dev/null; then
+  existing_acp="$(tmux show-option -qv -t "${SESSION_NAME}" @acp_dlio)"
+  existing_read_only="$(tmux show-option -qv -t "${SESSION_NAME}" @deploy_read_only)"
+  if [[ "$ACP_DLIO" == 1 || "$existing_acp" == 1 ]]; then
+    if [[ -z "$existing_acp" || -z "$existing_read_only" ]]; then
+      echo "Existing session ${SESSION_NAME} has no recorded ACP mode. Environment variables cannot change its commands." >&2
+      echo "Inspect it with tmux attach -t ${SESSION_NAME}, or use a new session name (acp-dlio-readonly / acp-dlio-live)." >&2
+      exit 1
+    fi
+    if [[ "$existing_acp" != "$ACP_DLIO" || "$existing_read_only" != "$LYD_DEPLOY_READ_ONLY" ]]; then
+      echo "Existing session ${SESSION_NAME}: ACP_DLIO=${existing_acp}, read-only=${existing_read_only}; requested ACP_DLIO=${ACP_DLIO}, read-only=${LYD_DEPLOY_READ_ONLY}." >&2
+      echo 'Use a different session name; existing processes and prefilled commands have not been changed.' >&2
+      exit 1
+    fi
+  fi
   [[ "$DETACH" == "--detach" ]] && exit 0
   if [[ -n "${TMUX:-}" ]]; then
     tmux switch-client -t "${SESSION_NAME}"
@@ -83,6 +97,14 @@ if tmux has-session -t "=${SESSION_NAME}" 2>/dev/null; then
 fi
 
 tmux new-session -d -s "${SESSION_NAME}" -n main -c "${REPO_DIR}" "${TMUX_SHELL}"
+tmux set-option -t "${SESSION_NAME}" @acp_dlio "$ACP_DLIO"
+tmux set-option -t "${SESSION_NAME}" @deploy_read_only "$LYD_DEPLOY_READ_ONLY"
+if [[ "$ACP_DLIO" == 1 ]]; then
+  echo "ACP DLIO: ${SESSION_NAME}, read-only=${LYD_DEPLOY_READ_ONLY}. Commands are prefilled; press Enter in each pane to start."
+  if [[ "$LYD_DEPLOY_READ_ONLY" == 0 ]]; then
+    echo 'Closed loop selected: starting the left-top bridge enables motor commands. Stop the previous bridge/policy before starting this session.'
+  fi
+fi
 
 # Layout (2 columns × 3 rows):
 #   left-top    | right-top     bridge/cpp  | camera.mode: gray / PHP depth

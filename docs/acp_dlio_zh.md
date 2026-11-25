@@ -1,5 +1,69 @@
 # G1 ACP：DLIO 定位与实时打点
 
+2026-11-25：已完成 57.83 秒双侧只读复测，转向约 49° 未出现定位跳变，
+运行中停止定位后 ACP 正常退出到阻尼。现在按操作者安排进入首次电机闭环验证，
+从原地停车开始，再验证前方 0.3 m 目标。启动、手柄操作、标定和目标下发均由现场操作者执行；
+本节提供操作流程，尚无闭环通过结论。较大实际平移与真机到点停车仍待本轮验证。
+
+## 首次闭环验证（现场操作者执行）
+
+先在旧会话中停止左中策略，再停止左上 bridge、右中定位和右上腰部导出，
+确认旧进程已退出；`Ctrl-b d` 只分离窗口，不会停止进程。
+操作者按原流程进入机器人调试模式，准备吊臂防跌保护、平整地面和手柄。
+新建独立闭环会话：
+
+```bash
+cd /home/unitree/RoboMimic_Deploy
+ACP_DLIO=1 LYD_DEPLOY_READ_ONLY=0 \
+  bash tools/deploy/start_tmux_layout.sh acp-dlio-live
+```
+
+这个命令只预填。核对边框为 `read-only=0`，左上命令含 `BRIDGE_READ_ONLY=0`，
+左中命令不含 `--read-only`。启动左上即启用电机命令发布；无有效策略指令时 bridge 发送阻尼。
+不要在旧 `acp-dlio-readonly` 会话上改环境变量来尝试切换模式：已有命令和进程不会改变。
+新版入口记录会话模式，遇到模式不一致会拒绝复用；旧版未记录模式的会话用
+`tmux attach -t acp-dlio-readonly` 检查，新闭环使用上面的独立名称。
+
+1. 依次在左上、右上、右中按 Enter，启动 bridge、腰部导出与 DLIO。
+   保持静止至少 10 秒，检查定位；左下可按 Enter 观察状态，右下 RViz 可暂不启动。
+2. 在另一 G1 终端执行 `/usr/bin/python3 onboard/localization/dlio/check.py --duration 10`。
+   新会话此时允许仅阻塞在 `calibration`，须有持续新鲜的骨盆位姿，且无定位跳变锁定。
+3. 左中按 Enter 启动策略。手柄执行 **START → 等待至少 2 秒 → B**，按键间松开，
+   摇杆回中。先确认实际准备姿态和 B/LocoMode 站立稳定；缺少标定/目标时先不按 Y。
+4. 在当前稳定站姿实测骨盆原点到地面的高度，完成本会话标定并设置原地停车目标：
+
+   ```bash
+   cd /home/unitree/RoboMimic_Deploy
+   read -r -p '实测骨盆原点到平地的高度(m): ' PELVIS_HEIGHT_M
+   /usr/bin/python3 onboard/localization/dlio/calibrate.py \
+     --pelvis-height "$PELVIS_HEIGHT_M" --confirm-mount
+   /usr/bin/python3 onboard/localization/dlio/goal.py --stop
+   /usr/bin/python3 onboard/localization/dlio/check.py --duration 10
+   ```
+
+   确认 `ready`、`acp_output_valid=true`；策略首次读取新目标后会记录 `acp_goal`。
+   目标接受后持续固定，检查器提示旧请求不代表已接受的目标过期；重启策略后需重新下发。
+5. 按 **Y**，确认左中打印 `[ACP] Entering from LOCOMODE`。
+   先观察原地停车 5–10 秒；若持续迈步、明显漂移或姿态异常，按 SELECT/F1 进入阻尼。
+6. 原地停车稳定后，在 G1 终端手动下发前方 0.3 m 目标，目标朝向保持下发时的朝向：
+
+   ```bash
+   /usr/bin/python3 onboard/localization/dlio/goal.py --relative 0.3 0
+   ```
+
+   观察前进、减速和到点停车，记录实际位移与最终误差。
+   再执行 `goal.py --stop` 将当时的位置和朝向固定为停车目标；该命令不是紧急阻尼。
+   首轮不追加侧向或大角度转向目标。
+7. 结束时先用 SELECT/F1 进入阻尼，确认防跌保护承重，再在左中 Ctrl+C 保存日志；
+   然后停止左上 bridge 和其余进程。保存 `logs/*_real_policies.bin`、
+   同名前缀 `.events.jsonl` 与 `.acp_trace.npz`，以及 `logs/acp-dlio/relay-*.jsonl`。
+   首次闭环不主动停定位来制造失效；只读阶段已验证该退出通路。
+
+本轮记录实际进入 ACP 的时长、停车稳定性、目标/实际位移、末端位置与航向误差、
+是否发生保护退出。现有代码自动退出保护保持启用；保护退出后不会因定位恢复而自动重入。
+
+## 先前只读诊断背景
+
 22:32 的只读复测运行 ACP 334 帧（6.72 秒），随后一个控制周期耗时 156.6 ms，
 在读完桥接状态后、进入 ACP 前触发状态过期并转阻尼；右中约 22 秒后才停止。
 本轮不算持续运动或运行中停止 DLIO 验收通过。
@@ -23,7 +87,7 @@ DLIO 内存修正不包含在这次状态读取补丁中。
 
 已接入 `MID360 PointCloud2 + 雷达内置 IMU → DLIO → 腰部补偿 → 骨盆位姿 → ACP`。
 真机系统实际为 Ubuntu 20.04 / ROS2 Foxy，已在 G1 独立的 `~/acp_dlio_ws` 编译通过。
-当前阶段是现场定位/策略**双侧只读**验收，已开始现场定位检查，尚未完成定位稳定性与 ACP 真机闭环验收。
+已完成现场定位/策略双侧只读持续转向和断流退出复测，ACP 真机闭环按文首流程开始验证。
 `deploy/acp-g1` 已替换现场 `under-the-table` 工作分支；原 SMP 配置修改按用户要求丢弃。
 
 [ACP 论文](https://arxiv.org/html/2610.31608v1) 使用 DLIO 提供根位姿与去畸变点云，

@@ -1,4 +1,5 @@
-# Explicit real ACP preset. First use ONLY with C++ and Python read-only modes.
+# Real ACP preset; the tmux launcher defaults to both sides read-only.
+# Onsite closed loop explicitly selects LYD_DEPLOY_READ_ONLY=0; see docs/acp_dlio_zh.md.
 scalebfm:
   enabled: false
 amp:

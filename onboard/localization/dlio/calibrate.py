@@ -35,7 +35,10 @@ def validate_calibration(status, height, now):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--pelvis-height', required=True, type=float, help='Measured pelvis origin height above flat floor, metres')
+    height = parser.add_mutually_exclusive_group(required=True)
+    height.add_argument('--pelvis-height', type=float, help='Measured pelvis origin height above flat floor, metres; saved for explicit reuse')
+    height.add_argument('--reuse-height', action='store_true', help='Confirm the same measured standing height and mount; recompute ground in this session')
+    parser.add_argument('--profile', default=str(Path.home()/'.config/robomimic/acp-dlio/standing-height.json'))
     parser.add_argument('--confirm-mount', action='store_true', required=True,
                         help='Confirm configured head/mount angles, URDF chain and SDK waist signs were reviewed onsite')
     parser.add_argument('--ipc-dir', default='/dev/shm/robomimic-%d' % os.getuid())
@@ -43,16 +46,32 @@ def main():
     directory = Path(args.ipc_dir)
     try:
         status = read_json(directory / 'acp-dlio-status.json')
-        now = time.monotonic()
-        validate_calibration(status, args.pelvis_height, now)
-        result = dict(session=status['session'], calibrated_at=now, mount_reviewed=True,
-                      measured_pelvis_height=args.pelvis_height,
-                      ground_height=status['pelvis_pos_w'][2]-args.pelvis_height,
-                      mount_angles_rad=status['mount_angles_rad'])
+        measured_height = args.pelvis_height
+        if args.reuse_height:
+            profile = read_json(args.profile)
+            if (profile.get('schema') != 1 or profile.get('mount_reviewed') is not True
+                    or profile.get('mount_angles_rad') != status['mount_angles_rad']):
+                raise ValueError('Saved height/mount does not match; measure with --pelvis-height again')
+            measured_height = float(profile['measured_pelvis_height'])
+        result = make_calibration(status, measured_height, time.monotonic())
+        # Store only a physical measurement, never an old world-frame floor.
+        atomic_json(args.profile, dict(schema=1, measured_pelvis_height=measured_height,
+                    mount_reviewed=True, mount_angles_rad=status['mount_angles_rad']))
         atomic_json(directory / 'acp-dlio-calibration.json', result)
     except (ValueError, TypeError, KeyError, OSError) as error:
         parser.error(str(error))
     print(result)
+
+
+def make_calibration(status, measured_height, now):
+    validate_calibration(status, measured_height, now)
+    result = dict(session=status['session'], calibrated_at=now, mount_reviewed=True,
+                  measured_pelvis_height=measured_height,
+                  ground_height=status['pelvis_pos_w'][2]-measured_height,
+                  mount_angles_rad=status['mount_angles_rad'])
+    if not math.isfinite(result['ground_height']):
+        raise ValueError('Nonfinite ground height')
+    return result
 
 
 if __name__ == '__main__':

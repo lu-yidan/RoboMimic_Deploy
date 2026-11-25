@@ -19,6 +19,74 @@ from policy.acp.goal_ipc import GoalReader, relative_goal, write_goal
 import policy.acp.goal_ipc as goal_ipc
 
 
+def test_saved_height_reanchors_new_world_without_reusing_old_floor(tmp_path, monkeypatch):
+    from onboard.localization.dlio import calibrate
+    status = dict(schema=1, boot_id=boot_id(), session='first', frame_id='acp_odom',
+                  pose_valid=True, sampled_at=100., pose_captured_at=99.99,
+                  imu_age_s=.005, raw_cloud_age_s=.06, registration_age_s=.08,
+                  speed_mps=.01, turn_rate_rps=.02, mount_angles_rad=[0., 0.],
+                  pelvis_pos_w=[0., 0., -.5])
+    profile = tmp_path/'height.json'
+    monkeypatch.setattr(calibrate.time, 'monotonic', lambda: 100.01)
+    def run(*args):
+        atomic_json(tmp_path/'acp-dlio-status.json', status)
+        monkeypatch.setattr('sys.argv', ['calibrate', '--ipc-dir', str(tmp_path),
+                             '--profile', str(profile), '--confirm-mount', *args])
+        calibrate.main()
+        return json.loads((tmp_path/'acp-dlio-calibration.json').read_text())
+    assert run('--pelvis-height', '.78')['ground_height'] == pytest.approx(-1.28)
+    assert 'ground_height' not in json.loads(profile.read_text())
+    status.update(session='second', pelvis_pos_w=[0., 0., 2.])
+    result = run('--reuse-height')
+    assert result['session'] == 'second'
+    assert result['ground_height'] == pytest.approx(1.22)
+    status['mount_angles_rad'] = [.1, 0.]
+    with pytest.raises(SystemExit):
+        run('--reuse-height')
+    status.update(mount_angles_rad=[0., 0.], speed_mps=.2)
+    with pytest.raises(SystemExit):
+        run('--reuse-height')
+    status.update(speed_mps=.01, localization_fault='ACP_REGISTRATION_REJECT test')
+    with pytest.raises(SystemExit):
+        run('--reuse-height')
+    assert json.loads((tmp_path/'acp-dlio-calibration.json').read_text()) == result
+
+
+def test_registration_rejection_takes_priority_over_missing_calibration():
+    status = dict(boot_id='host', sampled_at=100., calibration_ready=False,
+                  localization_fault='ACP_REGISTRATION_REJECT position_step=0.11; restart required')
+    assert assess(status, 100.01, 'host')[0] == 'registration_rejected'
+
+
+def test_relay_registration_log_latches_first_fault_and_withdraws_state(tmp_path):
+    # Execute the actual callback without importing ROS or creating a participant.
+    import ast
+    from pathlib import Path
+    from onboard.localization.dlio import relay
+    tree = ast.parse(Path(relay.__file__).read_text())
+    callback = next(node for node in ast.walk(tree)
+                    if isinstance(node, ast.FunctionDef) and node.name == 'estimator_log')
+    namespace = dict(directory=tmp_path, args=SimpleNamespace(publish_acp=True))
+    exec(compile(ast.Module(body=[callback], type_ignores=[]), relay.__file__, 'exec'), namespace)
+    node = SimpleNamespace(started_wall=100., registration_fault='', error='', stage_errors={})
+    path = tmp_path/'acp-state.npz'
+    path.write_bytes(b'previous valid state')
+    msg = SimpleNamespace(name='dlio_odom_node', stamp=SimpleNamespace(sec=99, nanosec=0),
+                          msg='ACP_REGISTRATION_REJECT old')
+    namespace['estimator_log'](node, msg)
+    assert path.exists() and not node.registration_fault
+    msg.stamp.sec = 101
+    msg.name = 'other_node'
+    namespace['estimator_log'](node, msg)
+    assert path.exists()
+    msg.name, msg.msg = 'dlio_odom_node', 'ACP_REGISTRATION_REJECT first'
+    namespace['estimator_log'](node, msg)
+    assert not path.exists() and node.registration_fault == msg.msg
+    msg.msg = 'ACP_REGISTRATION_REJECT later'
+    namespace['estimator_log'](node, msg)
+    assert node.stage_errors['registration'] == 'ACP_REGISTRATION_REJECT first'
+
+
 def test_calibration_requires_fresh_sources_and_explains_motion_limits():
     status = dict(schema=1, boot_id=boot_id(), session='live', frame_id='acp_odom',
                   pose_valid=True, sampled_at=100., pose_captured_at=99.99,

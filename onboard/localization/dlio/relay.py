@@ -70,12 +70,15 @@ def main():
     from sensor_msgs.msg import Imu, PointCloud2
     from nav_msgs.msg import Odometry
     from geometry_msgs.msg import PoseStamped
+    from rcl_interfaces.msg import Log
 
     class Relay(Node):
         def __init__(self):
             super().__init__('acp_dlio_relay')
             self.clock_map, self.gate, self.waist = HostClock(), PoseGate(), WaistHistory()
             self.session, self.sequence = str(uuid.uuid4()), 0
+            self.started_wall = time.time()
+            self.registration_fault = ''
             self.last_imu = self.last_raw_cloud = self.last_cloud = self.last_pose = 0.
             self.pose = None
             self.speed = self.turn_rate = None
@@ -107,9 +110,22 @@ def main():
             self.create_subscription(Odometry, '/dlio/odom_node/odom', self.odom, qos_profile_sensor_data)
             self.create_subscription(PointCloud2, '/dlio/odom_node/pointcloud/deskewed', self.cloud, qos_profile_sensor_data)
             self.create_subscription(PoseStamped, '/acp/goal_pose', self.goal, 10)
+            self.create_subscription(Log, '/rosout', self.estimator_log, 100)
             # A 10 Hz snapshot could itself be ~100 ms old when check.py read it.
             # This changes diagnostic reporting only, not acquisition timestamps.
             self.create_timer(.02, self.status)
+
+        def estimator_log(self, msg):
+            # Ignore retained logs from an earlier estimator session.
+            stamp = float(msg.stamp.sec) + float(msg.stamp.nanosec)*1e-9
+            if (msg.name == 'dlio_odom_node' and stamp >= self.started_wall
+                    and msg.msg.startswith('ACP_REGISTRATION_REJECT')):
+                if not self.registration_fault:
+                    self.registration_fault = msg.msg
+                self.error = self.registration_fault
+                self.stage_errors['registration'] = self.registration_fault
+                if args.publish_acp:
+                    (directory / 'acp-state.npz').unlink(missing_ok=True)
 
         def goal(self, msg):
             try:
@@ -199,6 +215,8 @@ def main():
         def odom(self, msg):
             self.counts['odom'] += 1
             try:
+                if self.registration_fault:
+                    raise ValueError(self.registration_fault)
                 now = time.monotonic()
                 stamp = self.clock_map.convert(stamp_seconds(msg.header))
                 p, q = msg.pose.pose.position, msg.pose.pose.orientation
@@ -264,8 +282,8 @@ def main():
                            frame_id='acp_odom', pose_captured_at=self.last_pose,
                            imu_age_s=now-self.last_imu, registration_age_s=now-self.last_cloud,
                            pose_valid=pose_fresh, acp_output_enabled=args.publish_acp,
-                           acp_output_valid=args.publish_acp and now-self.last_published < .15 and not self.error,
-                           error=self.error or ('' if pose_fresh else 'Pelvis pose stale'),
+                           acp_output_valid=args.publish_acp and now-self.last_published < .15 and not self.error and not self.registration_fault,
+                           error=self.registration_fault or self.error or ('' if pose_fresh else 'Pelvis pose stale'),
                            speed_mps=self.speed, turn_rate_rps=self.turn_rate,
                            mount_angles_rad=angles.tolist())
             payload.update(imu_ready=self.imu_ready, imu_accel_norm_mps2=self.imu_norm,
@@ -274,7 +292,7 @@ def main():
                            waist_skew_s=self.waist_skew, counts=self.counts.copy(),
                            stage_errors=self.stage_errors.copy(),
                            calibration_ready=self.calibration is not None,
-                           localization_fault=self.gate.failed,
+                           localization_fault=self.registration_fault or self.gate.failed,
                            localization_fault_details=self.gate.failure_details,
                            diagnostic_trace=str(self.trace))
             payload.update(raw_cloud_arrival_age_s=now-self.last_raw_arrival if self.last_raw_arrival else None,
@@ -292,7 +310,7 @@ def main():
                     stream.write(json.dumps(payload, allow_nan=False) + '\n')
                 self.last_trace = now
             # Missing clouds/IMU must stop output even if odometry keeps propagating.
-            if args.publish_acp and (not pose_fresh or self.error):
+            if args.publish_acp and (not pose_fresh or self.error or self.registration_fault):
                 (directory / 'acp-state.npz').unlink(missing_ok=True)
 
     rclpy.init()

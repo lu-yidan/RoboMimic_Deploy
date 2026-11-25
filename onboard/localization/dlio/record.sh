@@ -68,7 +68,7 @@ set +e
 timeout --signal=INT --kill-after=10s "${DURATION}s" ros2 bag record \
   -o "$OUT/bag" --qos-profile-overrides-path "$HERE/config/record_qos.yaml" \
   /livox/lidar /livox/imu /acp/livox/points_checked /acp/livox/imu_si \
-  /dlio/odom_node/odom /dlio/odom_node/pointcloud/deskewed /acp/pelvis/odom \
+  /dlio/odom_node/odom /dlio/odom_node/pointcloud/deskewed /acp/pelvis/odom /rosout \
   2>&1 | tee "$OUT/record.log"
 record_rc=${PIPESTATUS[0]}
 set -e

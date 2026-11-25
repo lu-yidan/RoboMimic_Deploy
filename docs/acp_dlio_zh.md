@@ -7,6 +7,44 @@
 
 ## 首次闭环验证（现场操作者执行）
 
+**2026-11-25 晚间复测阻塞：**三份策略日志未进入 ACP。最后一轮目标曾成功接受，
+随后 DLIO 拒绝配准并停止位姿输出，Y 被 `Pelvis localization unavailable` 拦住。
+11 次 `ACP_REGISTRATION_REJECT` 的拟注入位置修正为 3.18–15.21 cm；
+操作者确认多次重启时处于 LocoMode，外观看起来静止。现有证据不能认定是晃动导致，
+也不能区分配准错误与惯性预测误差。没有这轮原始录包，尚未修复该定位故障。
+因此先采集故障数据，不重复尝试 Y 或不断重新标定。
+
+在 G1 的独立终端由操作者执行以下录制命令，再启动右中 DLIO，
+保留至录制结束，即便已经出现 `restart required` 也不在录制中途重启。
+先在有防跌支撑的阻尼静止状态采一轮作为对照，不下发 ACP 目标：
+
+```bash
+cd /home/unitree/RoboMimic_Deploy
+env -u CONDA_PREFIX -u LD_LIBRARY_PATH -u PYTHONPATH \
+  bash onboard/localization/dlio/record.sh 60
+```
+
+录制包括原始点云、原始/SI IMU、里程计和 `/rosout`。
+relay 现把当前会话的 `ACP_REGISTRATION_REJECT` 锁定为定位故障，
+`check.py` 优先报告 `registration_rejected`，避免被缺少标定提示遮盖。
+这是诊断改进，不是放宽门限或自动恢复定位。
+
+### 复用实测高度
+
+新版 `calibrate.py --pelvis-height ... --confirm-mount` 成功后将实测高度和安装角保存到
+`~/.config/robomimic/acp-dlio/standing-height.json`。首次更新后仍需提供一次实测值。
+之后在**相同站姿、相同实际骨盆高度、相同安装条件**下，定位重启只需执行：
+
+```bash
+/usr/bin/python3 onboard/localization/dlio/calibrate.py --reuse-height --confirm-mount
+```
+
+这条命令仍由操作者执行：按新鲜位姿重算本会话的地面坐标，不复用旧世界坐标系的地面 z。
+静止/时效/定位故障检查仍适用；换站姿、改变吊高或安装后必须重新测量。
+同一定位会话无需重复标定，单独重启策略只需重新下发目标。
+
+### 定位故障解决后的闭环流程
+
 先在旧会话中停止左中策略，再停止左上 bridge、右中定位和右上腰部导出，
 确认旧进程已退出；`Ctrl-b d` 只分离窗口，不会停止进程。
 操作者按原流程进入机器人调试模式，准备吊臂防跌保护、平整地面和手柄。

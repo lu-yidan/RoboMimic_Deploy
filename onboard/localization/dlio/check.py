@@ -22,6 +22,8 @@ def assess(status, now, host_boot):
     delay = now-float(status.get('sampled_at', 0.))
     if not 0 <= delay <= .5:
         return 'relay', 'Status is old: the right-middle DLIO/relay process has stopped or stalled.'
+    if str(status.get('localization_fault', '')).startswith('ACP_REGISTRATION_REJECT'):
+        return 'registration_rejected', 'DLIO rejected a registration and stopped localization. Recalibration cannot fix this; preserve the ROS log/raw recording before restarting DLIO.'
     if status.get('localization_fault') or 'DLIO discontinuity/reset' in str(status.get('stage_errors', {}).get('odom', '')):
         return 'localization_reset', 'DLIO jump/reset is latched. Restart right-middle DLIO; review the fault details. Recalibrate ground/targets only after stable fresh poses.'
     pose_fresh = status.get('pose_valid') and 0 <= now-float(status.get('pose_captured_at', 0.)) <= .15
@@ -49,7 +51,7 @@ def assess(status, now, host_boot):
         return 'acp_state', 'ACP state is blocked; inspect current error and state file.'
     if not status.get('acp_output_enabled'):
         return 'diagnostic_only', 'Pose-only relay: ACP_DLIO_PUBLISH=1 is needed for the read-only policy test.'
-    return 'ready', 'Localization ready. Start left-middle READ-ONLY policy, execute goal.py --stop, confirm goal acceptance, then START -> wait >=2 s -> B -> Y.'
+    return 'ready', 'Localization ready. Confirm the intended bridge/policy mode and accepted goal; after START -> wait >=2 s -> stable B, press Y onsite.'
 
 
 def assess_goal(status, goal, now, host_boot):

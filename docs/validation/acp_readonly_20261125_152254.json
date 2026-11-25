@@ -1,0 +1,74 @@
+{
+  "source_commit": "4004933679b819a2df21b0c37f202706363626b8",
+  "read_only": true,
+  "acp_frames": 2878,
+  "acp_duration_s": 57.825050354003906,
+  "effective_hz": 49.770816802978516,
+  "runtime_compute_ms": {
+    "p50": 16.355085372924805,
+    "p99": 20.325252532958984,
+    "max": 22.673734664916992,
+    "over_20ms_pct": 1.5288394718554552
+  },
+  "loop_period_ms": {
+    "p50": 20.071521759033203,
+    "p99": 20.837566375732422,
+    "max": 23.074609756469727,
+    "over_20ms_pct": 100.0
+  },
+  "inference_ms": {
+    "p50": 5.295782500070345,
+    "p99": 6.1022960400407555,
+    "max": 8.064430999979777
+  },
+  "pose_age_ms": {
+    "p50": 36.040498748150185,
+    "p99": 48.83086258672961,
+    "max": 52.57939666614675
+  },
+  "gravity_error_deg": {
+    "p50": 1.2206305253750722,
+    "p99": 1.5120812070470278,
+    "max": 1.611427881438624
+  },
+  "active_position_range_m": [
+    0.018454486239692723,
+    0.02437823865532793,
+    0.015938791785398032
+  ],
+  "active_yaw_range_deg": 49.083021838168264,
+  "relay_localization_faults": 0,
+  "relay_first_monotonic": 416.505806879,
+  "relay_last_monotonic": 637.609530852,
+  "damping": {
+    "event": "acp_damping",
+    "reason": "Pelvis localization unavailable",
+    "seq": 6548,
+    "sampled_at": 637.637829384,
+    "source_error": "ACP localization not ready: no acp-state.npz; check fresh DLIO pelvis pose and calibrate the floor first",
+    "pose_age_ms": 45.95573821757171,
+    "matched_robot_age_ms": null,
+    "handled_by_fsm": true
+  },
+  "ros_ctrl_c_wall": 1795591506.349663,
+  "slow_control_events": [],
+  "shutdown": {
+    "dlio_clean": true,
+    "livox_exit_code": -11
+  },
+  "damping_after_ctrl_c_estimate_ms": 2.9271451542172144,
+  "clock_alignment_note": "Approximate same-boot wall/monotonic alignment, not hardware latency.",
+  "operator_confirmed_prepare_wait_2s": true,
+  "acceptance": {
+    "sustained_30s": true,
+    "no_jump_during_turn": true,
+    "active_localization_stop_exit": true,
+    "substantial_translation": false,
+    "all_compute_under_20ms": false
+  },
+  "limitations": [
+    "Translation ranges only 1.6\u20132.4 cm; substantial translation is not established.",
+    "Livox shutdown SIGSEGV -11 persists.",
+    "Preparation dwell cannot be inferred from old logs excluding FIXEDPOSE; operator confirms >=2 s."
+  ]
+}

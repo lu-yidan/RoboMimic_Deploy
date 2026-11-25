@@ -146,8 +146,8 @@ class PolicyRuntime:
         self._log_start = time.monotonic()
         self._log_states = {FSMStateName[s] for s in config.log_states} if config.log_enabled else set()
         if self.acp_enabled and config.log_enabled:
-            # Preserve actual robot state after a protective ACP exit as well.
-            self._log_states.add(FSMStateName.PASSIVE)
+            # Record the full preparation ramp and protective exit, not just transition frames.
+            self._log_states.update({FSMStateName.PASSIVE, FSMStateName.FIXEDPOSE})
         self._logger = (
             Logger(
                 config.log_dir,

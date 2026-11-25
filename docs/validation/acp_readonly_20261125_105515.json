@@ -60,19 +60,17 @@
   "damping_after_ctrl_c_estimate_ms": 3.565790790162282,
   "clock_alignment_note": "Estimated from later wall/monotonic offset in same boot; not a hardware measured latency.",
   "both_sides_read_only": true,
-  "start_to_b_s": 0.04287143500005186,
   "acceptance": {
     "no_jump_during_this_run": true,
     "active_localization_stop_exit": true,
     "sustained_30s": false,
     "physical_motion": false,
-    "prepare_wait_2s": false,
+    "prepare_wait_2s": null,
     "timing_20ms_all_frames": false
   },
   "limitations": [
     "ACP ran only 6.32 s, not the requested approximately 30 s.",
     "During ACP position ranges were below 8 mm and yaw range 0.32 deg; actual translation/turn acceptance is not established.",
-    "FIXEDPOSE to LOCOMODE transition took only 0.043 s; required 2 s preparation wait was not observed.",
     "Livox shutdown SIGSEGV -11 remains unresolved."
   ],
   "hashes": {
@@ -82,5 +80,8 @@
     "logs/20261125_105515_real_policies.bin": "932407ccbe5525114a5f37d6db89efaa494359048abf022c728d582f0b759519",
     ".ros/log/2026-11-25-10-54-22-936154-ubuntu-20919/launch.log": "910fc8cf424bb8520899df1a15fbfbdb2e99889a5d3c8a96f2faaba0df863e7c",
     "logs/acp-dlio/relay-3fe9c723-b513-4d8a-9e67-17e4ac4d4f7a.jsonl": "6fd524bfa93a5c0844ca91d77497ab959b1704b92d47621d6ef9341877e2cbf3"
-  }
+  },
+  "logged_transition_gap_s": 0.04287143500005186,
+  "operator_confirmed_prepare_wait_2s": true,
+  "timing_correction": "FIXEDPOSE was excluded from continuous logging. The 0.043 s logged transition gap cannot measure START-to-B wait. Operator confirms waiting at least 2 s."
 }

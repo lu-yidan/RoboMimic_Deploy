@@ -43,6 +43,40 @@ def write_goal(directory, status, target, heading, now=None):
     return payload
 
 
+def acknowledge_goal(directory, packet):
+    """Called by the policy only after assigning the validated target."""
+    path = Path(directory) / 'acp-goal-accepted.json'
+    temp = path.with_name(path.name + '.%d.tmp' % os.getpid())
+    try:
+        temp.write_text(json.dumps(dict(schema=1, boot_id=boot_id(),
+            session=packet.session, request_id=packet.request_id,
+            accepted_at=time.monotonic(), policy_pid=os.getpid())) + '\n')
+        temp.replace(path)
+    finally:
+        temp.unlink(missing_ok=True)
+
+
+def wait_for_acceptance(directory, packet, timeout=2.):
+    """A write alone is not acceptance. Never refresh or resend a target."""
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            ack = read_packet(Path(directory) / 'acp-goal-accepted.json')
+            if (ack.get('schema') == 1 and ack.get('boot_id') == packet['boot_id']
+                    and ack.get('session') == packet['session']
+                    and ack.get('request_id') == packet['request_id']
+                    and packet['captured_at'] <= float(ack.get('accepted_at', 0)) <= time.monotonic()):
+                return ack
+        except (OSError, ValueError, TypeError):
+            pass
+        if time.monotonic() >= deadline:
+            raise ValueError('Goal acceptance NOT confirmed; do not press Y. Start the left-middle '
+                'policy, finish current-session calibration, then rerun goal.py --stop. '
+                'Check the policy ACP error if it is already running. This command does not '
+                'cancel a target that the policy may have accepted')
+        time.sleep(.02)
+
+
 def validate_status(status, now):
     status_age = now-float(status.get('sampled_at', 0.))
     pose_age = now-float(status.get('pose_captured_at', 0.))
@@ -82,10 +116,19 @@ class GoalReader:
         path = self.directory / 'acp-goal.json'
         # Match the cache identity to the actual open file, even if the writer
         # replaces the path between operations.
-        packet, key = read_packet(path, with_key=True)
+        try:
+            packet, key = read_packet(path, with_key=True)
+        except FileNotFoundError:
+            raise ValueError('No ACP goal: run goal.py --stop after starting this policy') from None
         if key != self.key:
             observed_at = time.monotonic() if now is None else now
             validate_status(status, observed_at)
+            if packet.get('session') != self.session or packet.get('boot_id') != boot_id():
+                raise ValueError('Goal belongs to a different localization session/boot; run goal.py --stop')
+            age = observed_at-float(packet['captured_at'])
+            if not 0 <= age <= 2.:
+                raise ValueError('Goal expired before policy acceptance (first-read limit=2 s); '
+                                 'run goal.py --stop now that policy and calibration are ready')
             target = np.asarray(packet['target_position'], dtype=np.float32)
             heading = float(packet['target_heading'])
             if (packet.get('schema') != 1 or packet.get('boot_id') != boot_id()

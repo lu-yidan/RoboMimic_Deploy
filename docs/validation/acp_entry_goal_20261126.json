@@ -1,0 +1,68 @@
+{
+  "source_commit": "e71d654",
+  "policy_trace": "20261125_205302_real_policies",
+  "events": [
+    {
+      "event": "acp_state_status",
+      "error": "ACP localization has no synchronized robot history sample",
+      "sequence": 1411,
+      "pose_captured_at": 4592.533296585083,
+      "latest_robot_received_at": 4592.582361756,
+      "matched_robot_captured_at": null,
+      "sampled_at": 4592.591036725
+    },
+    {
+      "event": "fsm_execution",
+      "time_s": 0.18091648400059057,
+      "step": 0,
+      "state": 1
+    },
+    {
+      "event": "acp_state_status",
+      "error": "ACP live goal: Invalid/stale goal or goal from a different localization session",
+      "sequence": 1412,
+      "pose_captured_at": 4592.563391923904,
+      "latest_robot_received_at": 4592.60053262,
+      "matched_robot_captured_at": 4592.582361756,
+      "sampled_at": 4592.611352595
+    },
+    {
+      "event": "fsm_execution",
+      "time_s": 3.938514925999698,
+      "step": 187,
+      "state": 2
+    },
+    {
+      "event": "fsm_execution",
+      "time_s": 9.960577836000084,
+      "step": 486,
+      "state": 4
+    },
+    {
+      "event": "acp_state_status",
+      "error": "ACP localization not ready: no acp-state.npz; check fresh DLIO pelvis pose and calibrate the floor first",
+      "sequence": -1,
+      "pose_captured_at": 0.0,
+      "latest_robot_received_at": 4646.249903495,
+      "matched_robot_captured_at": null,
+      "sampled_at": 4646.256432428
+    },
+    {
+      "event": "keyboard_interrupt",
+      "time_s": 57.617201562000446
+    }
+  ],
+  "overlapping_relay_samples": 254,
+  "valid_output_samples": 254,
+  "localization_faults": [
+    ""
+  ],
+  "conclusion": "Policy rejected the goal before ACP entry. Goal packet was lost on reboot; old generic error cannot distinguish expiry from session mismatch. No goal acceptance event exists.",
+  "changes": [
+    "Require matching policy acceptance receipt before goal.py reports success",
+    "Keep 2-second first-read deadline, session binding and fixed accepted target",
+    "Expose actual input/goal blocker in ACP entry rejection"
+  ],
+  "validation": "56 tests passed: test_acp_contract.py, test_dlio_integration.py, test_acp_bridge.py",
+  "limitation": "Physical ACP entry and motor closed loop not validated by this patch. No robot processes started or goals sent."
+}

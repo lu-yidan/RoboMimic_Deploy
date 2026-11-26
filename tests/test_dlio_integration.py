@@ -315,3 +315,37 @@ def test_goal_diagnosis_does_not_confuse_session_identity_with_policy_acceptance
     assert assess_goal(status, goal, 99., 'host')[0] == 'invalid'
     goal['target_position'] = [float('nan'), 0.]
     assert assess_goal(status, goal, 100.1, 'host')[0] == 'invalid'
+
+
+def test_unaccepted_goal_expires_but_fresh_resubmission_recovers(tmp_path):
+    status = dict(schema=1, boot_id=boot_id(), session='live', frame_id='acp_odom',
+                  pose_valid=True, pose_captured_at=100., sampled_at=100.)
+    write_goal(tmp_path, status, [1., 0.], 0., now=100.)
+    status.update(pose_captured_at=103., sampled_at=103.)
+    atomic_json(tmp_path/'acp-dlio-status.json', status)
+    reader = GoalReader(tmp_path)
+    with pytest.raises(ValueError, match='expired before policy acceptance'):
+        reader.read(now=103.)
+    assert reader.target is None
+    write_goal(tmp_path, status, [2., 0.], 0., now=103.)
+    np.testing.assert_allclose(reader.read(now=103.)[0], [2., 0.])
+
+
+def test_goal_command_requires_matching_policy_acceptance(tmp_path):
+    now = time.monotonic()
+    status = dict(schema=1, boot_id=boot_id(), session='live', frame_id='acp_odom',
+                  pose_valid=True, pose_captured_at=now, sampled_at=now)
+    packet = write_goal(tmp_path, status, [1., 0.], 0., now=now)
+    with pytest.raises(ValueError, match='NOT confirmed'):
+        goal_ipc.wait_for_acceptance(tmp_path, packet, timeout=0.)
+    reader = SimpleNamespace(session='live', request_id='previous-request')
+    goal_ipc.acknowledge_goal(tmp_path, reader)
+    with pytest.raises(ValueError, match='NOT confirmed'):
+        goal_ipc.wait_for_acceptance(tmp_path, packet, timeout=0.)
+    reader.request_id = packet['request_id']
+    goal_ipc.acknowledge_goal(tmp_path, reader)
+    ack = goal_ipc.wait_for_acceptance(tmp_path, packet, timeout=0.)
+    assert ack['request_id'] == packet['request_id']
+    packet['session'] = 'restarted'
+    with pytest.raises(ValueError, match='NOT confirmed'):
+        goal_ipc.wait_for_acceptance(tmp_path, packet, timeout=0.)

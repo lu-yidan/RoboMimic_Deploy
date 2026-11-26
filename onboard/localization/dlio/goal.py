@@ -10,7 +10,7 @@ if __name__ == '__main__':
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
-from policy.acp.goal_ipc import read_packet, relative_goal, write_goal, validate_status
+from policy.acp.goal_ipc import read_packet, relative_goal, write_goal, validate_status, wait_for_acceptance
 from policy.acp.observations import yaw
 
 
@@ -33,7 +33,11 @@ def main():
             target, heading = args.world, angle
         else:
             target, heading = status['pelvis_pos_w'][:2], yaw(status['pelvis_quat_w'])
-        print(write_goal(args.ipc_dir, status, target, heading))
+        packet = write_goal(args.ipc_dir, status, target, heading)
+        print('Goal written; waiting for policy acceptance: ' + packet['request_id'], flush=True)
+        ack = wait_for_acceptance(args.ipc_dir, packet)
+        print('ACCEPTED by policy PID %s: %s. Target is fixed; Y still requires valid inputs.'
+              % (ack['policy_pid'], packet), flush=True)
     except (OSError, ValueError, KeyError) as error:
         parser.error(str(error) + '; run check.py ON G1 to see the blocking stage')
 

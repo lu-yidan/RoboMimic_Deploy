@@ -94,6 +94,9 @@ ACP_DLIO=1 LYD_DEPLOY_READ_ONLY=0 \
    /usr/bin/python3 onboard/localization/dlio/check.py --duration 10
    ```
 
+   `goal.py` 必须打印 `ACCEPTED by policy PID ...` 才表示策略接受；只打印 written 不算成功。
+   若提示 `NOT confirmed`，先检查左中策略已运行、当前会话标定就绪，再手动执行 `goal.py --stop`。
+   命令不自动刷新或重发目标；首次读取仍限 2 秒，接受后保持固定。
    确认 `ready`、`acp_output_valid=true`；策略首次读取新目标后会记录 `acp_goal`。
    目标接受后持续固定，检查器提示旧请求不代表已接受的目标过期；重启策略后需重新下发。
 5. 按 **Y**，确认左中打印 `[ACP] Entering from LOCOMODE`。

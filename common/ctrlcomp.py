@@ -30,6 +30,7 @@ class StateAndCmd:
         self.acp_terrain_time = 0.0
         self.acp_pose_time = 0.0
         self.acp_pose_valid = False
+        self.acp_input_error = ''
         self.acp_ang_vel = np.zeros(3, dtype=np.float32)  # pelvis body frame
         # Real ACP observations may use a time-matched bridge snapshot. q/dq
         # above always retain the latest measurements for control and PD bounds.

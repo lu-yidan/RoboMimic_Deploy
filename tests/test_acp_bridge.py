@@ -15,7 +15,7 @@ from common.utils import FSMCommand, FSMStateName
 from deploy_real.scalebfm_input import RealPolicyInput
 from policy.acp.state_ipc import StateReader, StateWriter
 from policy.acp.state_ipc import StateSample
-from policy.acp.goal_ipc import GoalReader, write_goal
+from policy.acp.goal_ipc import GoalReader, write_goal, read_packet
 from onboard.localization.dlio.core import atomic_json
 from policy.acp.state_ipc import boot_id
 
@@ -37,11 +37,16 @@ class ACPBridgeTest(unittest.TestCase):
             atomic_json(Path(folder)/'acp-dlio-status.json', status)
             runtime._apply_acp_state(state)
             self.assertFalse(runtime.state_cmd.acp_pose_valid)
+            self.assertIn('No ACP goal', runtime.state_cmd.acp_input_error)
+            self.assertFalse((Path(folder)/'acp-goal-accepted.json').exists())
             policy = runtime.FSM_controller.acp_policy
             write_goal(folder, status, [1, .2], .3)
             runtime._apply_acp_state(state)
             self.assertTrue(runtime.state_cmd.acp_pose_valid)
             np.testing.assert_allclose(policy.target, [1, .2])
+            ack = read_packet(Path(folder)/'acp-goal-accepted.json')
+            self.assertEqual(ack['request_id'], runtime._acp_goal_reader.request_id)
+            self.assertEqual(runtime.state_cmd.acp_input_error, '')
             write_goal(folder, status, [.5, -.4], -.2)
             runtime._apply_acp_state(state)
             self.assertTrue(runtime.state_cmd.acp_pose_valid)

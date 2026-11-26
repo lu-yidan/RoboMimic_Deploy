@@ -329,3 +329,12 @@ def test_static_scan_survives_many_robot_occluders_without_changing_live_groups(
     assert state.acp_pose_valid
     np.testing.assert_allclose(state.acp_terrain[:,2],.28,atol=1e-6)
     np.testing.assert_array_equal(model.geom_group,original_groups)
+
+
+def test_entry_reports_goal_blocker_instead_of_localization_failure():
+    from types import SimpleNamespace
+    from policy.acp.ACP import ACP
+    policy = ACP.__new__(ACP)
+    policy.state_cmd = SimpleNamespace(acp_pose_valid=False,
+        acp_input_error='ACP live goal: Goal expired before policy acceptance')
+    assert policy.entry_error() == policy.state_cmd.acp_input_error

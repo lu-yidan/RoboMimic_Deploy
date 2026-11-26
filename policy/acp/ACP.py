@@ -105,7 +105,7 @@ class ACP(FSMState):
         s, now = self.state_cmd, time.monotonic()
         try:
             if not s.acp_pose_valid:
-                return 'Pelvis localization unavailable'
+                return getattr(s, 'acp_input_error', '') or 'Pelvis localization unavailable'
             age_limit = float(self.config.get('max_age_s', .15))
             if not 0 < age_limit <= .5:
                 return 'Invalid ACP input age limit'

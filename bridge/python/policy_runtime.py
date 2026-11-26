@@ -415,6 +415,10 @@ class PolicyRuntime:
                 target, heading = reader.read()
                 self.FSM_controller.acp_policy.target = target
                 self.FSM_controller.acp_policy.heading = heading
+                if reader.request_id != old_request:
+                    from policy.acp.goal_ipc import acknowledge_goal
+                    acknowledge_goal(reader.directory, reader)
+                    print('[ACP goal] Accepted request ' + reader.request_id, flush=True)
                 if reader.request_id != old_request and self._logger is not None:
                     self._logger.event('acp_goal', request_id=reader.request_id,
                                        target=target.tolist(), heading=heading, frame_id=sample.frame_id)
@@ -430,6 +434,7 @@ class PolicyRuntime:
             s.acp_imu_quat_wxyz = matched.imu_quat_wxyz
             s.acp_robot_time, s.acp_robot_tick = matched.captured_at, matched.tick
             s.acp_pose_valid = True
+        s.acp_input_error = error or ''
         s.telemetry.update(acp_state_sequence=sample.sequence,
                            acp_state_age_ms=(time.monotonic()-sample.captured_at)*1000 if not error else float('nan'),
                            acp_state_valid=not bool(error))

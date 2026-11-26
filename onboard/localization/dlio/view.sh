@@ -13,4 +13,7 @@ if [[ "$DISPLAY" == localhost:* || "$DISPLAY" == 127.0.0.1:* ]]; then
 fi
 source /opt/ros/foxy/setup.bash
 source "$HERE/transport_env.sh"
-exec rviz2 -d "$HERE/config/acp.rviz"
+# Rendering is diagnostic work on the robot, including forwarded X11.
+# Limit Mesa/BLAS worker proliferation and yield CPU to localization/control.
+export LP_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
+exec nice -n 10 rviz2 -d "$HERE/config/acp.rviz"

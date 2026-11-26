@@ -99,6 +99,7 @@ def main():
                           ('relay-' + self.session + '.jsonl'))
             self.trace.parent.mkdir(parents=True, exist_ok=True)
             self.last_trace = 0.
+            self.last_trace_error = None
             print('[ACP DLIO] Diagnostic trace: ' + str(self.trace), flush=True)
             self.initial_imu, self.imu_ready = [], False
             self.calibration = None
@@ -136,7 +137,7 @@ def main():
                 heading = yaw([q.w, q.x, q.y, q.z])
                 write_goal(directory, read_json(directory / 'acp-dlio-status.json'),
                            [msg.pose.position.x, msg.pose.position.y], heading)
-                self.get_logger().info('Accepted fixed world goal from /acp/goal_pose')
+                self.get_logger().info('Wrote fixed world goal from /acp/goal_pose; policy acceptance is reported separately')
             except (ValueError, KeyError, OSError) as error:
                 self.get_logger().warning('Goal rejected: ' + str(error))
 
@@ -274,6 +275,10 @@ def main():
                 if args.publish_acp:
                     (directory / 'acp-state.npz').unlink(missing_ok=True)
                     self.next_state_publish = 0.
+                # A following odometry callback can recover before the status timer.
+                # Preserve the exact withdrawal cause while it is still available.
+                if self.error != self.last_trace_error:
+                    self.status()
 
         def status(self):
             now = time.monotonic()
@@ -305,10 +310,11 @@ def main():
             if self.pose is not None:
                 payload.update(pelvis_pos_w=self.pose[0].tolist(), pelvis_quat_w=self.pose[1].tolist())
             atomic_json(directory / 'acp-dlio-status.json', payload)
-            if now-self.last_trace >= .2:
+            if now-self.last_trace >= .2 or payload['error'] != self.last_trace_error:
                 with self.trace.open('a') as stream:
                     stream.write(json.dumps(payload, allow_nan=False) + '\n')
                 self.last_trace = now
+                self.last_trace_error = payload['error']
             # Missing clouds/IMU must stop output even if odometry keeps propagating.
             if args.publish_acp and (not pose_fresh or self.error or self.registration_fault):
                 (directory / 'acp-state.npz').unlink(missing_ok=True)

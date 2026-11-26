@@ -563,3 +563,16 @@ ACP 日志现包含整个 FIXEDPOSE 准备过程，避免再次把筛选后的�
 若 tmux 报 no sessions，需在部署目录执行
 `ACP_DLIO=1 bash tools/deploy/start_tmux_layout.sh acp-dlio-readonly` 创建会话；
 `tmux attach` 仅用于已存在的会话。
+
+
+### 2026-11-26 RViz 交互时转阻尼
+
+`20261126_190140` 已进入 ACP 并运行约 208.51 秒，首次因状态文件撤销转阻尼，
+约 26 ms 后状态恢复；RViz 新目标在首次阻尼后约 0.633 秒才写入，因此不能归因于新目标执行。
+随后 DLIO 触发 31.199 mm 配准修正保护；没有本轮原始录包，尚不能完成离线复现。
+
+`view_remote.sh` 在 G1 运行 RViz，仅将窗口通过 X11 转发到本地；软件渲染会使用 G1 CPU。
+现在以 nice 10、单 Mesa/OpenMP/BLAS 工作线程、10 Hz 绘制运行，降低可视化资源竞争。
+这是待实测的缓解措施，不代表已证明首次失效的根因。重开 RViz 才会应用这些设置。
+右中 relay 更新后会立即记录导致状态撤销的 odom 错误，避免短暂错误在下一帧恢复后被 5 Hz 日志漏掉。
+安全阈值不变；本轮不能记为目标运动验收通过。时序见 `validation/acp_rviz_goal_20261126.json`。

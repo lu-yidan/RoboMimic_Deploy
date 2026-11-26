@@ -349,3 +349,32 @@ def test_goal_command_requires_matching_policy_acceptance(tmp_path):
     packet['session'] = 'restarted'
     with pytest.raises(ValueError, match='NOT confirmed'):
         goal_ipc.wait_for_acceptance(tmp_path, packet, timeout=0.)
+
+
+def test_transient_odom_failure_is_logged_before_next_callback(tmp_path):
+    import ast
+    from pathlib import Path
+    from onboard.localization.dlio import relay
+    tree = ast.parse(Path(relay.__file__).read_text())
+    callback = next(node for node in ast.walk(tree)
+                    if isinstance(node, ast.FunctionDef) and node.name == 'odom')
+    namespace = dict(directory=tmp_path, args=SimpleNamespace(publish_acp=True))
+    exec(compile(ast.Module(body=[callback], type_ignores=[]), relay.__file__, 'exec'), namespace)
+    path = tmp_path/'acp-state.npz'
+    path.write_bytes(b'previous valid state')
+    snapshots = []
+    node = SimpleNamespace(counts={'odom': 0}, registration_fault='fault',
+                           error='', stage_errors={}, last_trace_error=None)
+    def status():
+        snapshots.append((node.error, path.exists()))
+        node.last_trace_error = node.error
+    node.status = status
+    namespace['odom'](node, None)
+    assert snapshots == [('fault', False)]
+    assert node.next_state_publish == 0.
+    # Persistent identical failures do not produce a per-callback trace flood.
+    namespace['odom'](node, None)
+    assert len(snapshots) == 1
+    node.registration_fault = 'different fault'
+    namespace['odom'](node, None)
+    assert snapshots[-1] == ('different fault', False)

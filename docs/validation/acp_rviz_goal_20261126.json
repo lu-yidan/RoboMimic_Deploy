@@ -1,0 +1,28 @@
+{
+  "policy_trace": "20261126_190140_real_policies",
+  "acp_enter_s": 94.864706196,
+  "damping_s": 303.375273923,
+  "acp_duration_s": 208.510567727,
+  "damping_monotonic": 1168.558451431,
+  "rviz_goal_written_monotonic": 1169.1917434,
+  "rviz_gui_goal_wall": 1795691204.1668124,
+  "relay_goal_wall": 1795691204.2360075,
+  "registration_reject_wall": 1795691207.627688,
+  "registration_position_injection_m": 0.031199,
+  "conclusions": [
+    "First damping preceded RViz goal receipt by 0.633 seconds.",
+    "RViz goal was accepted by policy after damping; no subsequent ACP entry event exists.",
+    "First withdrawal recovered about 26 ms later; periodic relay trace missed its exact reason.",
+    "DLIO registration rejection happened later and is not the initiating damping event.",
+    "view_remote.sh runs RViz on G1 over X11 with software GL. CPU contention is a hypothesis, not proven root cause."
+  ],
+  "changes": [
+    "Reduce RViz rendering to 10 Hz and nice 10; cap Mesa/OpenMP/BLAS workers at one.",
+    "Record odometry withdrawal reason immediately, bypassing 200 ms trace sampling on error transitions.",
+    "Clarify RViz relay goal-written message does not prove policy acceptance."
+  ],
+  "limitations": [
+    "No new raw sensor bag captured in this experiment; cannot reproduce native rejection offline from these logs alone.",
+    "Physical efficacy of resource mitigation is unverified; guard thresholds are unchanged."
+  ]
+}

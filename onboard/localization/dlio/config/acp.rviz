@@ -5,7 +5,7 @@ Visualization Manager:
   Class: ""
   Global Options:
     Fixed Frame: acp_odom
-    Frame Rate: 20
+    Frame Rate: 10
   Displays:
     - Class: rviz_default_plugins/Grid
       Name: Grid

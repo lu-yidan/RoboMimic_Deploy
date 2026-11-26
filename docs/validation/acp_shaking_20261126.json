@@ -1,0 +1,41 @@
+{
+  "trace": "20261126_192937_real_policies",
+  "video": "/home/yujy/Downloads/20261126-193434.mp4",
+  "video_alignment": "Qualitative review of 4-10 s frames; no shared timestamp or exact frame-to-log synchronization established.",
+  "acp_frames": 237,
+  "duration_to_damping_s": 4.755804135000005,
+  "entry_goal_distance_m": 0.002968602580949664,
+  "entry_goal_heading_error_deg": -0.03244277462363243,
+  "timing_percentiles": [
+    0,
+    50,
+    95,
+    100
+  ],
+  "joint_age_ms": [
+    36.61267699999371,
+    97.83450599996968,
+    119.74499880000167,
+    123.60387100000025
+  ],
+  "pose_age_ms": [
+    31.089431959003377,
+    95.3327373566708,
+    117.1808805773253,
+    126.50506190090027
+  ],
+  "inference_ms": [
+    5.241945000022952,
+    5.415130999949724,
+    5.668336199994428,
+    5.996218999996472
+  ],
+  "max_gravity_disagreement_deg": 2.179181613949606,
+  "withdrawal_error": "Waist data stale, reordered, or malformed",
+  "withdrawal_monotonic": 290.248465444,
+  "damping_monotonic": 290.253949494,
+  "recovery_monotonic": 290.274662643,
+  "finding": "Waist reader samples clock before concurrent IPC read; reproducible future-packet false rejection. This historical error lacks exact rejected packet, so this race is a candidate cause, not proven unique trigger.",
+  "patch": "Sample monotonic time after waist IPC read; retain freshness, skew, ordering and restart checks.",
+  "unresolved": "Oscillation starts before withdrawal. Approximately 98 ms median proprioceptive feedback delay is a significant hypothesis requiring offline control validation, not proof of sole cause. No motor gain/control changes deployed."
+}

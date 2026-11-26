@@ -378,3 +378,44 @@ def test_transient_odom_failure_is_logged_before_next_callback(tmp_path):
     node.registration_fault = 'different fault'
     namespace['odom'](node, None)
     assert snapshots[-1] == ('different fault', False)
+
+
+def test_waist_read_uses_clock_after_concurrent_export(tmp_path):
+    import ast
+    from pathlib import Path
+    from onboard.localization.dlio import relay
+    tree = ast.parse(Path(relay.__file__).read_text())
+    callback = next(n for n in ast.walk(tree)
+                    if isinstance(n, ast.FunctionDef) and n.name == 'odom')
+    clock = [100.]
+    packet = dict(schema=1, boot_id=boot_id(), source_id='exporter',
+                  rows=[[99.99, 1, 0., 0., 0.], [100.005, 2, 0., 0., 0.]])
+    def read_during_export(path):
+        clock[0] = 100.01
+        return packet
+    class ReachedPose(BaseException):
+        pass
+    def reached_pose(*args):
+        raise ReachedPose
+    namespace = dict(directory=tmp_path, args=SimpleNamespace(publish_acp=True),
+        time=SimpleNamespace(monotonic=lambda: clock[0]), stamp_seconds=lambda h: 99.99,
+        read_json=read_during_export, pelvis_pose=reached_pose, angles=[0., 0.])
+    exec(compile(ast.Module(body=[callback], type_ignores=[]), relay.__file__, 'exec'), namespace)
+    node = SimpleNamespace(counts={'odom': 0}, registration_fault='',
+        clock_map=SimpleNamespace(convert=lambda s: s), gate=SimpleNamespace(check=lambda *a: True),
+        imu_ready=True, last_imu=99.99, last_raw_cloud=99.99, last_cloud=99.99,
+        waist=WaistHistory(), error='', stage_errors={}, last_trace_error=None,
+        status=lambda: None)
+    msg = SimpleNamespace(header=SimpleNamespace(frame_id='acp_odom'), child_frame_id='acp_lidar_base',
+        pose=SimpleNamespace(pose=SimpleNamespace(position=SimpleNamespace(x=0., y=0., z=0.),
+                             orientation=SimpleNamespace(w=1., x=0., y=0., z=0.))))
+    # Previous code rejected the newly written 100.005 row against time 100.0.
+    with pytest.raises(ReachedPose):
+        namespace['odom'](node, msg)
+    assert node.waist.rows[-1][0] == 100.005
+    # An actually stale stream still withdraws state, without relaxing 150 ms.
+    packet['rows'] = [[99.8, 1, 0., 0., 0.]]
+    (tmp_path/'acp-state.npz').write_bytes(b'valid')
+    namespace['odom'](node, msg)
+    assert 'stale' in node.error
+    assert not (tmp_path/'acp-state.npz').exists()

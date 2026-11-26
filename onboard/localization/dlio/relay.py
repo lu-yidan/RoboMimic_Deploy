@@ -225,7 +225,11 @@ def main():
                     return
                 if not self.imu_ready or not 0 <= now-self.last_imu <= .15 or not 0 <= now-self.last_raw_cloud <= .3 or not 0 <= now-self.last_cloud <= .25:
                     raise ValueError('IMU, raw cloud, or registered DLIO cloud stale/not initialized')
-                self.waist.load(read_json(directory / 'acp-waist.json'), now)
+                waist_packet = read_json(directory / 'acp-waist.json')
+                # The exporter may publish during the read. Validate against a
+                # clock sampled afterwards, never the callback-entry clock.
+                now = time.monotonic()
+                self.waist.load(waist_packet, now)
                 waist, joint_stamp = self.waist.nearest(stamp, now)
                 self.last_waist_stamp, self.waist_skew = joint_stamp, joint_stamp-stamp
                 pos, quat = pelvis_pose([p.x, p.y, p.z], [q.w, q.x, q.y, q.z], waist, *angles)
